@@ -1,0 +1,52 @@
+services:
+  api:
+    build: .
+    container_name: shoppassport_backend
+    ports:
+      - "8005:8000"
+    volumes:
+      - .:/app
+      - static_volume:/app/staticfiles
+      - media_volume:/app/media
+    env_file:
+      - .env
+    depends_on:
+      - db
+    restart: unless-stopped
+    # command: uvicorn config.asgi:application --host 0.0.0.0 --port 8000 --reload
+    command: gunicorn config.wsgi:application --bind 0.0.0.0:8000
+
+  db:
+    image: postgres:15
+    container_name: shoppassport_db
+    volumes:
+      - postgres_data:/var/lib/postgresql/data/
+    env_file:
+      - .env
+    ports:
+      - "5435:5432"
+    restart: unless-stopped
+
+    
+  nginx:
+    image: nginx:alpine
+    container_name: hrai_nginx
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/sites-available:/etc/nginx/conf.d
+      - static_volume:/app/staticfiles:ro
+      - media_volume:/app/media:ro
+      - /etc/letsencrypt:/etc/letsencrypt:ro
+      - /var/lib/letsencrypt:/var/lib/letsencrypt:ro
+      - /var/www/certbot:/var/www/certbot:ro
+    depends_on:
+      - api
+    networks:
+      - default
+
+volumes:
+  postgres_data:
+  static_volume:
+  media_volume:
