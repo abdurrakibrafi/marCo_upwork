@@ -22,7 +22,7 @@ BASE_URL = env("BASE_URL")
 ROOT_URLCONF = "config.urls"
 ASGI_APPLICATION = "config.asgi.application"
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
-AUTH_USER_MODEL = "accounts.User"
+# AUTH_USER_MODEL = "accounts.User"
 
 INSTALLED_APPS = [
     "django.contrib.admin",
@@ -47,7 +47,7 @@ INSTALLED_APPS = [
     "firebase_admin",
 
     # Local apps
-    "apps.account",
+   
 ]
 
 MIDDLEWARE = [
