@@ -7,7 +7,7 @@ env = environ.Env()
 # Get environment type
 DEBUG = env("DEBUG", default="False")
 
-print(f"🐉 DEBUG mode is set to: {DEBUG} 🚸")
+print(f"🐉 DEBUG mode is set to: {DEBUG} ⚠️")
 
 if DEBUG == "False":
     from .production import *

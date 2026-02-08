@@ -1,5 +1,5 @@
 services:
-  web:
+  api:
     build: .
     container_name: mysportsnest_backend
     ports:
@@ -27,6 +27,7 @@ services:
       - db
       - redis
     restart: unless-stopped
+    entrypoint: []
     command: celery -A config worker --loglevel=info
 
   celery_beat:
@@ -40,6 +41,7 @@ services:
       - db
       - redis
     restart: unless-stopped
+    entrypoint: []
     command: celery -A config beat --loglevel=info
 
   flower:
@@ -82,3 +84,4 @@ volumes:
   redis_data:
   static_volume:
   media_volume:
+    
