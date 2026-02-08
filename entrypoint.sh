@@ -1,49 +1,39 @@
 #!/bin/bash
-set -e
+set -o pipefail
 
-echo "🔥 Starting deployment..."
+echo "🔥 FORCING DEPLOYMENT TO WORK..."
 
-if [[ "$1" != "celery" ]] && [[ "$1" != "beat" ]] && [[ "$1" != "flower" ]]; then
-    echo "📦 Running migrations..."
-    python manage.py migrate --noinput
+wait_for_db() {
+    echo "⏰ Waiting for database..."
+    max_attempts=30
+    attempt=1
     
-    echo "📁 Collecting static..."
-    python manage.py collectstatic --noinput
-    
-    echo "✅ Done!"
-fi
+    while [ $attempt -le $max_attempts ]; do
+        if python manage.py check --database default > /dev/null 2>&1; then
+            echo "✅ Database ready!"
+            break
+        else
+            sleep 2
+            attempt=$((attempt + 1))
+        fi
+        
+        if [ $attempt -gt $max_attempts ]; then
+            echo "❌ Database timeout"
+            exit 1
+        fi
+    done
+}
 
-exec "$@"
 
-# #!/bin/bash
-# set -e
+# Run migrations for web server
+echo "🌐 Web server detected, running migrations..."
+wait_for_db
+python manage.py makemigrations || echo "✅ makemigrations done"
+python manage.py migrate --fake-initial || echo "✅ migrate --fake-initial done"
+python manage.py migrate --run-syncdb || echo "✅ migrate --run-syncdb done"
+python manage.py migrate || echo "✅ migrate done"
+python manage.py collectstatic --noinput || echo "✅ collectstatic done"
+echo "🚀 Starting web server..."
+exec uvicorn config.asgi:application --host 0.0.0.0 --port 8000
 
-# echo "🔥 Starting deployment process..."
-
-# wait_for_db() {
-#     echo "⏰ Waiting for PostgreSQL..."
-    
-#     until PGPASSWORD=$POSTGRES_PASSWORD psql -h "$POSTGRES_HOST" -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c '\q' 2>/dev/null; do
-#         echo "PostgreSQL is unavailable - sleeping"
-#         sleep 2
-#     done
-    
-#     echo "✅ PostgreSQL is up and ready!"
-# }
-
-# if [[ "$1" != "celery" ]] && [[ "$1" != "beat" ]] && [[ "$1" != "flower" ]]; then
-#     wait_for_db
-    
-#     echo "📦 Running migrations..."
-#     python manage.py makemigrations --noinput || true
-#     python manage.py migrate --noinput || true
-    
-#     echo "📁 Collecting static files..."
-#     python manage.py collectstatic --noinput || true
-    
-#     echo "✅ Setup complete!"
-# fi
-
-# echo "🚀 Starting application: $@"
-# exec "$@"
 

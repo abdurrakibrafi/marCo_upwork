@@ -1,9 +1,9 @@
 services:
-  api:
+  web:
     build: .
-    container_name: shoppassport_backend
+    container_name: mysportsnest_backend
     ports:
-      - "8005:8000"
+      - "8007:8000"
     volumes:
       - .:/app
       - static_volume:/app/staticfiles
@@ -12,22 +12,73 @@ services:
       - .env
     depends_on:
       - db
+      - redis
     restart: unless-stopped
-    # command: uvicorn config.asgi:application --host 0.0.0.0 --port 8000 --reload
-    command: gunicorn config.wsgi:application --bind 0.0.0.0:8000
+
+  celery:
+    build: .
+    container_name: mysportsnest_celery
+    volumes:
+      - .:/app
+      - media_volume:/app/media
+    env_file:
+      - .env
+    depends_on:
+      - db
+      - redis
+    restart: unless-stopped
+    command: celery -A config worker --loglevel=info
+
+  celery_beat:
+    build: .
+    container_name: mysportsnest_celery_beat
+    volumes:
+      - .:/app
+    env_file:
+      - .env
+    depends_on:
+      - db
+      - redis
+    restart: unless-stopped
+    command: celery -A config beat --loglevel=info
+
+  flower:
+    build: .
+    container_name: mysportsnest_flower
+    ports:
+      - "5557:5555"
+    volumes:
+      - .:/app
+    env_file:
+      - .env
+    depends_on:
+      - redis
+    restart: unless-stopped
+    entrypoint: []
+    command: celery -A config flower --port=5555 --address=0.0.0.0
 
   db:
     image: postgres:15
-    container_name: shoppassport_db
+    container_name: mysportsnest_db
     volumes:
       - postgres_data:/var/lib/postgresql/data/
     env_file:
       - .env
     ports:
-      - "5435:5432"
+      - "5437:5432"
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    container_name: mysportsnest_redis
+    ports:
+      - "6387:6379"
+    volumes:
+      - redis_data:/data
     restart: unless-stopped
 
 volumes:
   postgres_data:
+  redis_data:
   static_volume:
   media_volume:

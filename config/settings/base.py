@@ -45,8 +45,20 @@ INSTALLED_APPS = [
     "allauth.socialaccount",
     "allauth.socialaccount.providers.google",
     "firebase_admin",
+    "channels",
+    "celery",
+    "django_celery_beat",
 
     # Local apps
+    "apps.accounts",
+    "apps.content",
+    "apps.core",
+    "apps.entity",
+    "apps.event",
+    "apps.feed",
+    "apps.nest",
+    "apps.preference",
+    "apps.score",
    
 ]
 
