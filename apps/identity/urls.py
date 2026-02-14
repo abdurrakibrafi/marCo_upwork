@@ -13,7 +13,6 @@ from .views import (
     AppleLogin,
     ResendOTPView,
     PasswordResetConfirmView,
-    AccountSoftDeleteView,
     AccountRestoreView,
     ProfileUpdateView,
     VerifyEmailChangeView,
@@ -55,7 +54,7 @@ urlpatterns = [
     # path("google/login/", GoogleLogin.as_view(), name="google_login"),
     # path("apple/login/", AppleLogin.as_view(), name="apple_login"),
 
-    path("account/delete/", AccountSoftDeleteView.as_view(), name="account-delete"),
+    # path("account/delete/", AccountSoftDeleteView.as_view(), name="account-delete"),
     path("account/parmanent/delete/", ParmanentAccountDeleteView.as_view(), name="parmanent-delete"),
     path("account/restore/", AccountRestoreView.as_view(), name="account-restore"),
     
