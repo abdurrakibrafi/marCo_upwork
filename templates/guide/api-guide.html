@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>API Integration Guide - HRlynx Project</title>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            max-width: 900px;
+            margin: 0 auto;
+            padding: 20px;
+            line-height: 1.6;
+            color: #333;
+        }
+
+        h1 {
+            color: #2c3e50;
+            border-bottom: 3px solid #3498db;
+            padding-bottom: 10px;
+        }
+
+        h2 {
+            color: #34495e;
+            margin-top: 30px;
+        }
+
+        code {
+            background: #f8f9fa;
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-family: 'Monaco', 'Consolas', monospace;
+            border: 1px solid #e9ecef;
+        }
+
+        .endpoint {
+            background: #e8f5e8;
+            padding: 15px;
+            border-left: 4px solid #27ae60;
+            margin: 15px 0;
+            border-radius: 4px;
+        }
+
+        .auth-flow {
+            background: #fff3cd;
+            padding: 15px;
+            border-left: 4px solid #ffc107;
+            margin: 15px 0;
+            border-radius: 4px;
+        }
+
+        .error-codes {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            margin: 15px 0;
+        }
+
+        .error-code {
+            background: #f8d7da;
+            color: #721c24;
+            padding: 8px 12px;
+            border-radius: 4px;
+            font-family: monospace;
+            font-size: 0.9em;
+        }
+
+        .links {
+            background: #d1ecf1;
+            padding: 15px;
+            border-radius: 4px;
+            margin: 15px 0;
+        }
+
+        .links a {
+            color: #0c5460;
+            text-decoration: none;
+            font-weight: 500;
+        }
+
+        .links a:hover {
+            text-decoration: underline;
+        }
+
+        .response-format {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 4px;
+            border: 1px solid #dee2e6;
+            font-family: monospace;
+            white-space: pre-line;
+        }
+    </style>
+</head>
+
+<body>
+    <h1>🧩 API Integration Guide - HRlynx</h1>
+    <p style="color: #666; margin-bottom: 30px;">
+        Crafted by
+        <a href="https://wa.me/8801743568504" target="_blank" rel="noopener noreferrer"
+            style="color: #0366d6; text-decoration: none;" title="Chat with Rafi on WhatsApp">
+            <strong>[Rafi]</strong>
+        </a> •
+        Welcome, bro! 🤝 — Feel free to reach out if you have questions.
+        <a href="https://wa.me/8801743568504" target="_blank" rel="noopener noreferrer"
+            style="color: #0366d6; text-decoration: none; margin-left: 5px;" title="Message Rafi on WhatsApp">
+            💬
+        </a>
+    </p>
+
+    <div
+        style="background: #fff3cd; padding: 12px; border-radius: 4px; border-left: 4px solid #ffc107; margin-bottom: 20px;">
+        <code style="color: #856404;">
+        ⚠️ Warning: Contains just enough 🐞🐛 to keep life interesting — happy debugging! 🔧
+    </code>
+    </div>
+
+    <p><strong>Base URL:</strong> <code>https://resorts-doors-pressed-everywhere.trycloudflare.com</code></p>
+    <p><strong>Email Server:</strong> <code>https://synthesis-walking-templates-concord.trycloudflare.com</code></p>
+
+    <h2>🔐 Authentication Endpoints</h2>
+
+    <div class="endpoint">
+        <strong>🔑 Login:</strong> <code>POST /api/auth/login/</code><br>
+        <em>Send email & password → Get access & refresh tokens</em>
+    </div>
+
+    <div class="endpoint">
+        <strong>🔄 Refresh Token:</strong> <code>POST /api/token/refresh/</code><br>
+        <em>Send refresh token → Get new access token (no re-login needed!)</em>
+    </div>
+
+    <div class="endpoint">
+        <strong>📝 Register:</strong> <code>POST /api/auth/register/</code><br>
+        <em>Create account → Get tokens immediately</em>
+    </div>
+
+    <h2>🔄 Authentication Flow</h2>
+    <div class="auth-flow">
+        <strong>Step 1:</strong> Login with credentials → Get <code>access</code> + <code>refresh</code> tokens<br>
+        <strong>Step 2:</strong> Use <code>Authorization: Bearer &lt;access_token&gt;</code> for all API calls<br>
+        <strong>Step 3:</strong> When access token expires → Use refresh endpoint<br>
+        <strong>Step 4:</strong> Repeat Step 3 (no need to login again!) 🎉
+    </div>
+
+    <h2>📝 Standard Response Format</h2>
+    <div class="response-format">{
+        "success": true/false,
+        "message": "Human-readable message",
+        "timestamp": "2025-06-30T10:30:00Z",
+        "status_code": 200,
+        "data": {...}, // Only on success
+        "error_code": "...", // Only on errors
+        "errors": {...} // Only on validation errors
+        }</div>
+
+    <h2>⚠️ Error Codes (Use these instead of HTTP status codes)</h2>
+    <div class="error-codes">
+        <span class="error-code">VALIDATION_ERROR</span>
+        <span class="error-code">NOT_AUTHENTICATED</span>
+        <span class="error-code">AUTHENTICATION_FAILED</span>
+        <span class="error-code">PERMISSION_DENIED</span>
+        <span class="error-code">RESOURCE_NOT_FOUND</span>
+        <span class="error-code">RATE_LIMITED</span>
+        <span class="error-code">INTEGRITY_ERROR</span>
+    </div>
+
+    <h2>💡 Pro Tips</h2>
+    <ul>
+        <li>✅ Always check <code>response.success</code> first</li>
+        <li>✅ Use <code>error_code</code> for programmatic error handling</li>
+        <li>✅ Display <code>message</code> to users (it's human-friendly)</li>
+        <li>✅ Store refresh token securely for auto-refresh</li>
+        <li>✅ Use interactive docs below for testing</li>
+    </ul>
+
+    <h2>📚 Full Documentation & Testing</h2>
+    <div class="links">
+        <p><strong>🔍 Swagger UI:</strong> <a href="/api/docs/swagger/" target="_blank">Interactive API Testing</a><br>
+            <em>Test all endpoints directly in your browser</em>
+        </p>
+
+        <p><strong>📖 ReDoc:</strong> <a href="/api/docs/redoc/" target="_blank">Clean Documentation</a><br>
+            <em>Better for reading and understanding API structure</em>
+        </p>
+
+        <p><strong>📦 Schema Files:</strong><br>
+            <a href="/api/schema/?format=json" target="_blank">JSON Schema</a> |
+            <a href="/api/schema/?format=yaml" target="_blank">YAML Schema</a><br>
+            <em>For Postman import or code generation tools</em>
+        </p>
+    </div>
+
+    <footer style="margin-top: 50px; padding-top: 20px; border-top: 1px solid #eee; text-align: center; color: #666;">
+        <p>Questions? Check the interactive docs first! 👆</p>
+        <p><em>Updated: June 2025</em></p>
+    </footer>
+</body>
+
+</html>
