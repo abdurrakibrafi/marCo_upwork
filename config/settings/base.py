@@ -22,7 +22,7 @@ BASE_URL = env("BASE_URL")
 ROOT_URLCONF = "config.urls"
 ASGI_APPLICATION = "config.asgi.application"
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
-# AUTH_USER_MODEL = "accounts.User"
+AUTH_USER_MODEL = "identity.User"
 
 INSTALLED_APPS = [
     "django.contrib.admin",
@@ -50,7 +50,7 @@ INSTALLED_APPS = [
     "django_celery_beat",
 
     # Local apps
-    "apps.accounts",
+    "apps.identity",
     "apps.content",
     "apps.core",
     "apps.entity",
@@ -145,7 +145,7 @@ REST_FRAMEWORK = {
         'user': '1000/day',
     },
     # Add these for your news API
-    # 'DEFAULT_PAGINATION_CLASS': 'apps.newsfeed.pagination.CustomPageNumberPagination',
+    'DEFAULT_PAGINATION_CLASS': 'rest_framework.pagination.PageNumberPagination',
     'PAGE_SIZE': 20,
     'DEFAULT_FILTER_BACKENDS': [
         'django_filters.rest_framework.DjangoFilterBackend',
