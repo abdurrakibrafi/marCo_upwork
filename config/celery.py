@@ -15,8 +15,15 @@ app.autodiscover_tasks()
 def debug_task(self):
     print(f'Request: {self.request!r}')
 
-# Optional: Clean up old sent notifications
-# 'cleanup-old-notifications': {
-#     'task': 'apps.notification.tasks.cleanup_old_notifications',
-#     'schedule': crontab(hour=2, minute=0),  # Run daily at 2 AM
-# },
+
+# Configure beat schedule
+app.conf.beat_schedule = {
+    # Example task - runs every 5 minutes
+    'test-task-every-5-min': {
+        'task': 'config.celery.debug_task',
+        'schedule': 100.0,
+    },
+}
+
+# Use database scheduler (since you have django_celery_beat installed)
+app.conf.beat_scheduler = 'django_celery_beat.schedulers:DatabaseScheduler'
