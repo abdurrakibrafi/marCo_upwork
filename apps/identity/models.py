@@ -140,7 +140,7 @@ class UserProfile(models.Model):
 
     bio = models.TextField(blank=True, null=True)
     profile_picture = models.ImageField(
-            upload_to="accounts/profile_pictures/", blank=True, null=True
+            upload_to="identity/profile_pictures/", blank=True, null=True
     )
 
     profile_completed = models.BooleanField(default=False)

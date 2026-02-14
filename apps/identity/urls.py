@@ -58,6 +58,7 @@ urlpatterns = [
     path("account/delete/", AccountSoftDeleteView.as_view(), name="account-delete"),
     path("account/parmanent/delete/", ParmanentAccountDeleteView.as_view(), name="parmanent-delete"),
     path("account/restore/", AccountRestoreView.as_view(), name="account-restore"),
+    
     path("profile/update/", ProfileUpdateView.as_view(), name="profile-update"),
     path("profile/", UserProfileGenericView.as_view(), name="user-profile"),
     path(

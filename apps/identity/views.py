@@ -447,7 +447,7 @@ class SocialAuthView(BaseResponseMixin, generics.GenericAPIView):
                 "user": {
                     "id": user.id,
                     "email": user.email,
-                    "name": user.profile.name if hasattr(user, "profile") else "",
+                    "full_name": user.profile.full_name if hasattr(user, "profile") else "",
                     "social_auth_provider": user.social_auth_provider,  # Include provider info
                 },
             },
