@@ -21,9 +21,43 @@ from django.urls import include, path
 
 from config import settings
 
+
+from drf_spectacular.views import (
+    SpectacularAPIView,
+    SpectacularRedocView,
+    SpectacularSwaggerView,
+)
+from django.http import JsonResponse
+
+def api_root(request):
+    return JsonResponse({
+        'message': 'MySportsNest API is running',
+        'docs': '/api/docs/swagger/',
+        'admin': '/admin/',
+        'status': 'healthy'
+    })
+
+
 urlpatterns = [
+    path("", api_root, name="api-root"),
     path("admin/", admin.site.urls),
     path("api/auth/", include("apps.identity.urls")),
+]
+
+
+urlpatterns += [
+    # OpenAPI schema (raw)
+    path("api/schema/", SpectacularAPIView.as_view(), name="schema"),
+    # Swagger UI
+    path(
+        "api/docs/swagger/",
+        SpectacularSwaggerView.as_view(url_name="schema"),
+        name="swagger-ui",
+    ),
+    # ReDoc UI
+    path(
+        "api/docs/redoc/", SpectacularRedocView.as_view(url_name="schema"), name="redoc"
+    ),
 ]
 
 
