@@ -33,8 +33,8 @@ INSTALLED_APPS = [
     "django.contrib.staticfiles",
 
     # Third party apps
-    "drf_spectacular",
     "rest_framework",
+    "drf_spectacular",
     "rest_framework.authtoken",
     "rest_framework_simplejwt",
     "rest_framework_simplejwt.token_blacklist",
@@ -134,6 +134,7 @@ APPLE_CALLBACK_URL = env("APPLE_CALLBACK_URL", default="")
 # REST Framework settings
 
 REST_FRAMEWORK = {
+    'DEFAULT_SCHEMA_CLASS': 'drf_spectacular.openapi.AutoSchema',
     "DEFAULT_AUTHENTICATION_CLASSES": (
         "rest_framework_simplejwt.authentication.JWTAuthentication",
     ),
@@ -159,6 +160,14 @@ REST_FRAMEWORK = {
     'DEFAULT_PERMISSION_CLASSES': [
         'rest_framework.permissions.AllowAny',  # For news API
     ],
+}
+
+SPECTACULAR_SETTINGS = {
+    'TITLE': 'MySportsNest API',
+    'DESCRIPTION': 'Built with 🐍 by Rafi',
+    'VERSION': '1.0.0',
+    'SERVE_INCLUDE_SCHEMA': False,
+    'COMPONENT_SPLIT_REQUEST': True,
 }
 
 REST_AUTH = {

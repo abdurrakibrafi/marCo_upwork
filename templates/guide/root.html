@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MySportsNest API - Welcome</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        
+        .header {
+            background: white;
+            border-radius: 15px;
+            padding: 30px;
+            margin-bottom: 20px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+        }
+        
+        .header h1 {
+            color: #667eea;
+            font-size: 2.5em;
+            margin-bottom: 10px;
+        }
+        
+        .header p {
+            color: #666;
+            font-size: 1.1em;
+        }
+        
+        .controls {
+            background: white;
+            border-radius: 10px;
+            padding: 15px 20px;
+            margin-bottom: 20px;
+            display: flex;
+            gap: 15px;
+            align-items: center;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+        }
+        
+        .btn {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 600;
+            transition: all 0.3s;
+            text-decoration: none;
+            display: inline-block;
+        }
+        
+        .btn-primary {
+            background: #667eea;
+            color: white;
+        }
+        
+        .btn-primary:hover {
+            background: #5568d3;
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+        }
+        
+        .btn-secondary {
+            background: #48bb78;
+            color: white;
+        }
+        
+        .btn-secondary:hover {
+            background: #38a169;
+            transform: translateY(-2px);
+        }
+        
+        .json-container {
+            background: #1e1e1e;
+            border-radius: 10px;
+            padding: 30px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+            position: relative;
+        }
+        
+        .copy-btn {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            background: #48bb78;
+            color: white;
+            border: none;
+            padding: 8px 15px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 13px;
+            transition: all 0.3s;
+        }
+        
+        .copy-btn:hover {
+            background: #38a169;
+        }
+        
+        .copy-btn.copied {
+            background: #4299e1;
+        }
+        
+        pre {
+            color: #d4d4d4;
+            font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+            font-size: 14px;
+            line-height: 1.6;
+            overflow-x: auto;
+            margin: 0;
+        }
+        
+        .json-key {
+            color: #9cdcfe;
+        }
+        
+        .json-string {
+            color: #ce9178;
+        }
+        
+        .json-number {
+            color: #b5cea8;
+        }
+        
+        .json-boolean {
+            color: #569cd6;
+        }
+        
+        .json-null {
+            color: #569cd6;
+        }
+        
+        @media (max-width: 768px) {
+            .header h1 {
+                font-size: 1.8em;
+            }
+            
+            .controls {
+                flex-direction: column;
+                align-items: stretch;
+            }
+            
+            .btn {
+                width: 100%;
+                text-align: center;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🚀 MySportsNest API</h1>
+            <p>Built with 🐍 by Rafi | Status: ✅ Healthy & Running</p>
+        </div>
+        
+        <div class="controls">
+            <a href="{{ base_url }}/api/docs/swagger/" class="btn btn-primary" target="_blank">
+                📚 Swagger Docs
+            </a>
+            <a href="{{ base_url }}/api/docs/redoc/" class="btn btn-primary" target="_blank">
+                📖 ReDoc
+            </a>
+            <a href="{{ base_url }}/api/schema/download/?format=json" class="btn btn-secondary">
+                📄 JSON Format
+            </a>
+        </div>
+        
+        <div class="json-container">
+            <button class="copy-btn" onclick="copyJSON()">📋 Copy JSON</button>
+            <pre id="jsonContent">{{ json_string }}</pre>
+        </div>
+    </div>
+    
+    <script>
+        function copyJSON() {
+            const jsonText = document.getElementById('jsonContent').textContent;
+            navigator.clipboard.writeText(jsonText).then(() => {
+                const btn = document.querySelector('.copy-btn');
+                btn.textContent = '✅ Copied!';
+                btn.classList.add('copied');
+                
+                setTimeout(() => {
+                    btn.textContent = '📋 Copy JSON';
+                    btn.classList.remove('copied');
+                }, 2000);
+            });
+        }
+        
+        // Syntax highlighting
+        function highlightJSON() {
+            const pre = document.getElementById('jsonContent');
+            let json = pre.textContent;
+            
+            json = json.replace(/"([^"]+)":/g, '<span class="json-key">"$1"</span>:');
+            json = json.replace(/: "([^"]+)"/g, ': <span class="json-string">"$1"</span>');
+            json = json.replace(/: (\d+)/g, ': <span class="json-number">$1</span>');
+            json = json.replace(/: (true|false)/g, ': <span class="json-boolean">$1</span>');
+            json = json.replace(/: null/g, ': <span class="json-null">null</span>');
+            
+            pre.innerHTML = json;
+        }
+        
+        highlightJSON();
+    </script>
+</body>
+</html>

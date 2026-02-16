@@ -2,7 +2,6 @@ from rest_framework import generics, status, permissions
 from rest_framework.response import Response
 from rest_framework.decorators import action
 from rest_framework_simplejwt.tokens import RefreshToken
-from drf_spectacular.utils import extend_schema, OpenApiResponse
 from rest_framework.views import APIView
 from django.contrib.auth import authenticate, get_user_model
 from django.contrib.auth.hashers import check_password
@@ -353,19 +352,6 @@ class AppleLogin(SocialLoginView):
 class ParmanentAccountDeleteView(BaseResponseMixin, APIView):
     permission_classes = (permissions.IsAuthenticated,)
     throttle_classes = [UserRateThrottle]
-
-    @extend_schema(
-        request=None,  # or your serializer if you have one
-        responses={
-            200: OpenApiResponse(
-                description="Account permanently deleted",
-            ),
-            401: OpenApiResponse(description="Unauthorized"),
-        },
-        description="Permanently delete the authenticated user's account",
-        summary="Permanently Delete Account",
-        tags=["Account Management"],
-    )
 
     def post(self, request):
         serializer = ParmanentAccountDeleteSerializer(data=request.data)
