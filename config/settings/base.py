@@ -60,6 +60,7 @@ INSTALLED_APPS = [
     "apps.nest",
     "apps.preference",
     "apps.score",
+    "apps.sports_apis",
    
 ]
 
