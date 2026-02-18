@@ -202,6 +202,16 @@ MEDIA_URL = "/media/"
 STATIC_ROOT = os.path.join(BASE_DIR, "staticfiles")
 MEDIA_ROOT = os.path.join(BASE_DIR, "media")
 
+CACHES = {
+    'default': {
+        'BACKEND': 'django_redis.cache.RedisCache',
+        'LOCATION': 'redis://127.0.0.1:6379/1',
+        'OPTIONS': {
+            'CLIENT_CLASS': 'django_redis.client.DefaultClient',
+        }
+    }
+}
+
 # Celery Configuration
 CHANNEL_LAYERS = {
     "default": {
@@ -228,3 +238,21 @@ CELERY_WORKER_MAX_TASKS_PER_CHILD = 1000
 
 DOCS_USERNAME = env("DOCS_USERNAME")
 DOCS_PASSWORD = env("DOCS_PASSWORD")
+
+
+BALLDONTLIE_API_KEY = env('BALLDONTLIE_API_KEY', default='')
+API_SPORTS_KEY = env('API_SPORTS_KEY', default='')
+API_CRICKET_KEY = env('API_CRICKET_KEY', default='')
+GNEWS_API_KEY = env('GNEWS_API_KEY', default='')
+YOUTUBE_API_KEY = env('YOUTUBE_API_KEY', default='')
+
+
+CACHE_TTLS = {
+    'live_scores': env('LIVE_SCORES_TTL', default=60),  # 1 minute
+    'upcoming_fixtures': env('UPCOMING_FIXTURES_TTL', default=300),  # 5 minutes
+    'standings': env('STANDINGS_TTL', default=3600),
+    'team_roster': env('TEAM_ROSTER_TTL', default=604800),
+    'player_profile': env('PLAYER_PROFILE_TTL', default=604800),
+    'team_logo': env('TEAM_LOGO_TTL', default=2592000),
+    'news_articles': env('NEWS_ARTICLES_TTL', default=300),
+}
