@@ -7,6 +7,7 @@ DEBUG = True
 ALLOWED_HOSTS = env.list("ALLOWED_HOSTS_DEV")
 
 # CORS settings for development
+
 CORS_ALLOW_ALL_ORIGINS = True
 
 # Database for development
