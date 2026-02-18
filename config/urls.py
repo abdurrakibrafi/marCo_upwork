@@ -36,13 +36,16 @@ urlpatterns = [
     path("admin/", admin.site.urls),
     path("api/auth/", include("apps.identity.urls")),
 
-    # Protected docs
-    path('api/', basic_auth_required(api_root), name='api-root-prefix'),
+    path('api/scores/', include('apps.score.urls')),
+
+]
+
+# API Documentation - protected with basic auth
+urlpatterns += [
     path('api/schema/', ProtectedSpectacularAPIView.as_view(), name='schema'),
     path('api/docs/swagger/', ProtectedSpectacularSwaggerView.as_view(url_name='schema'), name='swagger-ui'),
     path('api/docs/redoc/', ProtectedSpectacularRedocView.as_view(url_name='schema'), name='redoc'),
 ]
-
 
 if settings.DEBUG:
     urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
