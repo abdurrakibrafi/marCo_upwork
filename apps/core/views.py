@@ -4,7 +4,10 @@ from datetime import datetime
 from django.http import HttpResponse
 import json
 
+from apps.core.utils.decorators import basic_auth_required
+from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView, SpectacularRedocView
 
+@basic_auth_required
 def api_root(request):
     """Enhanced API root endpoint with comprehensive information"""
     # Build absolute URLs
@@ -173,3 +176,5 @@ document.getElementById('json').innerHTML = syntaxHighlight(document.getElementB
     response['X-Frontend-Hero'] = 'Syful 🎨'
     
     return response
+
+
