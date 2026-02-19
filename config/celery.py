@@ -68,6 +68,13 @@ app.conf.beat_schedule = {
         'task': 'feed.tasks.mark_trending_items',
         'schedule': crontab(minute=30),
     },
+
+
+    # ===== STATS UPDATES (HOURLY) =====
+    'update-all-team-stats-hourly': {
+        'task': 'entities.tasks.update_all_team_stats',
+        'schedule': crontab(minute=45),  # Every hour at :45
+    },
 }
 
 @app.task(bind=True)

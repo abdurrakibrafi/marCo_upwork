@@ -5,7 +5,7 @@ from django.utils.decorators import method_decorator
 
 from apps.core.utils.decorators import basic_auth_required
 from apps.core.views import api_root
-from config import settings
+from config import settings, views
 from drf_spectacular.views import (
     SpectacularAPIView,
     SpectacularRedocView,
@@ -41,6 +41,11 @@ urlpatterns = [
     path('api/nest/', include('apps.nest.urls')),
     path('api/calendar/', include('apps.event.urls')),
     path('api/feed/', include('apps.feed.urls')),
+
+        
+    # Health & Status
+    path('api/health/', views.health_check, name='health_check'),
+    path('api/status/', views.api_status, name='api_status'),
 ]
 
 # API Documentation - protected with basic auth
