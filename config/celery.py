@@ -50,6 +50,24 @@ app.conf.beat_schedule = {
         'task': 'calendar.tasks.update_cricket_fixtures',
         'schedule': crontab(minute=15),
     },
+
+    # ===== FEED UPDATES (EVERY 5 MINUTES) =====
+    'update-trending-feeds-every-5min': {
+        'task': 'feed.tasks.update_trending_entities_feeds',
+        'schedule': 300.0,  # 5 minutes
+    },
+
+    # ===== CLEANUP (DAILY) =====
+    'cleanup-old-feeds-daily-4am': {
+        'task': 'feed.tasks.cleanup_old_feed_items',
+        'schedule': crontab(hour=4, minute=0),
+    },
+
+    # ===== TRENDING (HOURLY) =====
+    'mark-trending-items-hourly': {
+        'task': 'feed.tasks.mark_trending_items',
+        'schedule': crontab(minute=30),
+    },
 }
 
 @app.task(bind=True)

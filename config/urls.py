@@ -40,7 +40,7 @@ urlpatterns = [
     path('api/entities/', include('apps.entity.urls')),
     path('api/nest/', include('apps.nest.urls')),
     path('api/calendar/', include('apps.event.urls')),
-
+    path('api/feed/', include('apps.feed.urls')),
 ]
 
 # API Documentation - protected with basic auth
