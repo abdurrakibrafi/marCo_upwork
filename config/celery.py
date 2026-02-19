@@ -11,22 +11,23 @@ app.autodiscover_tasks()
 # Celery Beat Schedule
 app.conf.beat_schedule = {
     # ===== LIVE SCORES (EVERY 30 SECONDS) =====
-    # 'update-live-scores-nba': {
-    #     'task': 'sports_apis.tasks.update_nba_live_scores',
-    #     'schedule': 30.0,
-    # },
-    # 'update-live-scores-nfl': {
-    #     'task': 'sports_apis.tasks.update_nfl_live_scores',
-    #     'schedule': 30.0,
-    # },
-    # 'update-live-scores-soccer': {
-    #     'task': 'sports_apis.tasks.update_soccer_live_scores',
-    #     'schedule': 30.0,
-    # },
-    # 'update-live-scores-cricket': {
-    #     'task': 'sports_apis.tasks.update_cricket_live_scores',
-    #     'schedule': 30.0,
-    # },
+    'update-live-scores-nba': {
+        'task': 'sports_apis.tasks.update_nba_live_scores',
+        'schedule': 30.0,
+    },
+    'update-live-scores-nfl': {
+        'task': 'sports_apis.tasks.update_nfl_live_scores',
+        'schedule': 30.0,
+    },
+    'update-live-scores-soccer': {
+        'task': 'sports_apis.tasks.update_soccer_live_scores',
+        'schedule': 30.0,
+    },
+    'update-live-scores-cricket': {
+        'task': 'sports_apis.tasks.update_cricket_live_scores',
+        'schedule': 30.0,
+    },
+    
     # ===== FIXTURES (DAILY UPDATES) =====
     'update-all-fixtures-daily-1am': {
         'task': 'calendar.tasks.update_all_fixtures',
