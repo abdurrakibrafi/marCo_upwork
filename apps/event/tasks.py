@@ -5,9 +5,9 @@ from django.utils import timezone
 from datetime import datetime, timedelta
 from apps.event.models import Event
 from apps.entity.models import Entity
-from sports_apis.services.balldontlie import balldontlie_service
-from sports_apis.services.api_sports import api_sports_service
-from sports_apis.services.api_cricket import api_cricket_service
+from apps.sports_apis.services.balldontlie import balldontlie_service
+from apps.sports_apis.services.api_sports import api_sports_service
+from apps.sports_apis.services.api_cricket import api_cricket_service
 import logging
 
 logger = logging.getLogger(__name__)

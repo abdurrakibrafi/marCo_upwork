@@ -8,7 +8,7 @@ from django.db.models import Q
 from datetime import datetime, timedelta
 from apps.event.models import Event
 from apps.event.serializers import EventSerializer, EventDetailSerializer
-from nest.models import UserNest
+from apps.nest.models import UserNest
 
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
