@@ -39,6 +39,7 @@ urlpatterns = [
     path('api/scores/', include('apps.score.urls')),
     path('api/entities/', include('apps.entity.urls')),
     path('api/nest/', include('apps.nest.urls')),
+    path('api/calendar/', include('apps.event.urls')),
 
 ]
 

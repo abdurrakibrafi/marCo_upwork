@@ -27,6 +27,29 @@ app.conf.beat_schedule = {
     #     'task': 'sports_apis.tasks.update_cricket_live_scores',
     #     'schedule': 30.0,
     # },
+    # ===== FIXTURES (DAILY UPDATES) =====
+    'update-all-fixtures-daily-1am': {
+        'task': 'calendar.tasks.update_all_fixtures',
+        'schedule': crontab(hour=1, minute=0),
+    },
+
+    # ===== TODAY'S FIXTURES (EVERY HOUR) =====
+    'update-nba-fixtures-hourly': {
+        'task': 'calendar.tasks.update_nba_fixtures',
+        'schedule': crontab(minute=0),
+    },
+    'update-nfl-fixtures-hourly': {
+        'task': 'calendar.tasks.update_nfl_fixtures',
+        'schedule': crontab(minute=5),
+    },
+    'update-soccer-fixtures-hourly': {
+        'task': 'calendar.tasks.update_soccer_fixtures',
+        'schedule': crontab(minute=10),
+    },
+    'update-cricket-fixtures-hourly': {
+        'task': 'calendar.tasks.update_cricket_fixtures',
+        'schedule': crontab(minute=15),
+    },
 }
 
 @app.task(bind=True)
