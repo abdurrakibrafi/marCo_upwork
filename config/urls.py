@@ -37,6 +37,8 @@ urlpatterns = [
     path("api/auth/", include("apps.identity.urls")),
 
     path('api/scores/', include('apps.score.urls')),
+    path('api/entities/', include('apps.entity.urls')),
+    path('api/nest/', include('apps.nest.urls')),
 
 ]
 
