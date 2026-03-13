@@ -12,72 +12,47 @@ app.autodiscover_tasks(['apps.sports_apis'])
 
 # Celery Beat Schedule
 app.conf.beat_schedule = {
-    # ===== LIVE SCORES (EVERY 30 SECONDS) =====
-    # 'update-live-scores-nba': {
-    #     'task': 'apps.sports_apis.tasks.update_nba_live_scores',
-    #     'schedule': 30.0,
-    # },
-    # 'update-live-scores-nfl': {
-    #     'task': 'apps.sports_apis.tasks.update_nfl_live_scores',
-    #     'schedule': 30.0,
-    # },
-    # 'update-live-scores-soccer': {
-    #     'task': 'apps.sports_apis.tasks.update_soccer_live_scores',
-    #     'schedule': 30.0,
-    # },
-    # 'update-live-scores-cricket': {
-    #     'task': 'apps.sports_apis.tasks.update_cricket_live_scores',
-    #     'schedule': 30.0,
-    # },
-    
-    # # ===== FIXTURES (DAILY UPDATES) =====
-    # 'update-all-fixtures-daily-1am': {
-    #     'task': 'apps.event.tasks.update_all_fixtures',
-    #     'schedule': crontab(hour=1, minute=0),
-    # },
+    # ===== LIVE SCORES (EVERY 2 MINUTES - REDUCED) =====
+    'update-live-scores-nba': {
+        'task': 'apps.sports_apis.tasks.update_nba_live_scores',
+        'schedule': 1200.0,  # 2 minutes instead of 30 seconds
+    },
+    'update-live-scores-nfl': {
+        'task': 'apps.sports_apis.tasks.update_nfl_live_scores',
+        'schedule': 1200.0,  # 2 minutes instead of 30 seconds
+    },
+    'update-live-scores-soccer': {
+        'task': 'apps.sports_apis.tasks.update_soccer_live_scores',
+        'schedule': 1200.0,  # 2 minutes instead of 30 seconds
+    },
+    'update-live-scores-cricket': {
+        'task': 'apps.sports_apis.tasks.update_cricket_live_scores',
+        'schedule': 1200.0,  # 2 minutes instead of 30 seconds
+    },
 
-    # # ===== TODAY'S FIXTURES (EVERY HOUR) =====
-    # 'update-nba-fixtures-hourly': {
-    #     'task': 'apps.event.tasks.update_nba_fixtures',
-    #     'schedule': crontab(minute=0),
-    # },
-    # 'update-nfl-fixtures-hourly': {
-    #     'task': 'apps.event.tasks.update_nfl_fixtures',
-    #     'schedule': crontab(minute=5),
-    # },
-    # 'update-soccer-fixtures-hourly': {
-    #     'task': 'apps.event.tasks.update_soccer_fixtures',
-    #     'schedule': crontab(minute=10),
-    # },
-    # 'update-cricket-fixtures-hourly': {
-    #     'task': 'apps.event.tasks.update_cricket_fixtures',
-    #     'schedule': crontab(minute=15),
-    # },
+    # ===== RSS POLLING (EVERY 5 MINUTES) =====
+    'poll-all-rss-sources': {
+        'task': 'apps.feed.tasks.poll_all_active_sources',
+        'schedule': 3000.0,  # 5 minutes
+    },
 
-    # # ===== FEED UPDATES (EVERY 5 MINUTES) =====
-    # 'update-trending-feeds-every-5min': {
-    #     'task': 'apps.feed.tasks.update_trending_entities_feeds',
-    #     'schedule': 300.0,  # 5 minutes
-    # },
+    # ===== CLEANUP (DAILY) =====
+    'cleanup-old-feeds-daily-4am': {
+        'task': 'apps.feed.tasks.cleanup_old_feed_items',
+        'schedule': crontab(hour=4, minute=0),
+    },
 
-    # # ===== CLEANUP (DAILY) =====
-    # 'cleanup-old-feeds-daily-4am': {
-    #     'task': 'apps.feed.tasks.cleanup_old_feed_items',
-    #     'schedule': crontab(hour=4, minute=0),
-    # },
+    # ===== TRENDING (HOURLY) =====
+    'mark-trending-items-hourly': {
+        'task': 'apps.feed.tasks.mark_trending_items',
+        'schedule': crontab(minute=30),
+    },
 
-    # # ===== TRENDING (HOURLY) =====
-    # 'mark-trending-items-hourly': {
-    #     'task': 'apps.feed.tasks.mark_trending_items',
-    #     'schedule': crontab(minute=30),
-    # },
-
-
-    # # ===== STATS UPDATES (HOURLY) =====
-    # 'update-all-team-stats-hourly': {
-    #     'task': 'apps.entity.tasks.update_all_team_stats',
-    #     'schedule': crontab(minute=45),  # Every hour at :45
-    # },
+    # ===== STATS UPDATES (HOURLY) =====
+    'update-all-team-stats-hourly': {
+        'task': 'apps.entity.tasks.update_all_team_stats',
+        'schedule': crontab(minute=45),  # Every hour at :45
+    },
 }
 
 @app.task(bind=True)

@@ -41,8 +41,8 @@ urlpatterns = [
     path('api/nest/', include('apps.nest.urls')),
     path('api/calendar/', include('apps.event.urls')),
     path('api/feed/', include('apps.feed.urls')),
+    path('api/core/', include('apps.core.urls')),
 
-        
     # Health & Status
     path('api/health/', views.health_check, name='health_check'),
     path('api/status/', views.api_status, name='api_status'),
