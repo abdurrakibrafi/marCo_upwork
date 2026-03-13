@@ -76,7 +76,16 @@ def add_to_nest(request):
     # Update entity follower count
     entity.follower_count += 1
     entity.save(update_fields=['follower_count'])
-    
+
+    # Trigger feed discovery/polling for this entity
+    from apps.feed.tasks import update_all_entity_feeds
+    update_all_entity_feeds.delay(entity.id)
+
+    # Mark onboarding as complete (if applicable)
+    if hasattr(request.user, 'profile'):
+        request.user.profile.onboarding_completed = True
+        request.user.profile.save(update_fields=['onboarding_completed'])
+
     return Response({
         'success': True,
         'message': f'{entity.name} added to your nest',

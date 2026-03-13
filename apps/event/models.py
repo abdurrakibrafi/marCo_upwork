@@ -81,7 +81,7 @@ class Event(models.Model):
     metadata = models.JSONField(default=dict)
     
     # Timestamps
-    created_at = models.DateTimeField(auto_now_add=True)
+    created_at = models.DateTimeField(auto_now_add=True, null=True)
     updated_at = models.DateTimeField(auto_now=True)
     
     class Meta:
@@ -137,7 +137,7 @@ class EventTimeline(models.Model):
     # Additional data
     metadata = models.JSONField(default=dict)
     
-    created_at = models.DateTimeField(auto_now_add=True)
+    created_at = models.DateTimeField(auto_now_add=True, null=True)
     
     class Meta:
         ordering = ['minute', 'extra_minute']
@@ -248,7 +248,7 @@ class EventHighlight(models.Model):
     
     views = models.IntegerField(default=0)
     
-    created_at = models.DateTimeField(auto_now_add=True)
+    created_at = models.DateTimeField(auto_now_add=True, null=True)
     
     class Meta:
         ordering = ['-created_at']

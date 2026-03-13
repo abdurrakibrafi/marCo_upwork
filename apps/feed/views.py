@@ -5,7 +5,7 @@ from rest_framework import status
 from rest_framework.pagination import PageNumberPagination
 from django.shortcuts import get_object_or_404
 from django.db.models import Q
-from apps.feed.models import FeedItem, Source, UserSource, HiddenSource, FeedItemView
+from apps.feed.models import FeedItem, Source, UserSource, HiddenSource
 from apps.feed.serializers import (
     FeedItemSerializer, FeedItemCompactSerializer,
     SourceSerializer, UserSourceSerializer, AddSourceSerializer
@@ -30,7 +30,7 @@ def get_nest_feed(request):
     # Get user's nest entities
     nest_entities = UserNest.objects.filter(
         user=request.user
-    ).values_list('entity_id', flat=True)
+    ).values_list('entity', flat=True)
     
     if not nest_entities:
         return Response({
@@ -45,10 +45,10 @@ def get_nest_feed(request):
     
     # Base queryset
     feed = FeedItem.objects.filter(
-        entity_id__in=nest_entities
+        entities__in=nest_entities
     ).exclude(
         source_id__in=hidden_sources
-    ).select_related('entity', 'source')
+    ).select_related('source').prefetch_related('entities')
     
     # Apply filters
     filter_type = request.GET.get('filter')
@@ -88,10 +88,10 @@ def get_entity_feed(request, entity_id):
         ).values_list('source_id', flat=True)
     
     feed = FeedItem.objects.filter(
-        entity=entity
+        entities=entity
     ).exclude(
         source_id__in=hidden_sources
-    ).select_related('entity', 'source').order_by('-published_at')
+    ).select_related('source').prefetch_related('entities').order_by('-published_at')
     
     # Paginate
     paginator = FeedPagination()
@@ -110,16 +110,14 @@ def get_feed_item(request, item_id):
     GET /api/feed/item/{item_id}
     """
     feed_item = get_object_or_404(
-        FeedItem.objects.select_related('entity', 'source'),
+        FeedItem.objects.select_related('source').prefetch_related('entities'),
         id=item_id
     )
     
     # Track view
     if request.user.is_authenticated:
-        FeedItemView.objects.get_or_create(
-            user=request.user,
-            feed_item=feed_item
-        )
+        # View tracking removed - FeedItemView model not implemented
+        pass
     
     # Increment view count
     feed_item.views += 1
@@ -244,7 +242,7 @@ def get_breaking_news(request):
     """
     feed = FeedItem.objects.filter(
         is_breaking=True
-    ).select_related('entity', 'source').order_by('-published_at')[:50]
+    ).select_related('source').prefetch_related('entities').order_by('-published_at')[:50]
     
     serializer = FeedItemCompactSerializer(feed, many=True)
     
@@ -263,7 +261,7 @@ def get_trending_feed(request):
     """
     feed = FeedItem.objects.filter(
         is_trending=True
-    ).select_related('entity', 'source').order_by('-views', '-published_at')[:50]
+    ).select_related('source').prefetch_related('entities').order_by('-views', '-published_at')[:50]
     
     serializer = FeedItemCompactSerializer(feed, many=True)
     

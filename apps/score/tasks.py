@@ -119,7 +119,7 @@ def update_soccer_live_scores():
 
 @shared_task
 def update_cricket_live_scores():
-    """Update Cricket live scores - runs every 30 seconds"""
+    """Update Cricket live scores - runs every 2 minutes"""
     logger.info("Updating Cricket live scores...")
     
     result = api_cricket_service.get_live_scores()

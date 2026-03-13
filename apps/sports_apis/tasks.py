@@ -12,7 +12,7 @@ logger = logging.getLogger(__name__)
 
 @shared_task
 def update_nba_live_scores():
-    """Update NBA live scores - runs every 30 seconds"""
+    """Update NBA live scores - runs every 2 minutes"""
     logger.info("Updating NBA live scores...")
     
     result = balldontlie_service.get_live_games('nba')
@@ -49,7 +49,7 @@ def update_nba_live_scores():
 
 @shared_task
 def update_nfl_live_scores():
-    """Update NFL live scores - runs every 30 seconds"""
+    """Update NFL live scores - runs every 2 minutes"""
     logger.info("Updating NFL live scores...")
     
     result = balldontlie_service.get_live_games('nfl')
@@ -58,7 +58,10 @@ def update_nfl_live_scores():
         data = result['data']
         cache.set('live_scores_nfl', data, timeout=settings.CACHE_TTLS['live_scores'])
         
-        games = data.get('data', [])
+        # For NFL, filter games that are currently live
+        all_games = data.get('data', [])
+        games = [game for game in all_games if game.get('status') == 'Live']
+        
         for game in games:
             LiveScore.objects.update_or_create(
                 sport='nfl',
@@ -83,7 +86,7 @@ def update_nfl_live_scores():
 
 @shared_task
 def update_soccer_live_scores():
-    """Update Soccer live scores - runs every 30 seconds"""
+    """Update Soccer live scores - runs every 2 minutes"""
     logger.info("Updating Soccer live scores...")
     
     result = api_sports_service.get_live_fixtures()
@@ -119,7 +122,7 @@ def update_soccer_live_scores():
 
 @shared_task
 def update_cricket_live_scores():
-    """Update Cricket live scores - runs every 30 seconds"""
+    """Update Cricket live scores - runs every 2 minutes"""
     logger.info("Updating Cricket live scores...")
     
     result = api_cricket_service.get_live_scores()

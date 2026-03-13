@@ -37,7 +37,7 @@ class LiveScore(models.Model):
     raw_data = models.JSONField(default=dict)  # Store full API response
     
     updated_at = models.DateTimeField(auto_now=True)
-    created_at = models.DateTimeField(auto_now_add=True)
+    created_at = models.DateTimeField(auto_now_add=True, null=True)
     
     class Meta:
         unique_together = ['sport', 'external_id']

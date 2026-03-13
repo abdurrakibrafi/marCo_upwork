@@ -1,21 +1,106 @@
 from celery import shared_task
 from django.utils import timezone
 from datetime import timedelta
-from apps.feed.models import FeedItem
+from django.db.models import Q
+
+from apps.feed.models import FeedItem, Source
 from apps.entity.models import Entity
+from apps.sports_apis.services.brave import brave_service
+from apps.sports_apis.services.rss import rss_discovery_service, rss_polling_service
+
 import logging
+from urllib.parse import urlparse
 
 logger = logging.getLogger(__name__)
 
 
+def _extract_domain(url: str) -> str | None:
+    try:
+        parsed = urlparse(url)
+        if not parsed.scheme:
+            url = f"https://{url}"
+            parsed = urlparse(url)
+        if not parsed.netloc:
+            return None
+        return f"{parsed.scheme}://{parsed.netloc}"
+    except Exception:
+        return None
+
+
+@shared_task(bind=True, max_retries=1)
+def discover_rss_feeds_for_entity(self, entity_id: int):
+    """Discover RSS sources for an entity (runs once per entity)."""
+    try:
+        entity = Entity.objects.get(id=entity_id, is_active=True)
+    except Entity.DoesNotExist:
+        return f"Entity {entity_id} does not exist"
+
+    if getattr(entity, 'rss_discovery_done', False):
+        return f"Discovery already completed for {entity.name}"
+
+    domains = brave_service.discover_sources_for_entity(entity.name, entity.type, entity.sport)
+    for domain in domains:
+        extract_rss_from_domain.delay(entity_id, domain)
+
+    entity.rss_discovery_done = True
+    entity.save(update_fields=['rss_discovery_done'])
+    return f"Discovered {len(domains)} domains for {entity.name}"
+
+
+@shared_task(bind=True, max_retries=1)
+def extract_rss_from_domain(self, entity_id: int, domain: str):
+    """Given a domain, discover valid RSS feeds and store them."""
+    feeds = rss_discovery_service.discover_feeds_for_domain(domain)
+
+    for feed_url in feeds:
+        store_validated_feed.delay(entity_id, feed_url, discovery_source='brave')
+
+    return f"Found {len(feeds)} feeds for {domain}"
+
+
+@shared_task(bind=True, max_retries=1)
+def store_validated_feed(self, entity_id: int, feed_url: str, discovery_source: str = 'brave'):
+    """Validate a feed URL and store it as a Source linked to the entity."""
+    try:
+        entity = Entity.objects.get(id=entity_id, is_active=True)
+    except Entity.DoesNotExist:
+        return f"Entity {entity_id} does not exist"
+
+    # Ensure feed is valid first
+    if not rss_discovery_service._validate_feed(feed_url):
+        return f"Feed {feed_url} is not valid"
+
+    domain = _extract_domain(feed_url)
+    if not domain:
+        domain = feed_url
+
+    source, created = Source.objects.get_or_create(
+        rss_url=feed_url,
+        defaults={
+            'name': domain,
+            'domain': domain,
+            'is_active': True,
+        }
+    )
+
+    # Keep rss_feed_url up to date in case we discovered a better URL later
+    if source.rss_feed_url != feed_url:
+        source.rss_feed_url = feed_url
+        source.save(update_fields=['rss_feed_url'])
+
+    # Link to entity (many-to-many)
+    source.entities.add(entity)
+
+    # Immediately poll once
+    poll_single_source.delay(source.id)
+
+    return f"Stored source {source.id} for {entity.name} ({'created' if created else 'updated'})"
+
+
 @shared_task
 def update_all_entity_feeds(entity_id: int):
-    """
-    Trigger all feed updates for an entity.
-    RSS/Brave pipeline tasks will be chained here once built.
-    """
-    # TODO: chain RSS discovery + polling tasks here
-    return f"Triggered feed updates for entity {entity_id}"
+    """Trigger all feed updates for an entity."""
+    return discover_rss_feeds_for_entity.delay(entity_id)
 
 
 @shared_task
@@ -42,6 +127,98 @@ def update_trending_entities_feeds():
         update_all_entity_feeds.delay(entity.id)
 
     return f"Triggered feed updates for {trending.count()} trending entities"
+
+
+@shared_task
+def poll_all_active_sources():
+    """Enqueue polling for all RSS sources that are due."""
+    now = timezone.now()
+    due_sources = Source.objects.filter(
+        is_active=True
+    ).filter(
+        Q(last_polled_at__isnull=True) |
+        Q(last_polled_at__lte=now - timedelta(minutes=1))
+    )
+
+    # Only poll sources that are due based on their interval
+    to_poll = []
+    for source in due_sources:
+        if not source.last_polled_at:
+            to_poll.append(source.id)
+            continue
+        elapsed = (now - source.last_polled_at).total_seconds()
+        if elapsed >= source.poll_interval_minutes * 60:
+            to_poll.append(source.id)
+
+    for source_id in to_poll:
+        poll_single_source.delay(source_id)
+
+    return f"Queued {len(to_poll)} sources for polling"
+
+
+@shared_task(bind=True, max_retries=2)
+def poll_single_source(self, source_id: int):
+    """Poll a single Source and create FeedItems for new entries."""
+    try:
+        source = Source.objects.get(id=source_id, is_active=True)
+    except Source.DoesNotExist:
+        return f"Source {source_id} not found or inactive"
+
+    result = rss_polling_service.poll_feed(source)
+    if not result.get('success'):
+        source.poll_failures += 1
+        source.save(update_fields=['poll_failures'])
+        logger.warning(f"Polling failed for source {source.id}: {result.get('error')}")
+        raise self.retry(exc=Exception(result.get('error')))
+
+    new_items = 0
+    for entry in result.get('entries', []):
+        url = entry.get('url')
+        if not url:
+            continue
+
+        # Determine which entities this item is relevant for
+        candidate_entities = list(source.entities.all())
+        if not candidate_entities:
+            # Fallback: match against all active entities (expensive; avoid if possible)
+            candidate_entities = list(Entity.objects.filter(is_active=True))
+
+        text = f"{entry.get('title','')} {entry.get('summary','')}".lower()
+
+        candidate_entities_that_matched = []
+        for entity in candidate_entities:
+            if entity.name.lower() in text:
+                candidate_entities_that_matched.append(entity)
+
+        if not candidate_entities_that_matched:
+            continue  # Skip if no entities match
+
+        import hashlib
+
+        url_hash = hashlib.md5(url.encode()).hexdigest()
+
+        obj, created = FeedItem.objects.get_or_create(
+            url_hash=url_hash,
+            defaults={
+                'source': source,
+                'title': entry.get('title', '')[:500],
+                'url': url,
+                'summary': entry.get('summary', ''),
+                'thumbnail_url': entry.get('thumbnail_url', ''),
+                'published_at': entry.get('published_at') or timezone.now(),
+            }
+        )
+        if created:
+            obj.entities.set(candidate_entities_that_matched)
+            new_items += 1
+
+    # Update polling metadata
+    source.last_polled_at = timezone.now()
+    source.poll_failures = 0
+    source.save(update_fields=['last_polled_at', 'poll_failures'])
+
+    logger.info(f"Polled source {source.id}: {new_items} new items")
+    return f"Polled source {source.id}: {new_items} new items"
 
 
 @shared_task

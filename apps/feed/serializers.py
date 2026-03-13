@@ -4,49 +4,51 @@ from apps.entity.serializers import EntitySerializer
 
 
 class SourceSerializer(serializers.ModelSerializer):
-    """Source serializer"""
-    
+    entity_ids = serializers.SerializerMethodField()
+
     class Meta:
         model = Source
         fields = [
-            'id', 'name', 'type', 'url', 'logo_url',
-            'description', 'article_count', 'is_verified'
+            'id', 'name', 'rss_url', 'domain', 'favicon_url',
+            'is_verified', 'is_active', 'entity_ids',
         ]
+
+    def get_entity_ids(self, obj):
+        return list(obj.entities.values_list('id', flat=True))
 
 
 class FeedItemSerializer(serializers.ModelSerializer):
-    """Feed item serializer"""
-    
-    entity = EntitySerializer()
-    source = SourceSerializer()
-    
+    source = SourceSerializer(read_only=True)
+    entity_names = serializers.SerializerMethodField()
+
     class Meta:
         model = FeedItem
         fields = [
-            'id', 'content_type', 'entity', 'source',
-            'title', 'description', 'image_url', 'video_url',
-            'thumbnail_url', 'url', 'author', 'published_at',
-            'views', 'is_breaking', 'is_trending'
+            'id', 'title', 'url', 'summary', 'thumbnail_url',
+            'published_at', 'entity_names', 'is_trending', 'is_breaking',
+            'views', 'source',
         ]
+
+    def get_entity_names(self, obj):
+        return [e.name for e in obj.entities.all()]
+
 
 
 class FeedItemCompactSerializer(serializers.ModelSerializer):
-    """Compact feed item serializer (for lists)"""
-    
-    entity_name = serializers.CharField(source='entity.name')
-    entity_logo = serializers.URLField(source='entity.logo_url')
     source_name = serializers.CharField(source='source.name')
-    source_logo = serializers.URLField(source='source.logo_url')
-    
+    source_logo = serializers.URLField(source='source.favicon_url')
+    entity_names = serializers.SerializerMethodField()
+
     class Meta:
         model = FeedItem
         fields = [
-            'id', 'content_type', 'entity_name', 'entity_logo',
-            'source_name', 'source_logo', 'title', 'description',
-            'image_url', 'thumbnail_url', 'url', 'published_at',
-            'is_breaking', 'is_trending'
+            'id', 'source_name', 'source_logo', 'entity_names',
+            'title', 'summary', 'thumbnail_url', 'url',
+            'published_at', 'is_breaking', 'is_trending', 'views'
         ]
 
+    def get_entity_names(self, obj):
+        return [e.name for e in obj.entities.all()]
 
 class UserSourceSerializer(serializers.ModelSerializer):
     """User source serializer"""

@@ -51,9 +51,10 @@ class Entity(models.Model):
     # Flags
     is_active = models.BooleanField(default=True)
     has_api_data = models.BooleanField(default=False)  # True if supported by API
+    rss_discovery_done = models.BooleanField(default=False)
     
     # Timestamps
-    created_at = models.DateTimeField(auto_now_add=True)
+    created_at = models.DateTimeField(auto_now_add=True, null=True)
     updated_at = models.DateTimeField(auto_now=True)
     
     class Meta:

@@ -59,7 +59,7 @@ class User(AbstractUser):
     deleted_at = models.DateTimeField(null=True, blank=True)
     is_blocked = models.BooleanField(default=False)
 
-    created_at = models.DateTimeField(auto_now_add=True)
+    created_at = models.DateTimeField(auto_now_add=True, null=True)
     updated_at = models.DateTimeField(auto_now=True)
 
     USERNAME_FIELD = "email"
@@ -105,7 +105,7 @@ class OTP(models.Model):
     expires_at = models.DateTimeField()
     is_used = models.BooleanField(default=False)
 
-    created_at = models.DateTimeField(auto_now_add=True)
+    created_at = models.DateTimeField(auto_now_add=True, null=True)
     updated_at = models.DateTimeField(auto_now=True)
 
     def __str__(self):
@@ -148,7 +148,7 @@ class UserProfile(models.Model):
     onboarding_completed = models.BooleanField(default=False)
     last_active = models.DateTimeField(auto_now=True)
 
-    created_at = models.DateTimeField(auto_now_add=True)
+    created_at = models.DateTimeField(auto_now_add=True, null=True)
     updated_at = models.DateTimeField(auto_now=True)
 
     def __str__(self):

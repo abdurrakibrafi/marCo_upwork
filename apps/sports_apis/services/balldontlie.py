@@ -14,7 +14,7 @@ class BallDontLieService(BaseAPIService):
     }
 
     def __init__(self):
-        super().__init__(settings.BALLDONTLIE_API_KEY)
+        super().__init__(settings.BALLDONTLIE_KEY)
 
     def _headers(self):
         return {'Authorization': self.api_key}
@@ -30,6 +30,9 @@ class BallDontLieService(BaseAPIService):
 
         if sport == 'nba':
             url = f"{self.BASE_URLS[sport]}/box_scores/live"
+        elif sport == 'nfl':
+            # NFL might not have live endpoint, try regular games with live status
+            url = f"{self.BASE_URLS[sport]}/games"
         else:
             url = f"{self.BASE_URLS[sport]}/games/live"
 
