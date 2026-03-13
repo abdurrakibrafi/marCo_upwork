@@ -240,8 +240,8 @@ DOCS_PASSWORD = env("DOCS_PASSWORD")
 BALLDONTLIE_API_KEY = env('BALLDONTLIE_API_KEY', default='')
 API_SPORTS_KEY = env('API_SPORTS_KEY', default='')
 API_CRICKET_KEY = env('API_CRICKET_KEY', default='')
-GNEWS_API_KEY = env('GNEWS_API_KEY', default='')
-YOUTUBE_API_KEY = env('YOUTUBE_API_KEY', default='')
+BRAVESEARCH_KEY = env('BRAVE_SEARCH_KEY', default='')
+
 
 
 CACHE_TTLS = {
