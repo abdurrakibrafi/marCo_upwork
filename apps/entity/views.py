@@ -6,17 +6,24 @@ from rest_framework.permissions import IsAuthenticated, AllowAny
 from rest_framework.response import Response
 from rest_framework import status
 from django.shortcuts import get_object_or_404
+from datetime import datetime
 from apps.entity.models import Entity, Team, Athlete, League
 from apps.entity.serializers import (
     EntitySerializer, TeamDetailSerializer,
     AthleteDetailSerializer, LeagueDetailSerializer
 )
 from apps.entity.models import EntityStats
-from rest_framework.decorators import api_view, permission_classes
-from rest_framework.permissions import AllowAny
-from rest_framework.response import Response
-from django.shortcuts import get_object_or_404
 from apps.entity.services import EntitySearchService
+
+
+def _current_season(sport='soccer'):
+    now = datetime.now()
+    year, month = now.year, now.month
+    if sport == 'soccer':
+        return year if month >= 8 else year - 1
+    elif sport == 'basketball':
+        return year if month >= 10 else year - 1
+    return year
 
 @api_view(['GET'])
 @permission_classes([AllowAny])
@@ -150,7 +157,7 @@ def get_team_stats(request, team_id):
     GET /api/entities/team/{team_id}/stats?season=2023
     """
     team_entity = get_object_or_404(Entity, id=team_id, type='team')
-    season = request.GET.get('season', '2023-24')
+    season = request.GET.get('season') or str(_current_season(team_entity.sport))
     
     # Get stats from EntityStats model
     stats = EntityStats.objects.filter(
@@ -166,18 +173,30 @@ def get_team_stats(request, team_id):
         })
     else:
         # Trigger stats update
-        from .tasks import update_nba_team_stats, update_soccer_team_stats
-        
+        from .tasks import update_nba_standings, update_soccer_league_stats
+
         if team_entity.sport == 'basketball':
-            update_nba_team_stats.delay(team_id)
+            update_nba_standings.delay()
+            msg = 'NBA stats update triggered'
+
         elif team_entity.sport == 'soccer':
-            update_soccer_team_stats.delay(team_id)
-        
+            # For soccer, we need to update the entire league, not just one team
+            try:
+                league_id = team_entity.team_details.league.external_id
+                update_soccer_league_stats.delay(int(league_id))
+                msg = 'Soccer league stats update triggered'
+            except (AttributeError, ValueError):
+                # Can't update without league linkage, but return 200 and keep it non-fatal
+                msg = 'No league linked to team; stats update not triggered'
+
+        else:
+            msg = 'No stats update available for this sport'
+
         return Response({
             'team': EntitySerializer(team_entity, context={'request': request}).data,
             'season': season,
             'stats': {},
-            'message': 'Stats update triggered'
+            'message': msg
         })
 
 
@@ -189,12 +208,17 @@ def get_team_roster(request, team_id):
     GET /api/entities/team/{team_id}/roster
     """
     team_entity = get_object_or_404(Entity, id=team_id, type='team')
-    
-    # Get athletes on this team
+
+    # Prefer matching by api_source+external_id to handle duplicate Entity rows
     athletes = Athlete.objects.filter(
-        current_team=team_entity
+        current_team__api_source=team_entity.api_source,
+        current_team__external_id=team_entity.external_id,
     ).select_related('entity')
-    
+
+    # Fallback to strict FK link if nothing was found
+    if not athletes.exists():
+        athletes = Athlete.objects.filter(current_team=team_entity).select_related('entity')
+
     athlete_data = []
     for athlete in athletes:
         athlete_data.append({
@@ -208,7 +232,7 @@ def get_team_roster(request, team_id):
             'salary_usd': float(athlete.salary_usd) if athlete.salary_usd else None,
             'contract_years': athlete.contract_years_remaining,
         })
-    
+
     return Response({
         'team': EntitySerializer(team_entity, context={'request': request}).data,
         'roster_count': len(athlete_data),
@@ -224,28 +248,41 @@ def get_team_standings(request, team_id):
     GET /api/entities/team/{team_id}/standings
     """
     team_entity = get_object_or_404(Entity, id=team_id, type='team')
-    
-    if not team_entity.team_details.league:
+    season = request.GET.get('season') or str(_current_season('soccer'))
+
+    league = None
+    try:
+        league = team_entity.team_details.league
+    except Exception:
+        league = None
+
+    if not league:
         return Response({
-            'error': 'Team does not have a league assigned'
-        }, status=404)
-    
-    league = team_entity.team_details.league
-    season = request.GET.get('season', '2023')
-    
-    # Get all teams in the league with stats
+            'team': EntitySerializer(team_entity, context={'request': request}).data,
+            'season': season,
+            'standings': [],
+            'message': 'Team has no associated league; cannot compute standings'
+        })
+
+    canonical_league = Entity.objects.filter(
+        type='league',
+        api_source=league.api_source,
+        external_id=league.external_id,
+    ).first() or league
+
     teams_in_league = Team.objects.filter(
-        league=league
+        league__api_source=canonical_league.api_source,
+        league__external_id=canonical_league.external_id,
     ).select_related('entity')
-    
+
     standings_data = []
     for team in teams_in_league:
         stats = EntityStats.objects.filter(
             entity=team.entity,
-            season=season,
+            season=str(season),
             stat_type='season'
         ).first()
-        
+
         standings_data.append({
             'team_id': team.entity.id,
             'team_name': team.entity.name,
@@ -256,10 +293,10 @@ def get_team_standings(request, team_id):
             'rank': stats.stats_data.get('rank', 0) if stats else 0,
             'stats': stats.stats_data if stats else {}
         })
-    
+
     # Sort by rank or win percentage
     standings_data.sort(key=lambda x: (-x['win_pct'], -x['wins']))
-    
+
     return Response({
         'league': EntitySerializer(league, context={'request': request}).data,
         'season': season,
@@ -275,12 +312,12 @@ def get_athlete_stats(request, athlete_id):
     GET /api/entities/athlete/{athlete_id}/stats?season=2023
     """
     athlete_entity = get_object_or_404(Entity, id=athlete_id, type='athlete')
-    season = request.GET.get('season', '2023')
+    season = request.GET.get('season') or str(_current_season('soccer'))
     
     # Get stats
     stats = EntityStats.objects.filter(
         entity=athlete_entity,
-        season=season
+        season=str(season)
     ).first()
     
     if stats:
@@ -340,14 +377,25 @@ def get_league_leaders(request, league_id):
     GET /api/entities/league/{league_id}/leaders?season=2023&stat=points&country=Spain
     """
     league_entity = get_object_or_404(Entity, id=league_id, type='league')
-    season = request.GET.get('season', '2023')
+    season = request.GET.get('season') or str(_current_season('soccer'))
     stat_type = request.GET.get('stat', 'points')
-    country = request.GET.get('country')  # ADD THIS
-    
-    # Get all athletes in this league's teams
-    teams_in_league = Team.objects.filter(league=league_entity)
+    country = request.GET.get('country')
+
+    canonical_league = Entity.objects.filter(
+        type='league',
+        api_source=league_entity.api_source,
+        external_id=league_entity.external_id,
+    ).first() or league_entity
+
+    teams_in_league = Team.objects.filter(
+        league__api_source=canonical_league.api_source,
+        league__external_id=canonical_league.external_id,
+    )
+
+    team_external_ids = [t.entity.external_id for t in teams_in_league]
     athletes = Athlete.objects.filter(
-        current_team__in=[t.entity for t in teams_in_league]
+        current_team__api_source=canonical_league.api_source,
+        current_team__external_id__in=team_external_ids,
     ).select_related('entity', 'current_team')
     
     # Filter by country if specified
@@ -391,41 +439,49 @@ def get_league_standings(request, league_id):
     GET /api/entities/league/{league_id}/standings?season=2023&country=England
     """
     league_entity = get_object_or_404(Entity, id=league_id, type='league')
-    season = request.GET.get('season', '2023')
-    country = request.GET.get('country')  # ADD THIS
-    
-    # Get all teams in league
+    season = request.GET.get('season') or str(_current_season('soccer'))
+    country = request.GET.get('country')
+
+    # Resolve canonical league entity (may have duplicates in DB)
+    canonical_league = Entity.objects.filter(
+        type='league',
+        api_source=league_entity.api_source,
+        external_id=league_entity.external_id,
+    ).first() or league_entity
+
+    # Get all teams linked to this league (by api_source+external_id)
     teams_in_league = Team.objects.filter(
-        league=league_entity
+        league__api_source=canonical_league.api_source,
+        league__external_id=canonical_league.external_id,
     ).select_related('entity')
-    
+
     # Filter by country if specified
     if country:
         teams_in_league = [t for t in teams_in_league if country.lower() in t.entity.country.lower()]
-    
+
     standings = []
     for team in teams_in_league:
         stats = EntityStats.objects.filter(
             entity=team.entity,
-            season=season,
+            season=str(season),
             stat_type='season'
         ).first()
-        
+
         standings.append({
             'rank': stats.stats_data.get('rank', 0) if stats else 0,
             'team_id': team.entity.id,
             'team_name': team.entity.name,
             'logo': team.entity.logo_url,
-            'country': team.entity.country,  # ADD THIS FIELD
+            'country': team.entity.country,
             'wins': team.total_wins,
             'losses': team.total_losses,
             'win_pct': float(team.win_percentage),
             'stats': stats.stats_data if stats else {}
         })
-    
+
     # Sort by rank
     standings.sort(key=lambda x: x['rank'] if x['rank'] > 0 else 999)
-    
+
     return Response({
         'league': EntitySerializer(league_entity, context={'request': request}).data,
         'season': season,
@@ -442,16 +498,24 @@ def get_league_fixtures(request, league_id):
     """
     from apps.event.models import Event
     from apps.event.serializers import EventSerializer
-    
+
     league_entity = get_object_or_404(Entity, id=league_id, type='league')
-    
-    # Get upcoming and recent events
+
+    # Resolve canonical league entity (may have duplicates in DB)
+    canonical_league = Entity.objects.filter(
+        type='league',
+        api_source=league_entity.api_source,
+        external_id=league_entity.external_id,
+    ).first() or league_entity
+
+    # Get upcoming and recent events for this league (by external_id/api_source)
     events = Event.objects.filter(
-        league=league_entity
+        league__api_source=canonical_league.api_source,
+        league__external_id=canonical_league.external_id,
     ).select_related('home_entity', 'away_entity').order_by('-start_time')[:50]
-    
+
     serializer = EventSerializer(events, many=True)
-    
+
     return Response({
         'league': EntitySerializer(league_entity, context={'request': request}).data,
         'fixtures': serializer.data

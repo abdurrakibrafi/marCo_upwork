@@ -112,9 +112,13 @@ def update_trending_entities_feeds():
 
 @shared_task
 def poll_all_active_sources():
+    """Poll all RSS sources that are due, staggered to avoid burst."""
     now = timezone.now()
     due_sources = Source.objects.filter(
-        is_active=True
+        is_active=True,
+        rss_url__isnull=False,   # BUG FIX: skip Brave-only sources entirely
+    ).exclude(
+        rss_url='',
     ).filter(
         Q(last_polled_at__isnull=True) |
         Q(last_polled_at__lte=now - timedelta(minutes=1))
@@ -129,10 +133,15 @@ def poll_all_active_sources():
         if elapsed >= source.poll_interval_minutes * 60:
             to_poll.append(source.id)
 
-    for source_id in to_poll:
-        poll_single_source.delay(source_id)
+    # BUG FIX: stagger tasks 2 seconds apart instead of all at once
+    # 100 sources = dispatched over 200 seconds instead of all in 1 second
+    for i, source_id in enumerate(to_poll):
+        poll_single_source.apply_async(
+            args=[source_id],
+            countdown=i * 2,  # source 0 fires now, source 1 in 2s, source 2 in 4s...
+        )
 
-    return f"Queued {len(to_poll)} sources for polling"
+    return f"Queued {len(to_poll)} sources for polling (staggered over {len(to_poll) * 2}s)"
 
 
 def _entity_matches_text(entity: Entity, text: str) -> bool:

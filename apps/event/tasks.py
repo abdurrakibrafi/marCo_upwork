@@ -333,23 +333,93 @@ def _get_or_create_team_entity(api_source, external_id, name, sport, logo_url=''
 
 
 def _get_or_create_league_entity(api_source, external_id, name, sport, logo_url=''):
-    entity = Entity.objects.filter(
+    # Ensure we always reuse the same league entity for the same api_source+external_id.
+    # This prevents duplicate league entities that break fixtures/standings lookups.
+    entity, created = Entity.objects.get_or_create(
         api_source=api_source,
         external_id=external_id,
-    ).first()
-
-    if entity:
-        return entity
-
-    entity = Entity.objects.create(
-        api_source=api_source,
-        external_id=external_id,
-        type='league',
-        name=name,
-        sport=sport,
-        logo_url=logo_url or '',
-        has_api_data=True,
+        defaults={
+            'type': 'league',
+            'name': name,
+            'sport': sport,
+            'logo_url': logo_url or '',
+            'has_api_data': True,
+        }
     )
+
+    if not created and logo_url and not entity.logo_url:
+        entity.logo_url = logo_url
+        entity.save(update_fields=['logo_url'])
+
     from apps.entity.models import League
     League.objects.get_or_create(entity=entity)
     return entity
+
+
+@shared_task
+def update_soccer_live_scores_only():
+    """
+    Lightweight task — only updates scores/status for fixtures
+    already in DB that are live or starting soon.
+
+    BUG FIX: The old setup had update_soccer_fixtures running every 2 min
+    AND as part of update_all_fixtures daily — causing duplicate work.
+
+    This task only calls the API for fixtures that are actually live,
+    not the full day's fixture list.
+    """
+    from django.utils import timezone
+    from datetime import timedelta
+
+    now = timezone.now()
+    soon = now + timedelta(hours=2)
+
+    # Only fetch IDs of games that are live or starting within 2 hours
+    active_fixture_ids = list(
+        Event.objects.filter(
+            sport='soccer',
+            status__in=['live', 'upcoming'],
+            start_time__lte=soon,
+            api_source='api_sports',
+        ).values_list('external_id', flat=True)[:20]  # max 20 at a time
+    )
+
+    if not active_fixture_ids:
+        return "No active soccer fixtures to update"
+
+    result = api_sports_service.get_live_fixtures()
+
+    if not result['success']:
+        return f"Failed to fetch live fixtures: {result.get('error')}"
+
+    fixtures = result['data'].get('response', [])
+    updated = 0
+
+    for fixture in fixtures:
+        fixture_data = fixture.get('fixture', {})
+        goals_data = fixture.get('goals', {})
+        external_id = str(fixture_data.get('id', ''))
+
+        status_short = fixture_data.get('status', {}).get('short', '')
+        if status_short in ['FT', 'AET', 'PEN']:
+            status = 'completed'
+        elif status_short in ['1H', '2H', 'HT', 'ET', 'BT', 'P', 'LIVE']:
+            status = 'live'
+        elif status_short in ['PST', 'CANC', 'ABD']:
+            status = 'postponed'
+        else:
+            status = 'upcoming'
+
+        rows = Event.objects.filter(
+            api_source='api_sports',
+            external_id=external_id,
+        ).update(
+            status=status,
+            status_detail=fixture_data.get('status', {}).get('long', ''),
+            home_score=goals_data.get('home'),
+            away_score=goals_data.get('away'),
+        )
+        if rows:
+            updated += 1
+
+    return f"Live soccer: updated {updated} fixtures"

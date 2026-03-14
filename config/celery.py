@@ -33,8 +33,8 @@ app.conf.beat_schedule = {
     'task': 'apps.event.tasks.update_all_fixtures',
     'schedule': crontab(hour=6, minute=0),  # every day at 6am
     },
-    'update-fixtures-live': {
-        'task': 'apps.event.tasks.update_soccer_fixtures',
+    'update-live-scores-soccer': {
+        'task': 'apps.event.tasks.update_soccer_live_scores_only',
         'schedule': 120.0,  # every 2 min during live games
     },
 
