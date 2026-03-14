@@ -30,8 +30,8 @@ class Source(models.Model):
     # Core fields
     name = models.CharField(max_length=255, blank=True)
     rss_url = models.URLField(unique=True, default='', blank=True, null=True)
-    domain = models.CharField(max_length=255, blank=True)
-    favicon_url = models.URLField(blank=True)
+    domain = models.CharField(max_length=5000, blank=True)
+    favicon_url = models.URLField(blank=True, max_length=5000)
 
     # M2M — one RSS feed can cover multiple entities (e.g. ESPN covers all)
     entities = models.ManyToManyField(Entity, related_name='sources', blank=True)
@@ -77,10 +77,10 @@ class FeedItem(models.Model):
 
     # Article data
     title = models.CharField(max_length=500)
-    url = models.URLField(max_length=1000)
+    url = models.URLField(max_length=5000)
     url_hash = models.CharField(max_length=500, unique=True, db_index=True)  # MD5 of URL
     summary = models.TextField(blank=True)
-    thumbnail_url = models.URLField(blank=True)
+    thumbnail_url = models.URLField(blank=True, max_length=5000)
     published_at = models.DateTimeField(db_index=True)
 
     # Feed metadata

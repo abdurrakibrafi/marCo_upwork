@@ -29,11 +29,27 @@ app.conf.beat_schedule = {
         'task': 'apps.sports_apis.tasks.update_cricket_live_scores',
         'schedule': 1200.0,  # 2 minutes instead of 30 seconds
     },
+    'update-fixtures-daily': {
+    'task': 'apps.event.tasks.update_all_fixtures',
+    'schedule': crontab(hour=6, minute=0),  # every day at 6am
+    },
+    'update-fixtures-live': {
+        'task': 'apps.event.tasks.update_soccer_fixtures',
+        'schedule': 120.0,  # every 2 min during live games
+    },
 
     # ===== RSS POLLING (EVERY 5 MINUTES) =====
     'poll-all-rss-sources': {
         'task': 'apps.feed.tasks.poll_all_active_sources',
-        'schedule': 3000.0,  # 5 minutes
+        'schedule': 300.0,  # 5 minutes
+    },
+    'fetch-brave-news-all-nests': {
+        'task': 'apps.feed.tasks.fetch_brave_news_for_all_nest_entities',
+        'schedule': 1800.0,  # every 30 minutes
+    },
+    'fetch-brave-news-trending': {
+        'task': 'apps.feed.tasks.fetch_brave_news_for_trending',
+        'schedule': 3600.0,  # every hour
     },
 
     # ===== CLEANUP (DAILY) =====

@@ -84,9 +84,9 @@ def store_validated_feed(self, entity_id: int, feed_url: str, discovery_source: 
     )
 
     # Keep rss_feed_url up to date in case we discovered a better URL later
-    if source.rss_feed_url != feed_url:
-        source.rss_feed_url = feed_url
-        source.save(update_fields=['rss_feed_url'])
+    # if source.rss_feed_url != feed_url:
+    #     source.rss_feed_url = feed_url
+    #     source.save(update_fields=['rss_feed_url'])
 
     # Link to entity (many-to-many)
     source.entities.add(entity)
@@ -233,11 +233,126 @@ def cleanup_old_feed_items():
 
 @shared_task
 def mark_trending_items():
-    """Mark top 100 items from the last 24h as trending"""
     FeedItem.objects.update(is_trending=False)
 
     last_24h = timezone.now() - timedelta(hours=24)
-    trending_items = FeedItem.objects.filter(published_at__gte=last_24h).order_by('-views')[:100]
-    trending_items.update(is_trending=True)
+    
+    # Get IDs first, THEN update — can't update a sliced queryset
+    trending_ids = list(
+        FeedItem.objects.filter(
+            published_at__gte=last_24h
+        ).order_by('-views')[:100].values_list('id', flat=True)
+    )
+    
+    FeedItem.objects.filter(id__in=trending_ids).update(is_trending=True)
+    
+    return f"Marked {len(trending_ids)} items as trending"
 
-    return f"Marked {trending_items.count()} items as trending"
+
+
+
+
+@shared_task
+def fetch_brave_news_for_entity(entity_id: int):
+    """
+    Fetch latest news for a single entity via Brave Search News API.
+    Creates FeedItems directly — no RSS needed.
+    """
+    from apps.sports_apis.services.brave_news import brave_news_service
+
+    try:
+        entity = Entity.objects.get(id=entity_id, is_active=True)
+    except Entity.DoesNotExist:
+        return f"Entity {entity_id} not found"
+
+    articles = brave_news_service.fetch_news_for_entity(
+        entity.name, entity.type, entity.sport
+    )
+
+    if not articles:
+        return f"No articles found for {entity.name}"
+
+    new_count = 0
+    for article in articles:
+        # Get or create a Source for this domain
+        source_domain = article.get('source_domain', '')
+        source_name = article.get('source_name', 'Unknown')
+
+        if source_domain:
+            source, _ = Source.objects.get_or_create(
+                domain=source_domain,
+                defaults={
+                    'name': source_name,
+                    'rss_url': None,
+                    'is_active': True,
+                    'discovery_source': 'brave',
+                }
+            )
+        else:
+            # Fallback source
+            source, _ = Source.objects.get_or_create(
+                name='Brave News',
+                defaults={
+                    'domain': 'brave.com',
+                    'rss_url': None,
+                    'is_active': True,
+                    'discovery_source': 'brave',
+                }
+            )
+
+        # Create FeedItem if not already exists
+        obj, created = FeedItem.objects.get_or_create(
+            url_hash=article['url_hash'],
+            defaults={
+                'source': source,
+                'title': article['title'],
+                'url': article['url'],
+                'summary': article['summary'],
+                'thumbnail_url': article['thumbnail_url'],
+                'published_at': article['published_at'],
+            }
+        )
+
+        if created:
+            obj.entities.add(entity)
+            new_count += 1
+        else:
+            # Always make sure entity is linked even if article existed
+            obj.entities.add(entity)
+
+    logger.info(f"Brave news for {entity.name}: {new_count} new articles")
+    return f"Fetched {len(articles)} articles for {entity.name}, {new_count} new"
+
+
+@shared_task
+def fetch_brave_news_for_all_nest_entities():
+    """
+    Fetch Brave news for ALL entities currently in any user's nest.
+    Schedule this every 30 minutes in celery.py.
+    """
+    from apps.nest.models import UserNest
+
+    entity_ids = list(
+        UserNest.objects.values_list('entity_id', flat=True).distinct()
+    )
+
+    for entity_id in entity_ids:
+        fetch_brave_news_for_entity.delay(entity_id)
+
+    return f"Triggered Brave news fetch for {len(entity_ids)} entities"
+
+
+@shared_task
+def fetch_brave_news_for_trending():
+    """
+    Fetch Brave news for top 20 trending entities.
+    Keeps the public feed fresh even for non-logged-in users.
+    """
+    entities = Entity.objects.filter(
+        is_active=True
+    ).order_by('-follower_count')[:20]
+
+    for entity in entities:
+        fetch_brave_news_for_entity.delay(entity.id)
+
+    return f"Triggered Brave news fetch for {entities.count()} trending entities"

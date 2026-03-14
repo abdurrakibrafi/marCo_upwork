@@ -67,7 +67,14 @@ class Entity(models.Model):
     
     def save(self, *args, **kwargs):
         if not self.slug:
-            self.slug = slugify(f"{self.name}-{self.type}")
+            base_slug = slugify(f"{self.name}-{self.type}")
+            slug = base_slug
+            counter = 1
+            # Keep incrementing until we find a unique slug
+            while Entity.objects.filter(slug=slug).exclude(pk=self.pk).exists():
+                slug = f"{base_slug}-{counter}"
+                counter += 1
+            self.slug = slug
         super().save(*args, **kwargs)
     
     def __str__(self):

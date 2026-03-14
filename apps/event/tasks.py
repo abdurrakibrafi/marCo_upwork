@@ -9,7 +9,7 @@ from apps.sports_apis.services.balldontlie import balldontlie_service
 from apps.sports_apis.services.api_sports import api_sports_service
 from apps.sports_apis.services.api_cricket import api_cricket_service
 import logging
-
+from django.utils.timezone import make_aware
 logger = logging.getLogger(__name__)
 
 
@@ -57,7 +57,7 @@ def update_nba_fixtures(date=None):
                     'sport': 'basketball',
                     'home_entity': home_team,
                     'away_entity': away_team,
-                    'start_time': game['date'],
+                    'start_time': make_aware(datetime.fromisoformat(game['date'])) if isinstance(game['date'], str) else game['date'],
                     'status': status,
                     'status_detail': game.get('period', ''),
                     'home_score': game.get('home_team_score'),
@@ -122,7 +122,7 @@ def update_nfl_fixtures(date=None):
                     'sport': 'football',
                     'home_entity': home_team,
                     'away_entity': away_team,
-                    'start_time': game['date'],
+                    'start_time': make_aware(datetime.fromisoformat(game['date'])) if isinstance(game['date'], str) else game['date'],
                     'status': status,
                     'status_detail': game.get('quarter', ''),
                     'home_score': game.get('home_team_score'),
@@ -209,8 +209,8 @@ def update_soccer_fixtures(date=None):
                     'status_detail': fixture_data.get('status', {}).get('long', ''),
                     'home_score': goals_data.get('home'),
                     'away_score': goals_data.get('away'),
-                    'venue_name': venue_data.get('name', ''),
-                    'venue_city': venue_data.get('city', ''),
+                    'venue_name': venue_data.get('name') or '',     
+                    'venue_city': venue_data.get('city') or '',     
                     'metadata': fixture,
                 }
             )
@@ -307,32 +307,49 @@ def update_all_fixtures():
 # Helper functions
 
 def _get_or_create_team_entity(api_source, external_id, name, sport, logo_url=''):
-    """Helper to get or create team entity"""
-    entity, created = Entity.objects.get_or_create(
+    # Try to get existing first — use filter+first to avoid MultipleObjectsReturned
+    entity = Entity.objects.filter(
         api_source=api_source,
         external_id=external_id,
-        defaults={
-            'type': 'team',
-            'name': name,
-            'sport': sport,
-            'logo_url': logo_url,
-            'has_api_data': True,
-        }
+    ).first()
+
+    if entity:
+        return entity
+
+    # Create new one
+    entity = Entity.objects.create(
+        api_source=api_source,
+        external_id=external_id,
+        type='team',
+        name=name,
+        sport=sport,
+        logo_url=logo_url or '',
+        has_api_data=True,
     )
+    # Create Team sub-model
+    from apps.entity.models import Team
+    Team.objects.get_or_create(entity=entity)
     return entity
 
 
 def _get_or_create_league_entity(api_source, external_id, name, sport, logo_url=''):
-    """Helper to get or create league entity"""
-    entity, created = Entity.objects.get_or_create(
+    entity = Entity.objects.filter(
         api_source=api_source,
         external_id=external_id,
-        defaults={
-            'type': 'league',
-            'name': name,
-            'sport': sport,
-            'logo_url': logo_url,
-            'has_api_data': True,
-        }
+    ).first()
+
+    if entity:
+        return entity
+
+    entity = Entity.objects.create(
+        api_source=api_source,
+        external_id=external_id,
+        type='league',
+        name=name,
+        sport=sport,
+        logo_url=logo_url or '',
+        has_api_data=True,
     )
+    from apps.entity.models import League
+    League.objects.get_or_create(entity=entity)
     return entity

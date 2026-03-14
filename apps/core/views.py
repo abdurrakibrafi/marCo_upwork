@@ -547,43 +547,174 @@ def seed_epl_players(request):
 # 5. SEED ALL (run everything in sequence)
 # ─────────────────────────────────────────────
 
+from datetime import datetime
+
+def get_current_season(sport='soccer'):
+    now = datetime.now()
+    year = now.year
+    month = now.month
+
+    if sport == 'soccer':
+        return year if month >= 8 else year - 1
+    elif sport == 'basketball':
+        return year if month >= 10 else year - 1
+    else:
+        return year
+
 @api_view(['POST'])
 @permission_classes([IsAdminUser])
 def seed_all(request):
-    """
-    POST /api/entities/seed/all/
-    Runs all seed operations in sequence.
-    Warning: makes many API calls, use once to bootstrap.
-    """
-    from django.test import RequestFactory
-    from django.contrib.auth import get_user_model
-
     results = {}
+    soccer_season = get_current_season('soccer')
+    basketball_season = get_current_season('basketball')
 
-    def call(view_fn, **get_params):
-        factory = RequestFactory()
-        fake_req = factory.post('/', **get_params)
-        fake_req.user = request.user
+    # Soccer leagues
+    try:
+        created = 0
+        for lg in SOCCER_LEAGUES:
+            _, c = _get_or_create_entity(
+                name=lg['name'], entity_type='league', sport='soccer',
+                external_id=lg['id'], api_source='api_sports',
+                logo_url=f"https://media.api-sports.io/football/leagues/{lg['id']}.png",
+                country=lg['country'], follower_count=lg['followers'],
+            )
+            if c: created += 1
+        results['soccer_leagues'] = {'success': True, 'newly_created': created}
+    except Exception as e:
+        results['soccer_leagues'] = {'error': str(e)}
+
+    # Soccer teams
+    import requests as req
+    for key, league_id in [('soccer_teams_epl', 39), ('soccer_teams_laliga', 140)]:
         try:
-            resp = view_fn(fake_req)
-            return resp.data
+            resp = req.get(
+                'https://v3.football.api-sports.io/teams',
+                headers={'x-apisports-key': settings.API_SPORTS_KEY},
+                params={'league': league_id, 'season': soccer_season}, timeout=15
+            )
+            created = 0
+            league_entity = Entity.objects.filter(api_source='api_sports', external_id=str(league_id), type='league').first()
+            for item in resp.json().get('response', []):
+                t = item.get('team', {}); venue = item.get('venue', {})
+                entity, c = _get_or_create_entity(
+                    name=t['name'], entity_type='team', sport='soccer',
+                    external_id=t['id'], api_source='api_sports',
+                    logo_url=t.get('logo', ''), country=t.get('country', ''), follower_count=500000,
+                )
+                if hasattr(entity, 'team_details'):
+                    team = entity.team_details
+                    team.venue_name = venue.get('name', '')
+                    team.venue_city = venue.get('city', '')
+                    team.venue_capacity = venue.get('capacity') or None
+                    if league_entity: team.league = league_entity
+                    team.save()
+                if c: created += 1
+            results[key] = {'success': True, 'newly_created': created}
         except Exception as e:
-            return {'error': str(e)}
+            results[key] = {'error': str(e)}
 
-    results['soccer_leagues'] = call(seed_soccer_leagues)
-    results['soccer_teams_epl'] = call(seed_soccer_teams, QUERY_STRING='league_id=39&season=2024')
-    results['soccer_teams_laliga'] = call(seed_soccer_teams, QUERY_STRING='league_id=140&season=2024')
-    results['soccer_players_epl'] = call(seed_soccer_players, QUERY_STRING='league_id=39&season=2024')
-    results['soccer_players_laliga'] = call(seed_soccer_players, QUERY_STRING='league_id=140&season=2024')
-    results['nba_teams'] = call(seed_nba_teams)
-    results['nba_players'] = call(seed_nba_players)
-    results['cricket_leagues'] = call(seed_cricket_leagues)
+    # Soccer players
+    for key, league_id in [('soccer_players_epl', 39), ('soccer_players_laliga', 140)]:
+        try:
+            all_players = {}
+            for endpoint in ['topscorers', 'topassists']:
+                resp = req.get(
+                    f'https://v3.football.api-sports.io/players/{endpoint}',
+                    headers={'x-apisports-key': settings.API_SPORTS_KEY},
+                    params={'league': league_id, 'season': soccer_season}, timeout=15
+                )
+                for item in resp.json().get('response', []):
+                    p = item.get('player', {}); pid = p.get('id')
+                    if pid and pid not in all_players:
+                        all_players[pid] = {'player': p, 'statistics': item.get('statistics', [{}])[0]}
+            created = 0
+            for pid, data in all_players.items():
+                p = data['player']; stats = data['statistics']; team_data = stats.get('team', {})
+                entity, c = _get_or_create_entity(
+                    name=p.get('name', ''), entity_type='athlete', sport='soccer',
+                    external_id=pid, api_source='api_sports',
+                    logo_url=f"https://media.api-sports.io/football/players/{pid}.png",
+                    country=p.get('nationality', ''), follower_count=1000000,
+                )
+                if hasattr(entity, 'athlete_details'):
+                    athlete = entity.athlete_details
+                    athlete.position = stats.get('games', {}).get('position', '')
+                    if team_data.get('id'):
+                        team_entity = Entity.objects.filter(api_source='api_sports', external_id=str(team_data['id']), type='team').first()
+                        if team_entity: athlete.current_team = team_entity
+                    athlete.save()
+                if c: created += 1
+            results[key] = {'success': True, 'newly_created': created}
+        except Exception as e:
+            results[key] = {'error': str(e)}
+
+    # NBA teams
+    try:
+        resp = req.get('https://api.balldontlie.io/v1/teams', headers={'Authorization': settings.BALLDONTLIE_KEY}, timeout=15)
+        created = 0
+        for t in resp.json().get('data', []):
+            _, c = _get_or_create_entity(
+                name=t['full_name'], entity_type='team', sport='basketball',
+                external_id=t['id'], api_source='balldontlie',
+                logo_url=f"https://cdn.ssref.net/req/202401161/tlogo/bbr/{t.get('abbreviation', '')}.png",
+                country='USA', follower_count=100000,
+            )
+            if c: created += 1
+        results['nba_teams'] = {'success': True, 'newly_created': created}
+    except Exception as e:
+        results['nba_teams'] = {'error': str(e)}
+
+    # NBA players
+    try:
+        all_players = []; cursor = None
+        while True:
+            params = {'per_page': 100}
+            if cursor: params['cursor'] = cursor
+            resp = req.get('https://api.balldontlie.io/v1/players/active', headers={'Authorization': settings.BALLDONTLIE_KEY}, params=params, timeout=15)
+            if resp.status_code != 200: break
+            data = resp.json(); all_players.extend(data.get('data', []))
+            cursor = data.get('meta', {}).get('next_cursor')
+            if not cursor: break
+        created = 0
+        for p in all_players:
+            team = p.get('team') or {}
+            name = f"{p.get('first_name', '')} {p.get('last_name', '')}".strip()
+            if not name: continue
+            entity, c = _get_or_create_entity(
+                name=name, entity_type='athlete', sport='basketball',
+                external_id=p['id'], api_source='balldontlie',
+                logo_url=f"https://cdn.nba.com/headshots/nba/latest/1040x760/{p['id']}.png",
+                country=p.get('country', ''), follower_count=50000,
+            )
+            if hasattr(entity, 'athlete_details'):
+                athlete = entity.athlete_details
+                athlete.position = p.get('position', '')
+                athlete.jersey_number = p.get('jersey_number') or None
+                if team.get('id'):
+                    team_entity = Entity.objects.filter(api_source='balldontlie', external_id=str(team['id']), type='team').first()
+                    if team_entity: athlete.current_team = team_entity
+                athlete.save()
+            if c: created += 1
+        results['nba_players'] = {'success': True, 'newly_created': created}
+    except Exception as e:
+        results['nba_players'] = {'error': str(e)}
+
+    # Cricket leagues
+    try:
+        resp = req.get('https://apiv2.api-cricket.com/cricket/', params={'method': 'get_leagues', 'APIkey': settings.API_CRICKET_KEY}, timeout=15)
+        leagues = resp.json().get('result', []); created = 0
+        for lg in leagues[:50]:
+            _, c = _get_or_create_entity(
+                name=lg.get('league_name', ''), entity_type='league', sport='cricket',
+                external_id=lg.get('league_key', ''), api_source='api_cricket',
+                logo_url=lg.get('league_logo', ''), country=lg.get('country_name', ''), follower_count=200000,
+            )
+            if c: created += 1
+        results['cricket_leagues'] = {'success': True, 'newly_created': created}
+    except Exception as e:
+        results['cricket_leagues'] = {'error': str(e)}
 
     return Response({'success': True, 'results': results})
-
-
-
-
 
 
 

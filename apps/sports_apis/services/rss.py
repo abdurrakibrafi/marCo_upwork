@@ -142,19 +142,15 @@ class RSSPollingService:
         return ''
 
     def _parse_date(self, entry):
-        # feedparser provides published_parsed
-        dt = None
-        if entry.get('published_parsed'):
-            from datetime import datetime
-            dt = datetime.fromtimestamp(
-                int(feedparser.mktime_tz(entry.published_parsed))
+        from datetime import datetime, timezone
+        
+        time_tuple = entry.get('published_parsed') or entry.get('updated_parsed')
+        if time_tuple:
+            import calendar
+            return datetime.fromtimestamp(
+                calendar.timegm(time_tuple), tz=timezone.utc
             )
-        elif entry.get('updated_parsed'):
-            from datetime import datetime
-            dt = datetime.fromtimestamp(
-                int(feedparser.mktime_tz(entry.updated_parsed))
-            )
-        return dt
+        return None
 
 
 # Global instances

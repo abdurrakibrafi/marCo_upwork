@@ -68,7 +68,7 @@ class BraveSearchService:
 
     def _search(self, query: str) -> list[str]:
         try:
-            resp = requests.get(self.BASE_URL, headers=self._headers(), params={"q": query, "size": 10}, timeout=10)
+            resp = requests.get(self.BASE_URL, headers=self._headers(), params={"q": query, "count": 10}, timeout=10)
             resp.raise_for_status()
             data = resp.json()
         except Exception as e:
@@ -76,29 +76,13 @@ class BraveSearchService:
             return []
 
         urls = []
-        # Brave response can include "webPages" -> "value" list
-        for key in ("webPages", "results", "items", "data"):
-            if key in data and isinstance(data[key], dict):
-                items = data[key].get("value") or data[key].get("results") or data[key].get("items")
-                if isinstance(items, list):
-                    for item in items:
-                        url = item.get("url") or item.get("link") or item.get("displayUrl")
-                        if url:
-                            urls.append(url)
-                    return urls
-            if key in data and isinstance(data[key], list):
-                for item in data[key]:
-                    url = item.get("url") or item.get("link")
-                    if url:
-                        urls.append(url)
-                return urls
-
-        # Fallback: try to parse top-level results
-        if isinstance(data.get("results"), list):
-            for item in data["results"]:
-                url = item.get("url") or item.get("link")
-                if url:
-                    urls.append(url)
+        
+        # Brave's actual response key is 'web' -> 'results'
+        web_results = data.get('web', {}).get('results', [])
+        for item in web_results:
+            url = item.get('url')
+            if url:
+                urls.append(url)
 
         return urls
 

@@ -23,11 +23,12 @@ from apps.entity.services import EntitySearchService
 def search_entities(request):
     """
     Global search for entities
-    GET /api/entities/search?q=lakers&type=team&sport=basketball
+    GET /api/entities/search?q=lakers&type=team&sport=basketball&country=USA
     """
     query = request.GET.get('q', '')
-    entity_type = request.GET.get('type')  # team, athlete, league
+    entity_type = request.GET.get('type')
     sport = request.GET.get('sport')
+    country = request.GET.get('country') 
     
     if not query:
         return Response(
@@ -35,7 +36,7 @@ def search_entities(request):
             status=status.HTTP_400_BAD_REQUEST
         )
     
-    results = EntitySearchService.search(query, entity_type, sport)
+    results = EntitySearchService.search(query, entity_type, sport, country)  # Pass to service
     serializer = EntitySerializer(results, many=True, context={'request': request})
     
     return Response({
@@ -50,15 +51,18 @@ def search_entities(request):
 def get_trending(request):
     """
     Get trending entities
-    GET /api/entities/trending
+    GET /api/entities/trending?country=England
     """
-    entities = EntitySearchService.get_trending()
+    country = request.GET.get('country')  # ADD THIS
     
-    # Group by type
-    teams = [e for e in entities if e.type == 'team']
-    athletes = [e for e in entities if e.type == 'athlete']
-    leagues = [e for e in entities if e.type == 'league']
+    base_qs = Entity.objects.filter(is_active=True)
+    if country:
+        base_qs = base_qs.filter(country__icontains=country)
     
+    teams = base_qs.filter(type='team').order_by('-follower_count')[:10]
+    athletes = base_qs.filter(type='athlete').order_by('-follower_count')[:10]
+    leagues = base_qs.filter(type='league').order_by('-follower_count')[:10]
+
     return Response({
         'teams': EntitySerializer(teams, many=True, context={'request': request}).data,
         'athletes': EntitySerializer(athletes, many=True, context={'request': request}).data,
@@ -333,17 +337,22 @@ def get_athlete_bio(request, athlete_id):
 def get_league_leaders(request, league_id):
     """
     Get league leaders (top performers)
-    GET /api/entities/league/{league_id}/leaders?season=2023&stat=points
+    GET /api/entities/league/{league_id}/leaders?season=2023&stat=points&country=Spain
     """
     league_entity = get_object_or_404(Entity, id=league_id, type='league')
     season = request.GET.get('season', '2023')
     stat_type = request.GET.get('stat', 'points')
+    country = request.GET.get('country')  # ADD THIS
     
     # Get all athletes in this league's teams
     teams_in_league = Team.objects.filter(league=league_entity)
     athletes = Athlete.objects.filter(
         current_team__in=[t.entity for t in teams_in_league]
     ).select_related('entity', 'current_team')
+    
+    # Filter by country if specified
+    if country:
+        athletes = [a for a in athletes if country.lower() in a.entity.country.lower()]
     
     leaders_data = []
     for athlete in athletes:
@@ -358,6 +367,7 @@ def get_league_leaders(request, league_id):
                 'athlete_id': athlete.entity.id,
                 'name': f"{athlete.first_name} {athlete.last_name}",
                 'photo': athlete.entity.logo_url,
+                'country': athlete.entity.country,  # ADD THIS FIELD
                 'team': athlete.current_team.name if athlete.current_team else '',
                 'team_logo': athlete.current_team.logo_url if athlete.current_team else '',
                 stat_type: stats.stats_data.get(stat_type, 0)
@@ -373,21 +383,25 @@ def get_league_leaders(request, league_id):
         'leaders': leaders_data[:20]  # Top 20
     })
 
-
 @api_view(['GET'])
 @permission_classes([AllowAny])
 def get_league_standings(request, league_id):
     """
     Get league standings
-    GET /api/entities/league/{league_id}/standings?season=2023
+    GET /api/entities/league/{league_id}/standings?season=2023&country=England
     """
     league_entity = get_object_or_404(Entity, id=league_id, type='league')
     season = request.GET.get('season', '2023')
+    country = request.GET.get('country')  # ADD THIS
     
     # Get all teams in league
     teams_in_league = Team.objects.filter(
         league=league_entity
     ).select_related('entity')
+    
+    # Filter by country if specified
+    if country:
+        teams_in_league = [t for t in teams_in_league if country.lower() in t.entity.country.lower()]
     
     standings = []
     for team in teams_in_league:
@@ -402,6 +416,7 @@ def get_league_standings(request, league_id):
             'team_id': team.entity.id,
             'team_name': team.entity.name,
             'logo': team.entity.logo_url,
+            'country': team.entity.country,  # ADD THIS FIELD
             'wins': team.total_wins,
             'losses': team.total_losses,
             'win_pct': float(team.win_percentage),
@@ -441,3 +456,35 @@ def get_league_fixtures(request, league_id):
         'league': EntitySerializer(league_entity, context={'request': request}).data,
         'fixtures': serializer.data
     })
+
+from rest_framework.pagination import PageNumberPagination
+
+@api_view(['GET'])
+@permission_classes([AllowAny])
+def list_entities(request):
+    """
+    Paginated list of all entities with filters
+    GET /api/entities/?type=team&sport=soccer&country=England&page=1&limit=20
+    """
+    queryset = Entity.objects.filter(is_active=True).order_by('-follower_count', 'name')
+
+    # Filters
+    entity_type = request.GET.get('type')
+    sport = request.GET.get('sport')
+    country = request.GET.get('country')  # Add country filter
+
+    if entity_type:
+        queryset = queryset.filter(type=entity_type)
+    if sport:
+        queryset = queryset.filter(sport=sport)
+    if country:
+        queryset = queryset.filter(country__icontains=country)  # Case-insensitive partial match
+
+    # Paginate
+    paginator = PageNumberPagination()
+    paginator.page_size = int(request.GET.get('limit', 20))
+    paginator.max_page_size = 100
+    paginated = paginator.paginate_queryset(queryset, request)
+
+    serializer = EntitySerializer(paginated, many=True, context={'request': request})
+    return paginator.get_paginated_response(serializer.data)
