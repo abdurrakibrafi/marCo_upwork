@@ -45,9 +45,11 @@ def get_nest_calendar(request):
         'home_entity', 'away_entity', 'league'
     ).order_by('start_time')
 
-    # Group by date for calendar display
+    # Materialize queryset once to avoid a second count() query
+    events_list = list(events)
+
     grouped = {}
-    for event in events:
+    for event in events_list:
         date_key = event.start_time.date().isoformat()
         if date_key not in grouped:
             grouped[date_key] = []
@@ -56,9 +58,9 @@ def get_nest_calendar(request):
     return Response({
         'start_date': start_date.isoformat(),
         'end_date': end_date.isoformat(),
-        'total_count': events.count(),
+        'total_count': len(events_list),
         'events_by_date': grouped,  # for calendar grid
-        'events': EventSerializer(events, many=True).data,  # flat list
+        'events': EventSerializer(events_list, many=True).data,  # flat list
     })
 
 

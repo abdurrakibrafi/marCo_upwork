@@ -235,7 +235,7 @@ def update_cricket_fixtures(date=None):
     result = api_cricket_service.get_fixtures_by_date(date)
     
     if result['success']:
-        fixtures = result['data'].get('response', [])
+        fixtures = result['data'].get('result', [])
         
         for fixture in fixtures:
             teams = fixture.get('teams', [])
@@ -256,7 +256,7 @@ def update_cricket_fixtures(date=None):
                 'cricket'
             )
             
-            status_str = fixture.get('status', '').lower()
+            status_str = fixture.get('event_status', '').lower() or fixture.get('status', '').lower()
             if 'finished' in status_str or 'complete' in status_str:
                 status = 'completed'
             elif 'live' in status_str or 'progress' in status_str:
@@ -266,15 +266,15 @@ def update_cricket_fixtures(date=None):
             
             Event.objects.update_or_create(
                 api_source='api_cricket',
-                external_id=str(fixture['id']),
+                external_id=str(fixture.get('event_key', fixture.get('id', ''))),
                 defaults={
                     'sport': 'cricket',
                     'home_entity': home_team,
                     'away_entity': away_team,
-                    'start_time': fixture['date'],
+                    'start_time': fixture.get('event_date_start') or fixture.get('date'),
                     'status': status,
-                    'status_detail': fixture.get('status', ''),
-                    'venue_name': fixture.get('venue', ''),
+                    'status_detail': fixture.get('event_status', ''),
+                    'venue_name': fixture.get('event_stadium', fixture.get('venue', '')),
                     'metadata': fixture,
                 }
             )

@@ -5,9 +5,10 @@ from .base import BaseAPIService
 class BallDontLieService(BaseAPIService):
     """Service for BallDontLie API (NBA, NFL, MLB, NHL)"""
 
-    # Correct format: /{sport}/v1/...
+    # BUG FIX: NBA uses /v1/ not /nba/v1/
+    # NFL/MLB/NHL use their sport prefix. Only NBA is at the root /v1/.
     BASE_URLS = {
-        'nba': 'https://api.balldontlie.io/nba/v1',
+        'nba': 'https://api.balldontlie.io/v1',       # was wrong: /nba/v1
         'nfl': 'https://api.balldontlie.io/nfl/v1',
         'mlb': 'https://api.balldontlie.io/mlb/v1',
         'nhl': 'https://api.balldontlie.io/nhl/v1',
@@ -20,26 +21,17 @@ class BallDontLieService(BaseAPIService):
         return {'Authorization': self.api_key}
 
     def get_live_games(self, sport: str):
-        """
-        Get live games for a sport.
-        NBA uses /box_scores/live for real-time box scores.
-        NFL/MLB/NHL use /games/live.
-        """
         if sport not in self.BASE_URLS:
             return {'success': False, 'error': f'Sport {sport} not supported'}
 
         if sport == 'nba':
             url = f"{self.BASE_URLS[sport]}/box_scores/live"
-        elif sport == 'nfl':
-            # NFL might not have live endpoint, try regular games with live status
-            url = f"{self.BASE_URLS[sport]}/games"
         else:
-            url = f"{self.BASE_URLS[sport]}/games/live"
+            url = f"{self.BASE_URLS[sport]}/games"
 
         return self.fetch(url, headers=self._headers())
 
     def get_games_by_date(self, sport: str, date: str):
-        """Get games for a specific date (YYYY-MM-DD)"""
         if sport not in self.BASE_URLS:
             return {'success': False, 'error': f'Sport {sport} not supported'}
 
@@ -49,7 +41,6 @@ class BallDontLieService(BaseAPIService):
         return self.fetch(url, params=params, headers=self._headers())
 
     def get_teams(self, sport: str):
-        """Get all teams for a sport"""
         if sport not in self.BASE_URLS:
             return {'success': False, 'error': f'Sport {sport} not supported'}
 
@@ -58,7 +49,6 @@ class BallDontLieService(BaseAPIService):
         return self.fetch(url, headers=self._headers())
 
     def get_standings(self, sport: str, season: int = None):
-        """Get standings for a sport"""
         if sport not in self.BASE_URLS:
             return {'success': False, 'error': f'Sport {sport} not supported'}
 
@@ -70,7 +60,6 @@ class BallDontLieService(BaseAPIService):
         return self.fetch(url, params=params, headers=self._headers())
 
     def get_players(self, sport: str, team_id: int = None):
-        """Get players, optionally filtered by team"""
         if sport not in self.BASE_URLS:
             return {'success': False, 'error': f'Sport {sport} not supported'}
 
@@ -82,7 +71,6 @@ class BallDontLieService(BaseAPIService):
         return self.fetch(url, params=params, headers=self._headers())
 
     def get_player_season_averages(self, sport: str, season: int, player_id: int):
-        """Get season averages for a player (NBA)"""
         if sport not in self.BASE_URLS:
             return {'success': False, 'error': f'Sport {sport} not supported'}
 

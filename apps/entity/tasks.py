@@ -1,250 +1,250 @@
 from celery import shared_task
+from celery.utils.log import get_task_logger
 from django.core.cache import cache
-from django.conf import settings
-from apps.entity.models import Entity, Team, Athlete, League, EntityStats
-from apps.sports_apis.services.balldontlie import balldontlie_service
+from datetime import datetime
+
+from apps.entity.models import Entity, Team, EntityStats
 from apps.sports_apis.services.api_sports import api_sports_service
-import logging
+from apps.sports_apis.services.balldontlie import balldontlie_service
 
-logger = logging.getLogger(__name__)
-
-
-@shared_task
-def update_nba_team_stats(team_id: int):
-    """
-    Update NBA team statistics
-    
-    Args:
-        team_id: Entity ID of the team
-    """
-    try:
-        entity = Entity.objects.get(id=team_id, type='team', sport='basketball')
-        team = entity.team_details
-    except (Entity.DoesNotExist, Team.DoesNotExist):
-        return f"Team {team_id} not found"
-    
-    logger.info(f"Updating stats for {entity.name}")
-    
-    # Get team stats from BallDontLie
-    # Note: BallDontLie doesn't have dedicated team stats endpoint
-    # We'll get standings which includes W-L records
-    result = balldontlie_service.get_standings('nba')
-    
-    if result['success']:
-        standings = result['data'].get('data', [])
-        
-        # Find this team in standings
-        for standing in standings:
-            if str(standing.get('team', {}).get('id')) == entity.external_id:
-                # Update team record
-                team.total_wins = standing.get('wins', 0)
-                team.total_losses = standing.get('losses', 0)
-                
-                total_games = team.total_wins + team.total_losses
-                if total_games > 0:
-                    team.win_percentage = (team.total_wins / total_games) * 100
-                
-                team.save(update_fields=['total_wins', 'total_losses', 'win_percentage'])
-                
-                # Save detailed stats
-                EntityStats.objects.update_or_create(
-                    entity=entity,
-                    season='2023-24',
-                    stat_type='season',
-                    defaults={
-                        'stats_data': {
-                            'wins': team.total_wins,
-                            'losses': team.total_losses,
-                            'win_pct': float(team.win_percentage),
-                            'conference': standing.get('conference', ''),
-                            'division': standing.get('division', ''),
-                            'rank': standing.get('rank', 0),
-                        }
-                    }
-                )
-                
-                logger.info(f"Updated stats for {entity.name}: {team.total_wins}-{team.total_losses}")
-                return f"Updated {entity.name}: {team.total_wins}-{team.total_losses}"
-        
-        return f"Team {entity.name} not found in standings"
-    
-    return f"Failed to fetch standings for {entity.name}"
+logger = get_task_logger(__name__)
 
 
-@shared_task
-def update_soccer_team_stats(team_id: int, league_id: int = 39, season: int = 2023):
-    """
-    Update soccer team statistics
-    
-    Args:
-        team_id: Entity ID of the team
-        league_id: API-Sports league ID (default 39 = Premier League)
-        season: Season year
-    """
-    try:
-        entity = Entity.objects.get(id=team_id, type='team', sport='soccer')
-        team = entity.team_details
-    except (Entity.DoesNotExist, Team.DoesNotExist):
-        return f"Team {team_id} not found"
-    
-    logger.info(f"Updating soccer stats for {entity.name}")
-    
-    # Get standings
-    result = api_sports_service.get_standings(league_id, season)
-    
-    if result['success']:
-        standings = result['data'].get('response', [])
-        
-        for standing_group in standings:
-            league_standings = standing_group.get('league', {}).get('standings', [[]])[0]
-            
-            for standing in league_standings:
-                team_data = standing.get('team', {})
-                
-                if str(team_data.get('id')) == entity.external_id:
-                    all_stats = standing.get('all', {})
-                    
-                    # Update team record
-                    team.total_wins = all_stats.get('win', 0)
-                    team.total_losses = all_stats.get('lose', 0)
-                    draws = all_stats.get('draw', 0)
-                    
-                    total_games = team.total_wins + team.total_losses + draws
-                    if total_games > 0:
-                        team.win_percentage = (team.total_wins / total_games) * 100
-                    
-                    team.save(update_fields=['total_wins', 'total_losses', 'win_percentage'])
-                    
-                    # Save detailed stats
-                    EntityStats.objects.update_or_create(
-                        entity=entity,
-                        season=str(season),
-                        stat_type='season',
-                        defaults={
-                            'stats_data': {
-                                'rank': standing.get('rank', 0),
-                                'points': standing.get('points', 0),
-                                'played': all_stats.get('played', 0),
-                                'win': team.total_wins,
-                                'draw': draws,
-                                'lose': team.total_losses,
-                                'goals_for': all_stats.get('goals', {}).get('for', 0),
-                                'goals_against': all_stats.get('goals', {}).get('against', 0),
-                                'goal_diff': standing.get('goalsDiff', 0),
-                                'form': standing.get('form', ''),
-                            }
-                        }
-                    )
-                    
-                    logger.info(f"Updated soccer stats for {entity.name}")
-                    return f"Updated {entity.name} stats"
-        
-        return f"Team {entity.name} not found in standings"
-    
-    return f"Failed to fetch soccer standings"
+def _current_season(sport: str) -> int:
+    now = datetime.now()
+    year, month = now.year, now.month
+    if sport == 'soccer':
+        return year if month >= 8 else year - 1
+    elif sport == 'basketball':
+        return year if month >= 10 else year - 1
+    return year
 
 
-@shared_task
-def update_nba_player_stats(athlete_id: int, season: str = '2023'):
-    """
-    Update NBA player statistics
-    
-    Args:
-        athlete_id: Entity ID of the athlete
-        season: Season year
-    """
-    try:
-        entity = Entity.objects.get(id=athlete_id, type='athlete', sport='basketball')
-        athlete = entity.athlete_details
-    except (Entity.DoesNotExist, Athlete.DoesNotExist):
-        return f"Athlete {athlete_id} not found"
-    
-    logger.info(f"Updating player stats for {entity.name}")
-    
-    # Note: BallDontLie player stats require player's API ID
-    # For now, we'll cache basic info
-    # In production, you'd call player stats endpoint with external_id
-    
-    EntityStats.objects.update_or_create(
-        entity=entity,
-        season=season,
-        stat_type='season',
-        defaults={
-            'stats_data': {
-                'player_id': entity.external_id,
-                'team': athlete.current_team.name if athlete.current_team else '',
-                'position': athlete.position,
-                # In production, add: points, rebounds, assists, etc.
-            }
-        }
-    )
-    
-    return f"Updated stats for {entity.name}"
-
-
-@shared_task
-def update_team_roster(team_id: int):
-    """
-    Update team roster from API
-    
-    Args:
-        team_id: Entity ID of the team
-    """
-    try:
-        entity = Entity.objects.get(id=team_id, type='team')
-    except Entity.DoesNotExist:
-        return f"Team {team_id} not found"
-    
-    logger.info(f"Updating roster for {entity.name}")
-    
-    # Basketball teams (BallDontLie doesn't have roster endpoint in free tier)
-    # Soccer teams - use API-Sports
-    if entity.sport == 'soccer':
-        # Get team details which includes squad
-        league_id = 39  # Premier League, adjust based on team's league
-        season = 2023
-        
-        result = api_sports_service.get_teams(league_id, season)
-        
-        if result['success']:
-            teams = result['data'].get('response', [])
-            
-            for team_data in teams:
-                if str(team_data['team']['id']) == entity.external_id:
-                    # In production, fetch squad data
-                    # For now, just log
-                    logger.info(f"Found team data for {entity.name}")
-                    return f"Roster update complete for {entity.name}"
-    
-    return f"Roster update not available for {entity.name}"
-
+# ─────────────────────────────────────────────────────────────────────────────
+# ORCHESTRATOR — fires once per hour, dispatches one task per LEAGUE not per team
+# ─────────────────────────────────────────────────────────────────────────────
 
 @shared_task
 def update_all_team_stats():
     """
-    Update stats for all active teams
+    Dynamically discovers every league that has teams in the DB,
+    then fires exactly ONE task per league.
+
+    That one task fetches standings once and updates ALL teams in
+    that league from the single response — no matter how many leagues
+    or teams exist, it never makes more than 1 API call per league.
+
+    Adding a new league never requires touching this file.
     """
-    # NBA teams
-    nba_teams = Entity.objects.filter(
-        type='team',
-        sport='basketball',
-        is_active=True,
-        has_api_data=True
+
+    # ── Soccer: find every unique api_sports league in the DB ──────────────
+    # Only teams that: came from api_sports, have a league linked, are active
+    soccer_league_ids = (
+        Entity.objects
+        .filter(
+            type='team',
+            sport='soccer',
+            is_active=True,
+            api_source='api_sports',
+            team_details__league__isnull=False,
+            team_details__league__api_source='api_sports',
+        )
+        .values_list('team_details__league__external_id', flat=True)
+        .distinct()
     )
-    
-    for team in nba_teams:
-        update_nba_team_stats.delay(team.id)
-    
-    # Soccer teams
-    soccer_teams = Entity.objects.filter(
-        type='team',
-        sport='soccer',
-        is_active=True,
-        has_api_data=True
+
+    soccer_count = 0
+    for league_external_id in soccer_league_ids:
+        if not league_external_id:
+            continue
+        try:
+            league_id = int(league_external_id)
+        except (ValueError, TypeError):
+            continue
+        update_soccer_league_stats.delay(league_id)
+        soccer_count += 1
+
+    # ── Basketball: one task for all NBA teams ─────────────────────────────
+    has_nba = Entity.objects.filter(
+        type='team', sport='basketball',
+        is_active=True, api_source='balldontlie'
+    ).exists()
+
+    if has_nba:
+        update_nba_standings.delay()
+
+    logger.info(
+        f"Dispatched stats update: {soccer_count} soccer leagues, "
+        f"{'1 NBA task' if has_nba else 'no NBA teams'}"
     )
-    
-    for team in soccer_teams:
-        update_soccer_team_stats.delay(team.id)
-    
-    total = nba_teams.count() + soccer_teams.count()
-    return f"Triggered stats update for {total} teams"
+    return f"Dispatched {soccer_count} soccer league tasks + {'NBA' if has_nba else 'no NBA'}"
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# SOCCER — one task per league
+# ─────────────────────────────────────────────────────────────────────────────
+
+@shared_task(bind=True, max_retries=3, default_retry_delay=300)
+def update_soccer_league_stats(self, league_id: int):
+    """
+    Fetch standings for ONE league, then update every team in that league
+    from the single API response.
+
+    1 API call per league regardless of how many teams are in it.
+    """
+    season = _current_season('soccer')
+    cache_key = f"standings:soccer:{league_id}:{season}"
+
+    # Check cache first — avoids re-hitting API if called multiple times
+    standings_response = cache.get(cache_key)
+
+    if standings_response is None:
+        result = api_sports_service.get_standings(league_id, season)
+
+        if not result['success']:
+            status_code = result.get('status_code')
+            if status_code == 429:
+                logger.warning(f"Rate limited on league {league_id}, retrying in 5 min")
+                raise self.retry(exc=Exception("Rate limited"), countdown=300)
+            logger.error(f"Failed standings for league {league_id}: {result.get('error')}")
+            return f"Failed: league {league_id}"
+
+        standings_response = result['data'].get('response', [])
+        cache.set(cache_key, standings_response, timeout=3600)
+
+    # Build a flat lookup: api_sports team_id -> standing data
+    team_standings = {}
+    for group in standings_response:
+        for standings_list in group.get('league', {}).get('standings', []):
+            for standing in standings_list:
+                tid = str(standing.get('team', {}).get('id', ''))
+                if tid:
+                    team_standings[tid] = standing
+
+    if not team_standings:
+        return f"No standings data for league {league_id} season {season}"
+
+    # Find all teams in this league in our DB
+    teams = Team.objects.filter(
+        entity__sport='soccer',
+        entity__is_active=True,
+        entity__api_source='api_sports',
+        league__external_id=str(league_id),
+        league__api_source='api_sports',
+    ).select_related('entity')
+
+    updated = 0
+    for team in teams:
+        standing = team_standings.get(team.entity.external_id)
+        if not standing:
+            continue
+
+        all_stats = standing.get('all', {})
+        wins = all_stats.get('win', 0)
+        losses = all_stats.get('lose', 0)
+        draws = all_stats.get('draw', 0)
+        played = all_stats.get('played', 0)
+
+        team.total_wins = wins
+        team.total_losses = losses
+        team.win_percentage = round((wins / played) * 100, 2) if played else 0
+        team.save(update_fields=['total_wins', 'total_losses', 'win_percentage'])
+
+        EntityStats.objects.update_or_create(
+            entity=team.entity,
+            season=str(season),
+            stat_type='season',
+            defaults={
+                'stats_data': {
+                    'rank': standing.get('rank', 0),
+                    'points': standing.get('points', 0),
+                    'played': played,
+                    'win': wins,
+                    'draw': draws,
+                    'lose': losses,
+                    'goals_for': all_stats.get('goals', {}).get('for', 0),
+                    'goals_against': all_stats.get('goals', {}).get('against', 0),
+                    'goal_diff': standing.get('goalsDiff', 0),
+                    'form': standing.get('form', ''),
+                }
+            }
+        )
+        updated += 1
+
+    logger.info(f"League {league_id}: updated {updated}/{len(teams)} teams")
+    return f"League {league_id}: updated {updated} teams"
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# NBA — one task for all 30 teams
+# ─────────────────────────────────────────────────────────────────────────────
+
+@shared_task(bind=True, max_retries=3, default_retry_delay=120)
+def update_nba_standings(self):
+    """
+    Fetch NBA standings once, update all NBA teams from the single response.
+    """
+    season = _current_season('basketball')
+    cache_key = f"standings:nba:{season}"
+
+    standings = cache.get(cache_key)
+
+    if standings is None:
+        result = balldontlie_service.get_standings('nba', season=season)
+        if not result['success']:
+            status_code = result.get('status_code')
+            if status_code == 429:
+                raise self.retry(exc=Exception("Rate limited"), countdown=120)
+            return f"Failed to fetch NBA standings: {result.get('error')}"
+
+        standings = result['data'].get('data', [])
+        cache.set(cache_key, standings, timeout=3600)
+
+    # Build lookup: balldontlie team_id -> standing
+    team_standings = {
+        str(s.get('team', {}).get('id', '')): s
+        for s in standings
+    }
+
+    teams = Team.objects.filter(
+        entity__sport='basketball',
+        entity__is_active=True,
+        entity__api_source='balldontlie',
+    ).select_related('entity')
+
+    season_label = f"{season}-{str(season + 1)[-2:]}"
+    updated = 0
+
+    for team in teams:
+        standing = team_standings.get(team.entity.external_id)
+        if not standing:
+            continue
+
+        wins = standing.get('wins', 0)
+        losses = standing.get('losses', 0)
+        total = wins + losses
+
+        team.total_wins = wins
+        team.total_losses = losses
+        team.win_percentage = round((wins / total) * 100, 2) if total else 0
+        team.save(update_fields=['total_wins', 'total_losses', 'win_percentage'])
+
+        EntityStats.objects.update_or_create(
+            entity=team.entity,
+            season=season_label,
+            stat_type='season',
+            defaults={
+                'stats_data': {
+                    'wins': wins,
+                    'losses': losses,
+                    'win_pct': float(team.win_percentage),
+                    'conference': standing.get('conference', ''),
+                    'division': standing.get('division', ''),
+                    'rank': standing.get('rank', 0),
+                }
+            }
+        )
+        updated += 1
+
+    logger.info(f"NBA: updated {updated} teams for season {season_label}")
+    return f"NBA: updated {updated} teams"

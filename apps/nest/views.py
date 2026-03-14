@@ -121,15 +121,15 @@ def remove_from_nest(request):
         entity.save(update_fields=['follower_count'])
     
     # Reorder positions
-    remaining_items = UserNest.objects.filter(user=request.user).order_by('position')
+    remaining_items = list(UserNest.objects.filter(user=request.user).order_by('position'))
     for idx, item in enumerate(remaining_items):
         item.position = idx
-        item.save(update_fields=['position'])
+    UserNest.objects.bulk_update(remaining_items, ['position'])
     
     return Response({
         'success': True,
         'message': f'{entity.name} removed from your nest',
-        'nest_count': remaining_items.count()
+        'nest_count': len(remaining_items)
     })
 
 

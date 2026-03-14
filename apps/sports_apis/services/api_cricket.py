@@ -5,7 +5,9 @@ from .base import BaseAPIService
 class APICricketService(BaseAPIService):
     """Service for API-Cricket (allsportsapi)"""
 
-    BASE_URL = 'https://apiv2.api-cricket.com/cricket'
+    # BUG FIX: Missing trailing slash — cricket API is query-param based
+    # and the URL must end with '/' for params to attach correctly.
+    BASE_URL = 'https://apiv2.api-cricket.com/cricket/'  # was: .../cricket (no slash)
 
     def __init__(self):
         super().__init__(settings.API_CRICKET_KEY)

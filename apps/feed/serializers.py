@@ -33,7 +33,6 @@ class FeedItemSerializer(serializers.ModelSerializer):
         return [e.name for e in obj.entities.all()]
 
 
-
 class FeedItemCompactSerializer(serializers.ModelSerializer):
     source_name = serializers.CharField(source='source.name')
     source_logo = serializers.URLField(source='source.favicon_url')
@@ -50,33 +49,32 @@ class FeedItemCompactSerializer(serializers.ModelSerializer):
     def get_entity_names(self, obj):
         return [e.name for e in obj.entities.all()]
 
+
 class UserSourceSerializer(serializers.ModelSerializer):
     """User source serializer"""
-    
     source = SourceSerializer()
-    entity = EntitySerializer()
-    
+
     class Meta:
         model = UserSource
-        fields = ['id', 'source', 'entity', 'is_active', 'added_at']
+        # BUG FIX: UserSource only has user, source, created_at.
+        # Removed 'entity', 'is_active', 'added_at' — none of these
+        # exist on the model, causing a crash on serialization.
+        fields = ['id', 'source', 'created_at']
 
 
 class AddSourceSerializer(serializers.Serializer):
     """Serializer for adding sources"""
-    
     entity_id = serializers.IntegerField()
     source_name = serializers.CharField(max_length=200)
     source_type = serializers.ChoiceField(choices=['rss', 'youtube', 'website'])
     url = serializers.URLField()
-    
-    def validate(self):
-        data = super().validate()
-        
-        # Validate entity exists
-        from entities.models import Entity
+
+    # BUG FIX: was `def validate(self)` — wrong signature, never called by DRF.
+    # Also fixed import path: was `from entities.models` (wrong), now uses correct app path.
+    def validate(self, data):
+        from apps.entity.models import Entity
         try:
             Entity.objects.get(id=data['entity_id'])
         except Entity.DoesNotExist:
-            raise serializers.ValidationError("Entity not found")
-        
+            raise serializers.ValidationError({'entity_id': 'Entity not found'})
         return data
