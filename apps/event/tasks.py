@@ -4,6 +4,7 @@ from django.conf import settings
 from django.utils import timezone
 from datetime import datetime, timedelta
 from apps.event.models import Event
+from apps.score.models import LiveScore
 from apps.entity.models import Entity
 from apps.sports_apis.services.balldontlie import balldontlie_service
 from apps.sports_apis.services.api_sports import api_sports_service

@@ -121,60 +121,56 @@ def update_soccer_live_scores():
         return f"Soccer update failed"
     
 
-    
 @shared_task
 def update_cricket_live_scores():
     """Update Cricket live scores - runs every 2 minutes"""
     logger.info("Updating Cricket live scores...")
- 
+
     result = api_cricket_service.get_live_scores()
- 
+
     if not result['success']:
         logger.error(f"Cricket update failed: {result.get('error')}")
         return "Cricket update failed"
- 
+
     data = result['data']
- 
-    # FIX: cricket API returns 'result', not 'response'
     matches = data.get('result', [])
- 
+
     if not matches:
         return "Cricket: 0 live matches right now"
- 
+
     saved = 0
     for match in matches:
-        # FIX: cricket uses flat string fields, not a teams array
         home_team = match.get('event_home_team', '')
         away_team = match.get('event_away_team', '')
         home_score_str = match.get('event_home_final_result', '')
         away_score_str = match.get('event_away_final_result', '')
         event_status = (match.get('event_status') or '').lower()
- 
+
         if 'live' in event_status or 'progress' in event_status:
             status = 'live'
-        elif 'finished' in event_status or 'stumps' in event_status or 'lunch' in event_status:
+        elif any(x in event_status for x in ['finished', 'stumps', 'lunch', 'cancelled', 'no result']):
             status = 'completed'
         else:
             status = 'upcoming'
- 
+
         external_id = str(match.get('event_key') or match.get('id') or '')
         if not external_id or not home_team:
             continue
- 
+
         start_time = match.get('event_date_start') or match.get('event_date_stop')
         if not start_time:
             continue
- 
+
         LiveScore.objects.update_or_create(
             sport='cricket',
             external_id=external_id,
             defaults={
                 'home_team': home_team,
                 'away_team': away_team,
-                'home_logo': match.get('event_home_team_logo', ''),
-                'away_logo': match.get('event_away_team_logo', ''),
-                # Cricket scores are strings like "232/7 (45 ov)" — store as None
-                # and put the string in status_detail
+                # FIX: cricket API sometimes returns null for logos — default to ''
+                # The DB column has NOT NULL constraint so we must never pass None
+                'home_logo': match.get('event_home_team_logo') or '',
+                'away_logo': match.get('event_away_team_logo') or '',
                 'home_score': None,
                 'away_score': None,
                 'status': status,
@@ -184,7 +180,6 @@ def update_cricket_live_scores():
             }
         )
         saved += 1
- 
+
     logger.info(f"Cricket: saved {saved} live matches")
     return f"Cricket: {saved} matches updated"
- 
