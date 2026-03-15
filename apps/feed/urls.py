@@ -15,6 +15,18 @@ urlpatterns = [
     path('source/hide/', views.hide_source, name='hide_source'),
     path('source/unhide/', views.unhide_source, name='unhide_source'),
     path('sources/hidden/', views.get_hidden_sources, name='hidden_sources'),
+
+
+    # Bookmarks
+    path('bookmark/', views.toggle_bookmark, name='toggle_bookmark'),
+    path('bookmarks/', views.get_bookmarks, name='get_bookmarks'),
+    path('bookmarks/<int:feed_item_id>/', views.remove_bookmark, name='remove_bookmark'),
+    
+    # Likes
+    path('like/', views.toggle_like, name='toggle_like'),
+    path('likes/', views.get_likes, name='get_likes'),
+    path('likes/<int:feed_item_id>/', views.remove_like, name='remove_like'),
+ 
     
     # Updates
     path('entity/<int:entity_id>/update/', views.trigger_feed_update, name='trigger_feed_update'),

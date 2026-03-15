@@ -5,10 +5,10 @@ from rest_framework import status
 from rest_framework.pagination import PageNumberPagination
 from django.shortcuts import get_object_or_404
 from django.db.models import Q
-from apps.feed.models import FeedItem, Source, UserSource, HiddenSource
+from apps.feed.models import FeedItem, Source, UserSource, HiddenSource, Bookmark, Like
 from apps.feed.serializers import (
     FeedItemSerializer, FeedItemCompactSerializer,
-    SourceSerializer, UserSourceSerializer, AddSourceSerializer
+    SourceSerializer, UserSourceSerializer, AddSourceSerializer, BookmarkSerializer, LikeSerializer
 )
 from apps.nest.models import UserNest
 from apps.entity.models import Entity
@@ -66,7 +66,7 @@ def get_nest_feed(request):
     paginator = FeedPagination()
     paginated_feed = paginator.paginate_queryset(feed, request)
     
-    serializer = FeedItemCompactSerializer(paginated_feed, many=True)
+    serializer = FeedItemCompactSerializer(paginated_feed, many=True, context={'request': request})
     
     return paginator.get_paginated_response(serializer.data)
 
@@ -97,7 +97,7 @@ def get_entity_feed(request, entity_id):
     paginator = FeedPagination()
     paginated_feed = paginator.paginate_queryset(feed, request)
     
-    serializer = FeedItemCompactSerializer(paginated_feed, many=True)
+    serializer = FeedItemCompactSerializer(paginated_feed, many=True, context={'request': request})
     
     return paginator.get_paginated_response(serializer.data)
 
@@ -244,7 +244,7 @@ def get_breaking_news(request):
         is_breaking=True
     ).select_related('source').prefetch_related('entities').order_by('-published_at')[:50]
     
-    serializer = FeedItemCompactSerializer(feed, many=True)
+    serializer = FeedItemCompactSerializer(feed, many=True, context={'request': request})
     
     return Response({
         'count': len(feed),
@@ -263,9 +263,168 @@ def get_trending_feed(request):
         is_trending=True
     ).select_related('source').prefetch_related('entities').order_by('-views', '-published_at')[:50]
     
-    serializer = FeedItemCompactSerializer(feed, many=True)
+    serializer = FeedItemCompactSerializer(feed, many=True, context={'request': request})
     
     return Response({
         'count': len(feed),
         'items': serializer.data
     })
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def toggle_bookmark(request):
+    """
+    Bookmark or un-bookmark a feed item (toggle).
+    POST /api/feed/bookmark/
+    Body: {"feed_item_id": 123}
+ 
+    Returns:
+      {"bookmarked": true}  — item was just bookmarked
+      {"bookmarked": false} — bookmark was removed
+    """
+    feed_item_id = request.data.get('feed_item_id')
+ 
+    if not feed_item_id:
+        return Response(
+            {'error': 'feed_item_id is required'},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+ 
+    feed_item = get_object_or_404(FeedItem, id=feed_item_id)
+ 
+    bookmark = Bookmark.objects.filter(user=request.user, feed_item=feed_item).first()
+ 
+    if bookmark:
+        bookmark.delete()
+        return Response({'bookmarked': False}, status=status.HTTP_200_OK)
+    else:
+        Bookmark.objects.create(user=request.user, feed_item=feed_item)
+        return Response({'bookmarked': True}, status=status.HTTP_201_CREATED)
+ 
+ 
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def get_bookmarks(request):
+    """
+    Get all bookmarked feed items for the current user.
+    GET /api/feed/bookmarks/
+ 
+    Supports pagination: ?page=1&limit=20
+    """
+    bookmarks = (
+        Bookmark.objects
+        .filter(user=request.user)
+        .select_related('feed_item', 'feed_item__source')
+        .prefetch_related('feed_item__entities')
+    )
+ 
+    paginator = FeedPagination()
+    paginated = paginator.paginate_queryset(bookmarks, request)
+    serializer = BookmarkSerializer(paginated, many=True, context={'request': request})
+    return paginator.get_paginated_response(serializer.data)
+ 
+ 
+@api_view(['DELETE'])
+@permission_classes([IsAuthenticated])
+def remove_bookmark(request, feed_item_id):
+    """
+    Remove a specific bookmark.
+    DELETE /api/feed/bookmarks/{feed_item_id}/
+    """
+    deleted, _ = Bookmark.objects.filter(
+        user=request.user,
+        feed_item_id=feed_item_id,
+    ).delete()
+ 
+    if deleted:
+        return Response({'success': True}, status=status.HTTP_200_OK)
+    return Response(
+        {'error': 'Bookmark not found'},
+        status=status.HTTP_404_NOT_FOUND
+    )
+ 
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def toggle_like(request):
+    """
+    Like or unlike a feed item (toggle).
+    POST /api/feed/like/
+    Body: {"feed_item_id": 123}
+ 
+    Returns:
+      {"liked": true,  "like_count": 42}
+      {"liked": false, "like_count": 41}
+    """
+    feed_item_id = request.data.get('feed_item_id')
+ 
+    if not feed_item_id:
+        return Response(
+            {'error': 'feed_item_id is required'},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+ 
+    feed_item = get_object_or_404(FeedItem, id=feed_item_id)
+    like = Like.objects.filter(user=request.user, feed_item=feed_item).first()
+ 
+    if like:
+        like.delete()
+        # Decrement view count used as like proxy, or track separately
+        feed_item.views = max(0, feed_item.views - 1)
+        feed_item.save(update_fields=['views'])
+        liked = False
+    else:
+        Like.objects.create(user=request.user, feed_item=feed_item)
+        feed_item.views += 1
+        feed_item.save(update_fields=['views'])
+        liked = True
+ 
+    like_count = Like.objects.filter(feed_item=feed_item).count()
+ 
+    return Response(
+        {'liked': liked, 'like_count': like_count},
+        status=status.HTTP_201_CREATED if liked else status.HTTP_200_OK,
+    )
+
+
+@api_view(['DELETE'])
+@permission_classes([IsAuthenticated])
+def remove_like(request, feed_item_id):
+    """
+    Remove a specific like.
+    DELETE /api/feed/likes/{feed_item_id}/
+    """
+    deleted, _ = Like.objects.filter(
+        user=request.user,
+        feed_item_id=feed_item_id,
+    ).delete()
+
+    if deleted:
+        return Response({'success': True}, status=status.HTTP_200_OK)
+    return Response(
+        {'error': 'Like not found'},
+        status=status.HTTP_404_NOT_FOUND
+    )
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def get_likes(request):
+    """
+    Get all liked feed items for the current user.
+    GET /api/feed/likes/
+    """
+    likes = (
+        Like.objects
+        .filter(user=request.user)
+        .select_related('feed_item', 'feed_item__source')
+        .prefetch_related('feed_item__entities')
+    )
+ 
+    paginator = FeedPagination()
+    paginated = paginator.paginate_queryset(likes, request)
+    serializer = LikeSerializer(paginated, many=True, context={'request': request})
+    return paginator.get_paginated_response(serializer.data)
+ 
+ 

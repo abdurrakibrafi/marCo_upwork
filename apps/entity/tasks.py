@@ -2,7 +2,8 @@ from celery import shared_task
 from celery.utils.log import get_task_logger
 from django.core.cache import cache
 from datetime import datetime
-
+import requests as req
+from django.conf import settings
 from apps.entity.models import Entity, Team, EntityStats
 from apps.sports_apis.services.api_sports import api_sports_service
 from apps.sports_apis.services.balldontlie import balldontlie_service

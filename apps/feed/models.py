@@ -122,3 +122,49 @@ class HiddenSource(models.Model):
 
     class Meta:
         unique_together = ('user', 'source')
+
+
+class Bookmark(models.Model):
+    """User has saved a feed item to read later"""
+ 
+    user = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name='bookmarks',
+    )
+    feed_item = models.ForeignKey(
+        FeedItem,
+        on_delete=models.CASCADE,
+        related_name='bookmarked_by',
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+ 
+    class Meta:
+        unique_together = ('user', 'feed_item')
+        ordering = ['-created_at']
+ 
+    def __str__(self):
+        return f"{self.user.email} bookmarked: {self.feed_item.title[:60]}"
+ 
+
+class Like(models.Model):
+    """User liked a feed item"""
+ 
+    user = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name='likes',
+    )
+    feed_item = models.ForeignKey(
+        FeedItem,
+        on_delete=models.CASCADE,
+        related_name='liked_by',
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+ 
+    class Meta:
+        unique_together = ('user', 'feed_item')
+        ordering = ['-created_at']
+ 
+    def __str__(self):
+        return f"{self.user.email} liked: {self.feed_item.title[:60]}"

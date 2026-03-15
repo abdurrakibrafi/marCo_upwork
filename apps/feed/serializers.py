@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import FeedItem, Source, UserSource, HiddenSource
+from .models import FeedItem, Source, UserSource, HiddenSource, Bookmark, Like
 from apps.entity.serializers import EntitySerializer
 
 
@@ -37,17 +37,31 @@ class FeedItemCompactSerializer(serializers.ModelSerializer):
     source_name = serializers.CharField(source='source.name')
     source_logo = serializers.URLField(source='source.favicon_url')
     entity_names = serializers.SerializerMethodField()
+    is_bookmarked = serializers.SerializerMethodField()
+    is_liked = serializers.SerializerMethodField()
 
     class Meta:
         model = FeedItem
         fields = [
             'id', 'source_name', 'source_logo', 'entity_names',
             'title', 'summary', 'thumbnail_url', 'url',
-            'published_at', 'is_breaking', 'is_trending', 'views'
+            'published_at', 'is_breaking', 'is_trending', 'views', 'is_bookmarked', 'is_liked'
         ]
 
     def get_entity_names(self, obj):
         return [e.name for e in obj.entities.all()]
+
+    def get_is_bookmarked(self, obj):
+        request = self.context.get('request')
+        if request and request.user.is_authenticated:
+            return Bookmark.objects.filter(user=request.user, feed_item=obj).exists()
+        return False
+
+    def get_is_liked(self, obj):
+        request = self.context.get('request')
+        if request and request.user.is_authenticated:
+            return Like.objects.filter(user=request.user, feed_item=obj).exists()
+        return False
 
 
 class UserSourceSerializer(serializers.ModelSerializer):
@@ -78,3 +92,23 @@ class AddSourceSerializer(serializers.Serializer):
         except Entity.DoesNotExist:
             raise serializers.ValidationError({'entity_id': 'Entity not found'})
         return data
+    
+
+from apps.feed.models import Bookmark, Like
+ 
+class BookmarkSerializer(serializers.ModelSerializer):
+    feed_item = FeedItemCompactSerializer(read_only=True)
+ 
+    class Meta:
+        model = Bookmark
+        fields = ['id', 'feed_item', 'created_at']
+ 
+
+
+class LikeSerializer(serializers.ModelSerializer):
+    feed_item = FeedItemCompactSerializer(read_only=True)
+ 
+    class Meta:
+        model = Like
+        fields = ['id', 'feed_item', 'created_at']
+ 
