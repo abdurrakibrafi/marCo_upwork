@@ -244,3 +244,34 @@ def get_events_by_date(request, date):
         'total_count': events.count(),
         'events_by_sport': grouped,
     })
+ 
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def trigger_event_detail_fetch(request, event_id):
+    """
+    Manually trigger stats + lineups + player stats fetch for an event.
+    POST /api/events/{event_id}/fetch-details/
+ 
+    Use this in Postman to populate a completed event for testing.
+    Example: find a completed soccer event id in your DB, then call this.
+    """
+    from apps.event.tasks import fetch_event_details
+    from apps.event.models import Event
+ 
+    event = get_object_or_404(Event, id=event_id)
+ 
+    if event.api_source != 'api_sports':
+        return Response(
+            {'error': f'Only api_sports events supported. This event is from {event.api_source}'},
+            status=400,
+        )
+ 
+    fetch_event_details.delay(event.id)
+ 
+    return Response({
+        'success': True,
+        'message': f'Detail fetch triggered for event {event_id} ({event})',
+        'event_id': event_id,
+        'fixture_id': event.external_id,
+    })
+ 

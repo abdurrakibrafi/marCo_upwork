@@ -35,6 +35,12 @@ app.conf.beat_schedule = {
         'schedule': crontab(hour=6, minute=0),
     },
 
+     # ── Event detail population (every 5 min) ─────────────────────────────
+    'check-completed-events': {
+        'task': 'apps.event.tasks.check_completed_events',
+        'schedule': 300.0,  # every 5 minutes
+    },
+
     # ── RSS / news ─────────────────────────────────────────────────────────
     'poll-rss-sources': {
         'task': 'apps.feed.tasks.poll_all_active_sources',

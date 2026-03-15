@@ -12,4 +12,6 @@ urlpatterns = [
     path('events/live/', views.get_live_events, name='live_events'),
     path('events/upcoming/', views.get_upcoming_events, name='upcoming_events'),
     path('events/date/<str:date>/', views.get_events_by_date, name='events_by_date'),
+
+    path('fetch/events/<int:event_id>/details/', views.trigger_event_detail_fetch, name='fetch_event_details'),
 ]
