@@ -7,69 +7,65 @@ os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'config.settings')
 app = Celery('config')
 app.config_from_object('django.conf:settings', namespace='CELERY')
 app.autodiscover_tasks()
-# Ensure Celery explicitly discovers tasks in the sports_apis package
 app.autodiscover_tasks(['apps.sports_apis'])
 
-# Celery Beat Schedule
 app.conf.beat_schedule = {
-    # ===== LIVE SCORES (EVERY 2 MINUTES - REDUCED) =====
-    'update-live-scores-nba': {
+    # ── Live scores ────────────────────────────────────────────────────────
+    'live-scores-nba': {
         'task': 'apps.sports_apis.tasks.update_nba_live_scores',
-        'schedule': 1200.0,  # 2 minutes instead of 30 seconds
+        'schedule': 120.0,
     },
-    'update-live-scores-nfl': {
+    'live-scores-nfl': {
         'task': 'apps.sports_apis.tasks.update_nfl_live_scores',
-        'schedule': 1200.0,  # 2 minutes instead of 30 seconds
+        'schedule': 120.0,
     },
-    'update-live-scores-soccer': {
-        'task': 'apps.sports_apis.tasks.update_soccer_live_scores',
-        'schedule': 1200.0,  # 2 minutes instead of 30 seconds
-    },
-    'update-live-scores-cricket': {
-        'task': 'apps.sports_apis.tasks.update_cricket_live_scores',
-        'schedule': 1200.0,  # 2 minutes instead of 30 seconds
-    },
-    'update-fixtures-daily': {
-    'task': 'apps.event.tasks.update_all_fixtures',
-    'schedule': crontab(hour=6, minute=0),  # every day at 6am
-    },
-    'update-live-scores-soccer': {
+    # FIXED: was defined twice before — second definition silently killed first
+    'live-scores-soccer': {
         'task': 'apps.event.tasks.update_soccer_live_scores_only',
-        'schedule': 120.0,  # every 2 min during live games
+        'schedule': 120.0,
+    },
+    'live-scores-cricket': {
+        'task': 'apps.sports_apis.tasks.update_cricket_live_scores',
+        'schedule': 120.0,
     },
 
-    # ===== RSS POLLING (EVERY 5 MINUTES) =====
-    'poll-all-rss-sources': {
+    # ── Fixtures ───────────────────────────────────────────────────────────
+    'fixtures-daily': {
+        'task': 'apps.event.tasks.update_all_fixtures',
+        'schedule': crontab(hour=6, minute=0),
+    },
+
+    # ── RSS / news ─────────────────────────────────────────────────────────
+    'poll-rss-sources': {
         'task': 'apps.feed.tasks.poll_all_active_sources',
-        'schedule': 300.0,  # 5 minutes
+        'schedule': 300.0,
     },
-    'fetch-brave-news-all-nests': {
+    'brave-news-nests': {
         'task': 'apps.feed.tasks.fetch_brave_news_for_all_nest_entities',
-        'schedule': 1800.0,  # every 30 minutes
+        'schedule': 1800.0,
     },
-    'fetch-brave-news-trending': {
+    'brave-news-trending': {
         'task': 'apps.feed.tasks.fetch_brave_news_for_trending',
-        'schedule': 3600.0,  # every hour
+        'schedule': 3600.0,
     },
 
-    # ===== CLEANUP (DAILY) =====
-    'cleanup-old-feeds-daily-4am': {
+    # ── Cleanup / trending ─────────────────────────────────────────────────
+    'cleanup-feeds-4am': {
         'task': 'apps.feed.tasks.cleanup_old_feed_items',
         'schedule': crontab(hour=4, minute=0),
     },
-
-    # ===== TRENDING (HOURLY) =====
-    'mark-trending-items-hourly': {
+    'mark-trending-hourly': {
         'task': 'apps.feed.tasks.mark_trending_items',
         'schedule': crontab(minute=30),
     },
 
-    # ===== STATS UPDATES (HOURLY) =====
-    'update-all-team-stats-hourly': {
+    # ── Stats ──────────────────────────────────────────────────────────────
+    'team-stats-hourly': {
         'task': 'apps.entity.tasks.update_all_team_stats',
-        'schedule': crontab(minute=45),  # Every hour at :45
+        'schedule': crontab(minute=45),
     },
 }
+
 
 @app.task(bind=True)
 def debug_task(self):

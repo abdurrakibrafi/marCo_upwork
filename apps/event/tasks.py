@@ -225,68 +225,156 @@ def update_soccer_fixtures(date=None):
 
 
 @shared_task
+def update_cricket_live_scores():
+    """Update Cricket live scores - runs every 2 minutes"""
+    logger.info("Updating Cricket live scores...")
+ 
+    result = api_cricket_service.get_live_scores()
+ 
+    if not result['success']:
+        logger.error(f"Cricket update failed: {result.get('error')}")
+        return "Cricket update failed"
+ 
+    data = result['data']
+ 
+    # FIX: cricket API returns 'result', not 'response'
+    matches = data.get('result', [])
+ 
+    if not matches:
+        return "Cricket: 0 live matches right now"
+ 
+    saved = 0
+    for match in matches:
+        # FIX: cricket uses flat string fields, not a teams array
+        home_team = match.get('event_home_team', '')
+        away_team = match.get('event_away_team', '')
+        home_score_str = match.get('event_home_final_result', '')
+        away_score_str = match.get('event_away_final_result', '')
+        event_status = (match.get('event_status') or '').lower()
+ 
+        if 'live' in event_status or 'progress' in event_status:
+            status = 'live'
+        elif 'finished' in event_status or 'stumps' in event_status or 'lunch' in event_status:
+            status = 'completed'
+        else:
+            status = 'upcoming'
+ 
+        external_id = str(match.get('event_key') or match.get('id') or '')
+        if not external_id or not home_team:
+            continue
+ 
+        start_time = match.get('event_date_start') or match.get('event_date_stop')
+        if not start_time:
+            continue
+ 
+        LiveScore.objects.update_or_create(
+            sport='cricket',
+            external_id=external_id,
+            defaults={
+                'home_team': home_team,
+                'away_team': away_team,
+                'home_logo': match.get('event_home_team_logo', ''),
+                'away_logo': match.get('event_away_team_logo', ''),
+                # Cricket scores are strings like "232/7 (45 ov)" — store as None
+                # and put the string in status_detail
+                'home_score': None,
+                'away_score': None,
+                'status': status,
+                'status_detail': f"{home_score_str} | {away_score_str}",
+                'start_time': start_time,
+                'raw_data': match,
+            }
+        )
+        saved += 1
+ 
+    logger.info(f"Cricket: saved {saved} live matches")
+    return f"Cricket: {saved} matches updated"
+ 
+ 
+# ─────────────────────────────────────────────────────────────────────────────
+# PASTE into apps/event/tasks.py
+# Replace the existing update_cricket_fixtures function
+# ─────────────────────────────────────────────────────────────────────────────
+ 
+@shared_task
 def update_cricket_fixtures(date=None):
     """Update cricket fixtures"""
     if not date:
         date = timezone.now().date().isoformat()
-    
+ 
     logger.info(f"Updating cricket fixtures for {date}")
-    
+ 
     result = api_cricket_service.get_fixtures_by_date(date)
-    
-    if result['success']:
-        fixtures = result['data'].get('result', [])
-        
-        for fixture in fixtures:
-            teams = fixture.get('teams', [])
-            if len(teams) < 2:
-                continue
-            
-            home_team = _get_or_create_team_entity(
-                'api_cricket',
-                str(teams[0].get('id')),
-                teams[0].get('name'),
-                'cricket'
+ 
+    if not result['success']:
+        return "Cricket fixtures update failed"
+ 
+    # FIX: cricket uses 'result', not 'response'
+    fixtures = result['data'].get('result', [])
+ 
+    saved = 0
+    for fixture in fixtures:
+        # FIX: flat string fields, not a teams array
+        home_name = fixture.get('event_home_team', '')
+        away_name = fixture.get('event_away_team', '')
+        home_key  = str(fixture.get('home_team_key', ''))
+        away_key  = str(fixture.get('away_team_key', ''))
+ 
+        if not home_name or not away_name:
+            continue
+ 
+        home_team = _get_or_create_team_entity(
+            'api_cricket', home_key, home_name, 'cricket',
+            logo_url=fixture.get('event_home_team_logo', '')
+        )
+        away_team = _get_or_create_team_entity(
+            'api_cricket', away_key, away_name, 'cricket',
+            logo_url=fixture.get('event_away_team_logo', '')
+        )
+ 
+        # League
+        league_key  = str(fixture.get('league_key', ''))
+        league_name = fixture.get('league_name', '')
+        league = None
+        if league_key and league_name:
+            league = _get_or_create_league_entity(
+                'api_cricket', league_key, league_name, 'cricket'
             )
-            
-            away_team = _get_or_create_team_entity(
-                'api_cricket',
-                str(teams[1].get('id')),
-                teams[1].get('name'),
-                'cricket'
-            )
-            
-            status_str = fixture.get('event_status', '').lower() or fixture.get('status', '').lower()
-            if 'finished' in status_str or 'complete' in status_str:
-                status = 'completed'
-            elif 'live' in status_str or 'progress' in status_str:
-                status = 'live'
-            else:
-                status = 'upcoming'
-            
-            Event.objects.update_or_create(
-                api_source='api_cricket',
-                external_id=str(fixture.get('event_key', fixture.get('id', ''))),
-                defaults={
-                    'sport': 'cricket',
-                    'home_entity': home_team,
-                    'away_entity': away_team,
-                    'start_time': fixture.get('event_date_start') or fixture.get('date'),
-                    'status': status,
-                    'status_detail': fixture.get('event_status', ''),
-                    'venue_name': fixture.get('event_stadium', fixture.get('venue', '')),
-                    'metadata': fixture,
-                }
-            )
-        
-        cache_key = f'fixtures_cricket_{date}'
-        cache.set(cache_key, fixtures, timeout=3600)
-        
-        logger.info(f"Cricket: Updated {len(fixtures)} fixtures")
-        return f"Cricket: {len(fixtures)} fixtures updated"
-    
-    return "Cricket fixtures update failed"
-
+ 
+        event_status = (fixture.get('event_status') or '').lower()
+        if 'finished' in event_status or 'complete' in event_status:
+            status = 'completed'
+        elif 'live' in event_status or 'progress' in event_status:
+            status = 'live'
+        else:
+            status = 'upcoming'
+ 
+        external_id = str(fixture.get('event_key', ''))
+        start_time  = fixture.get('event_date_start') or fixture.get('event_date_stop')
+ 
+        if not external_id or not start_time:
+            continue
+ 
+        Event.objects.update_or_create(
+            api_source='api_cricket',
+            external_id=external_id,
+            defaults={
+                'sport': 'cricket',
+                'home_entity': home_team,
+                'away_entity': away_team,
+                'league': league,
+                'start_time': start_time,
+                'status': status,
+                'status_detail': fixture.get('event_status', ''),
+                'venue_name': fixture.get('event_stadium', ''),
+                'metadata': fixture,
+            }
+        )
+        saved += 1
+ 
+    logger.info(f"Cricket fixtures: saved {saved} for {date}")
+    return f"Cricket: {saved} fixtures updated"
+ 
 
 @shared_task
 def update_all_fixtures():
