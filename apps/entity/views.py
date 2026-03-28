@@ -17,6 +17,7 @@ from apps.entity.serializers import (
     AthleteDetailSerializer, LeagueDetailSerializer
 )
 from apps.entity.services import EntitySearchService
+from apps.core.utils.mixins import BaseResponseMixin
  
 HEADERS_SPORTS = {'x-apisports-key': settings.API_SPORTS_KEY}
 HEADERS_BDL    = {'Authorization': settings.BALLDONTLIE_KEY}
@@ -39,37 +40,64 @@ def _current_season(sport='soccer'):
 @api_view(['GET'])
 @permission_classes([AllowAny])
 def search_entities(request):
-    query = request.GET.get('q', '')
-    entity_type = request.GET.get('type')
-    sport = request.GET.get('sport')
-    country = request.GET.get('country')
- 
-    if not query:
-        return Response({'error': 'Query parameter "q" is required'}, status=400)
- 
-    results = EntitySearchService.search(query, entity_type, sport, country)
-    serializer = EntitySerializer(results, many=True, context={'request': request})
-    return Response({'query': query, 'count': len(results), 'results': serializer.data})
+    mixin = BaseResponseMixin()
+    try:
+        query = request.GET.get('q', '')
+        entity_type = request.GET.get('type')
+        sport = request.GET.get('sport')
+        country = request.GET.get('country')
+
+        if not query:
+            return mixin.error_response(
+                message='Query parameter "q" is required',
+                status_code=status.HTTP_400_BAD_REQUEST
+            )
+
+        results = EntitySearchService.search(query, entity_type, sport, country)
+        serializer = EntitySerializer(results, many=True, context={'request': request})
+        data = {'query': query, 'count': len(results), 'results': serializer.data}
+        return mixin.success_response(data=data)
+    except Exception as exc:
+        return mixin.handle_exception(exc)
  
  
 @api_view(['GET'])
 @permission_classes([AllowAny])
 def get_trending(request):
+    query   = request.GET.get('q', '').strip()
     country = request.GET.get('country')
+    sport   = request.GET.get('sport')
+    entity_type = request.GET.get('type')  # optional: filter by type
+
     base_qs = Entity.objects.filter(is_active=True)
+
     if country:
         base_qs = base_qs.filter(country__icontains=country)
- 
-    teams    = base_qs.filter(type='team').order_by('-follower_count')[:10]
-    athletes = base_qs.filter(type='athlete').order_by('-follower_count')[:10]
-    leagues  = base_qs.filter(type='league').order_by('-follower_count')[:10]
- 
+
+    if query:
+        # Search mode — filter by name, group by type
+        base_qs = base_qs.filter(name__icontains=query)
+
+        if sport:
+            base_qs = base_qs.filter(sport=sport)
+
+        if entity_type:
+            base_qs = base_qs.filter(type=entity_type)
+
+        teams    = base_qs.filter(type='team')[:10]
+        athletes = base_qs.filter(type='athlete')[:10]
+        leagues  = base_qs.filter(type='league')[:10]
+    else:
+        # Trending mode — order by follower_count
+        teams    = base_qs.filter(type='team').order_by('-follower_count')[:10]
+        athletes = base_qs.filter(type='athlete').order_by('-follower_count')[:10]
+        leagues  = base_qs.filter(type='league').order_by('-follower_count')[:10]
+
     return Response({
         'teams':    EntitySerializer(teams,    many=True, context={'request': request}).data,
         'athletes': EntitySerializer(athletes, many=True, context={'request': request}).data,
         'leagues':  EntitySerializer(leagues,  many=True, context={'request': request}).data,
     })
- 
  
 @api_view(['GET'])
 @permission_classes([AllowAny])

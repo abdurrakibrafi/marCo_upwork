@@ -384,7 +384,7 @@ class AccountRestoreView(BaseResponseMixin, APIView):
             message="Account restored successfully"
         )
 
-class ProfileUpdateView(generics.UpdateAPIView):
+class ProfileUpdateView(BaseResponseMixin, generics.UpdateAPIView):
     permission_classes = [permissions.IsAuthenticated]
     serializer_class = ProfileUpdateSerializer
 
@@ -403,16 +403,16 @@ class ProfileUpdateView(generics.UpdateAPIView):
 
         if email_changed:
             response_data["email_verification_pending"] = True
-            response_data["message"] = (
+            message = (
                 "Profile updated. Please verify your new email address with the code sent."
             )
         else:
-            response_data["message"] = "Profile updated successfully."
+            message = "Profile updated successfully."
 
-        return Response(response_data)
+        return self.success_response(data=response_data, message=message)
 
 
-class VerifyEmailChangeView(generics.GenericAPIView):
+class VerifyEmailChangeView(BaseResponseMixin, generics.GenericAPIView):
     permission_classes = [permissions.IsAuthenticated]
     serializer_class = VerifyEmailChangeSerializer
 
@@ -422,8 +422,8 @@ class VerifyEmailChangeView(generics.GenericAPIView):
         )
         serializer.is_valid(raise_exception=True)
         serializer.save()
-        return Response(
-            {"detail": "Email successfully updated."}, status=status.HTTP_200_OK
+        return self.success_response(
+            message="Email successfully updated."
         )
 
 

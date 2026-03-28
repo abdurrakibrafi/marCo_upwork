@@ -8,6 +8,7 @@ from django.db.models import Q
 from datetime import datetime, timedelta
 from apps.event.models import Event
 from apps.event.serializers import EventSerializer, EventDetailSerializer
+from apps.core.utils.mixins import BaseResponseMixin
 from apps.nest.models import UserNest
 
 
@@ -18,50 +19,61 @@ def get_nest_calendar(request):
     Get calendar events for user's nest entities
     GET /api/calendar/nest?start_date=2026-03-14&end_date=2026-03-21
     """
-    nest_entities = UserNest.objects.filter(
-        user=request.user
-    ).values_list('entity_id', flat=True)
-
-    if not nest_entities:
-        return Response({'message': 'No entities in your nest', 'events': []})
-
-    # Date range — default to current week
-    start_date_str = request.GET.get('start_date')
-    end_date_str = request.GET.get('end_date')
-
+    mixin = BaseResponseMixin()
     try:
-        start_date = datetime.fromisoformat(start_date_str).date() if start_date_str else timezone.now().date()
-        end_date = datetime.fromisoformat(end_date_str).date() if end_date_str else start_date + timedelta(days=7)
-    except ValueError:
-        return Response({'error': 'Invalid date format. Use YYYY-MM-DD'}, status=400)
+        nest_entities = UserNest.objects.filter(
+            user=request.user
+        ).values_list('entity_id', flat=True)
 
-    events = Event.objects.filter(
-        start_time__date__gte=start_date,
-        start_time__date__lte=end_date,
-    ).filter(
-        Q(home_entity_id__in=nest_entities) |
-        Q(away_entity_id__in=nest_entities)
-    ).select_related(
-        'home_entity', 'away_entity', 'league'
-    ).order_by('start_time')
+        if not nest_entities:
+            return mixin.success_response(
+                data={'events': []},
+                message='No entities in your nest'
+            )
 
-    # Materialize queryset once to avoid a second count() query
-    events_list = list(events)
+        # Date range — default to current week
+        start_date_str = request.GET.get('start_date')
+        end_date_str = request.GET.get('end_date')
 
-    grouped = {}
-    for event in events_list:
-        date_key = event.start_time.date().isoformat()
-        if date_key not in grouped:
-            grouped[date_key] = []
-        grouped[date_key].append(EventSerializer(event).data)
+        try:
+            start_date = datetime.fromisoformat(start_date_str).date() if start_date_str else timezone.now().date()
+            end_date = datetime.fromisoformat(end_date_str).date() if end_date_str else start_date + timedelta(days=7)
+        except ValueError:
+            return mixin.error_response(
+                message='Invalid date format. Use YYYY-MM-DD',
+                status_code=status.HTTP_400_BAD_REQUEST
+            )
 
-    return Response({
-        'start_date': start_date.isoformat(),
-        'end_date': end_date.isoformat(),
-        'total_count': len(events_list),
-        'events_by_date': grouped,  # for calendar grid
-        'events': EventSerializer(events_list, many=True).data,  # flat list
-    })
+        events = Event.objects.filter(
+            start_time__date__gte=start_date,
+            start_time__date__lte=end_date,
+        ).filter(
+            Q(home_entity_id__in=nest_entities) |
+            Q(away_entity_id__in=nest_entities)
+        ).select_related(
+            'home_entity', 'away_entity', 'league'
+        ).order_by('start_time')
+
+        # Materialize queryset once to avoid a second count() query
+        events_list = list(events)
+
+        grouped = {}
+        for event in events_list:
+            date_key = event.start_time.date().isoformat()
+            if date_key not in grouped:
+                grouped[date_key] = []
+            grouped[date_key].append(EventSerializer(event).data)
+
+        data = {
+            'start_date': start_date.isoformat(),
+            'end_date': end_date.isoformat(),
+            'total_count': len(events_list),
+            'events_by_date': grouped,  # for calendar grid
+            'events': EventSerializer(events_list, many=True).data,  # flat list
+        }
+        return mixin.success_response(data=data)
+    except Exception as exc:
+        return mixin.handle_exception(exc)
 
 
 @api_view(['GET'])
@@ -73,46 +85,54 @@ def get_matches_of_day(request):
     
     Used for the 'Matches of the Day' card on the Nest Calendar screen.
     """
-    date_str = request.GET.get('date')
+    mixin = BaseResponseMixin()
     try:
-        query_date = datetime.fromisoformat(date_str).date() if date_str else timezone.now().date()
-    except ValueError:
-        return Response({'error': 'Invalid date format. Use YYYY-MM-DD'}, status=400)
+        date_str = request.GET.get('date')
+        try:
+            query_date = datetime.fromisoformat(date_str).date() if date_str else timezone.now().date()
+        except ValueError:
+            return mixin.error_response(
+                message='Invalid date format. Use YYYY-MM-DD',
+                status_code=status.HTTP_400_BAD_REQUEST
+            )
 
-    nest_entities = UserNest.objects.filter(
-        user=request.user
-    ).values_list('entity_id', flat=True)
+        nest_entities = UserNest.objects.filter(
+            user=request.user
+        ).values_list('entity_id', flat=True)
 
-    # Get all matches on this date involving user's nest entities
-    matches = Event.objects.filter(
-        start_time__date=query_date,
-    ).filter(
-        Q(home_entity_id__in=nest_entities) |
-        Q(away_entity_id__in=nest_entities)
-    ).select_related(
-        'home_entity', 'away_entity', 'league'
-    ).order_by('start_time')
-
-    # If no nest matches, show popular matches of the day
-    if not matches.exists():
+        # Get all matches on this date involving user's nest entities
         matches = Event.objects.filter(
             start_time__date=query_date,
+        ).filter(
+            Q(home_entity_id__in=nest_entities) |
+            Q(away_entity_id__in=nest_entities)
         ).select_related(
             'home_entity', 'away_entity', 'league'
-        ).order_by('start_time')[:10]
+        ).order_by('start_time')
 
-    # Separate live vs upcoming vs completed
-    live = [e for e in matches if e.status == 'live']
-    upcoming = [e for e in matches if e.status == 'upcoming']
-    completed = [e for e in matches if e.status == 'completed']
+        # If no nest matches, show popular matches of the day
+        if not matches.exists():
+            matches = Event.objects.filter(
+                start_time__date=query_date,
+            ).select_related(
+                'home_entity', 'away_entity', 'league'
+            ).order_by('start_time')[:10]
 
-    return Response({
-        'date': query_date.isoformat(),
-        'total_count': len(list(matches)),
-        'live': EventSerializer(live, many=True).data,
-        'upcoming': EventSerializer(upcoming, many=True).data,
-        'completed': EventSerializer(completed, many=True).data,
-    })
+        # Separate live vs upcoming vs completed
+        live = [e for e in matches if e.status == 'live']
+        upcoming = [e for e in matches if e.status == 'upcoming']
+        completed = [e for e in matches if e.status == 'completed']
+
+        data = {
+            'date': query_date.isoformat(),
+            'total_count': len(list(matches)),
+            'live': EventSerializer(live, many=True).data,
+            'upcoming': EventSerializer(upcoming, many=True).data,
+            'completed': EventSerializer(completed, many=True).data,
+        }
+        return mixin.success_response(data=data)
+    except Exception as exc:
+        return mixin.handle_exception(exc)
 
 
 @api_view(['GET'])
@@ -122,30 +142,38 @@ def get_entity_calendar(request, entity_id):
     Get calendar events for a specific entity
     GET /api/calendar/entity/{entity_id}?start_date=2026-03-14
     """
-    start_date_str = request.GET.get('start_date')
-    end_date_str = request.GET.get('end_date')
-
+    mixin = BaseResponseMixin()
     try:
-        start_date = datetime.fromisoformat(start_date_str).date() if start_date_str else timezone.now().date()
-        end_date = datetime.fromisoformat(end_date_str).date() if end_date_str else start_date + timedelta(days=30)
-    except ValueError:
-        return Response({'error': 'Invalid date format. Use YYYY-MM-DD'}, status=400)
+        start_date_str = request.GET.get('start_date')
+        end_date_str = request.GET.get('end_date')
 
-    events = Event.objects.filter(
-        start_time__date__gte=start_date,
-        start_time__date__lte=end_date,
-    ).filter(
-        Q(home_entity_id=entity_id) | Q(away_entity_id=entity_id)
-    ).select_related(
-        'home_entity', 'away_entity', 'league'
-    ).order_by('start_time')
+        try:
+            start_date = datetime.fromisoformat(start_date_str).date() if start_date_str else timezone.now().date()
+            end_date = datetime.fromisoformat(end_date_str).date() if end_date_str else start_date + timedelta(days=30)
+        except ValueError:
+            return mixin.error_response(
+                message='Invalid date format. Use YYYY-MM-DD',
+                status_code=status.HTTP_400_BAD_REQUEST
+            )
 
-    return Response({
-        'entity_id': entity_id,
-        'upcoming': EventSerializer(events.filter(status='upcoming'), many=True).data,
-        'live': EventSerializer(events.filter(status='live'), many=True).data,
-        'recent': EventSerializer(events.filter(status='completed').order_by('-start_time')[:10], many=True).data,
-    })
+        events = Event.objects.filter(
+            start_time__date__gte=start_date,
+            start_time__date__lte=end_date,
+        ).filter(
+            Q(home_entity_id=entity_id) | Q(away_entity_id=entity_id)
+        ).select_related(
+            'home_entity', 'away_entity', 'league'
+        ).order_by('start_time')
+
+        data = {
+            'entity_id': entity_id,
+            'upcoming': EventSerializer(events.filter(status='upcoming'), many=True).data,
+            'live': EventSerializer(events.filter(status='live'), many=True).data,
+            'recent': EventSerializer(events.filter(status='completed').order_by('-start_time')[:10], many=True).data,
+        }
+        return mixin.success_response(data=data)
+    except Exception as exc:
+        return mixin.handle_exception(exc)
 
 
 @api_view(['GET'])
@@ -154,16 +182,20 @@ def get_event_detail(request, event_id):
     """
     GET /api/events/{event_id}
     """
-    event = get_object_or_404(
-        Event.objects.select_related(
-            'home_entity', 'away_entity', 'league'
-        ).prefetch_related(
-            'timeline', 'lineups', 'statistics',
-            'player_stats', 'highlights'
-        ),
-        id=event_id
-    )
-    return Response(EventDetailSerializer(event).data)
+    mixin = BaseResponseMixin()
+    try:
+        event = get_object_or_404(
+            Event.objects.select_related(
+                'home_entity', 'away_entity', 'league'
+            ).prefetch_related(
+                'timeline', 'lineups', 'statistics',
+                'player_stats', 'highlights'
+            ),
+            id=event_id
+        )
+        return mixin.success_response(data=EventDetailSerializer(event).data)
+    except Exception as exc:
+        return mixin.handle_exception(exc)
 
 
 @api_view(['GET'])
@@ -172,18 +204,23 @@ def get_live_events(request):
     """
     GET /api/events/live?sport=soccer
     """
-    events = Event.objects.filter(
-        status='live'
-    ).select_related('home_entity', 'away_entity', 'league').order_by('-start_time')
+    mixin = BaseResponseMixin()
+    try:
+        events = Event.objects.filter(
+            status='live'
+        ).select_related('home_entity', 'away_entity', 'league').order_by('-start_time')
 
-    sport = request.GET.get('sport')
-    if sport:
-        events = events.filter(sport=sport)
+        sport = request.GET.get('sport')
+        if sport:
+            events = events.filter(sport=sport)
 
-    return Response({
-        'count': events.count(),
-        'events': EventSerializer(events, many=True).data,
-    })
+        data = {
+            'count': events.count(),
+            'events': EventSerializer(events, many=True).data,
+        }
+        return mixin.success_response(data=data)
+    except Exception as exc:
+        return mixin.handle_exception(exc)
 
 
 @api_view(['GET'])
@@ -192,24 +229,29 @@ def get_upcoming_events(request):
     """
     GET /api/events/upcoming?days=7&sport=soccer
     """
-    days = int(request.GET.get('days', 7))
-    sport = request.GET.get('sport')
-    end_date = timezone.now() + timedelta(days=days)
+    mixin = BaseResponseMixin()
+    try:
+        days = int(request.GET.get('days', 7))
+        sport = request.GET.get('sport')
+        end_date = timezone.now() + timedelta(days=days)
 
-    events = Event.objects.filter(
-        status='upcoming',
-        start_time__lte=end_date,
-        start_time__gte=timezone.now(),
-    ).select_related('home_entity', 'away_entity', 'league').order_by('start_time')
+        events = Event.objects.filter(
+            status='upcoming',
+            start_time__lte=end_date,
+            start_time__gte=timezone.now(),
+        ).select_related('home_entity', 'away_entity', 'league').order_by('start_time')
 
-    if sport:
-        events = events.filter(sport=sport)
+        if sport:
+            events = events.filter(sport=sport)
 
-    return Response({
-        'days': days,
-        'count': events.count(),
-        'events': EventSerializer(events, many=True).data,
-    })
+        data = {
+            'days': days,
+            'count': events.count(),
+            'events': EventSerializer(events, many=True).data,
+        }
+        return mixin.success_response(data=data)
+    except Exception as exc:
+        return mixin.handle_exception(exc)
 
 
 @api_view(['GET'])
@@ -218,32 +260,40 @@ def get_events_by_date(request, date):
     """
     GET /api/events/date/2026-03-14
     """
+    mixin = BaseResponseMixin()
     try:
-        query_date = datetime.fromisoformat(date).date()
-    except ValueError:
-        return Response({'error': 'Invalid date format. Use YYYY-MM-DD'}, status=400)
+        try:
+            query_date = datetime.fromisoformat(date).date()
+        except ValueError:
+            return mixin.error_response(
+                message='Invalid date format. Use YYYY-MM-DD',
+                status_code=status.HTTP_400_BAD_REQUEST
+            )
 
-    events = Event.objects.filter(
-        start_time__date=query_date
-    ).select_related('home_entity', 'away_entity', 'league').order_by('start_time')
+        events = Event.objects.filter(
+            start_time__date=query_date
+        ).select_related('home_entity', 'away_entity', 'league').order_by('start_time')
 
-    sport = request.GET.get('sport')
-    if sport:
-        events = events.filter(sport=sport)
+        sport = request.GET.get('sport')
+        if sport:
+            events = events.filter(sport=sport)
 
-    # Group by sport
-    grouped = {}
-    for event in events:
-        s = event.sport
-        if s not in grouped:
-            grouped[s] = []
-        grouped[s].append(EventSerializer(event).data)
+        # Group by sport
+        grouped = {}
+        for event in events:
+            s = event.sport
+            if s not in grouped:
+                grouped[s] = []
+            grouped[s].append(EventSerializer(event).data)
 
-    return Response({
-        'date': date,
-        'total_count': events.count(),
-        'events_by_sport': grouped,
-    })
+        data = {
+            'date': date,
+            'total_count': events.count(),
+            'events_by_sport': grouped,
+        }
+        return mixin.success_response(data=data)
+    except Exception as exc:
+        return mixin.handle_exception(exc)
  
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
@@ -255,23 +305,29 @@ def trigger_event_detail_fetch(request, event_id):
     Use this in Postman to populate a completed event for testing.
     Example: find a completed soccer event id in your DB, then call this.
     """
-    from apps.event.tasks import fetch_event_details
-    from apps.event.models import Event
- 
-    event = get_object_or_404(Event, id=event_id)
- 
-    if event.api_source != 'api_sports':
-        return Response(
-            {'error': f'Only api_sports events supported. This event is from {event.api_source}'},
-            status=400,
+    mixin = BaseResponseMixin()
+    try:
+        from apps.event.tasks import fetch_event_details
+        from apps.event.models import Event
+
+        event = get_object_or_404(Event, id=event_id)
+
+        if event.api_source != 'api_sports':
+            return mixin.error_response(
+                message=f'Only api_sports events supported. This event is from {event.api_source}',
+                status_code=status.HTTP_400_BAD_REQUEST
+            )
+
+        fetch_event_details.delay(event.id)
+
+        data = {
+            'event_id': event_id,
+            'fixture_id': event.external_id,
+        }
+        return mixin.success_response(
+            data=data,
+            message=f'Detail fetch triggered for event {event_id} ({event})'
         )
- 
-    fetch_event_details.delay(event.id)
- 
-    return Response({
-        'success': True,
-        'message': f'Detail fetch triggered for event {event_id} ({event})',
-        'event_id': event_id,
-        'fixture_id': event.external_id,
-    })
+    except Exception as exc:
+        return mixin.handle_exception(exc)
  

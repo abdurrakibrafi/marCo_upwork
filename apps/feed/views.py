@@ -12,6 +12,7 @@ from apps.feed.serializers import (
 )
 from apps.nest.models import UserNest
 from apps.entity.models import Entity
+from apps.core.utils.mixins import BaseResponseMixin
 
 
 class FeedPagination(PageNumberPagination):

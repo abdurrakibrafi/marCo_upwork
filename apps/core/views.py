@@ -4,12 +4,15 @@ from datetime import datetime, time
 import logging
 import requests as req
 
+from rest_framework import status
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAdminUser
 from rest_framework.response import Response
 from django.conf import settings
 
 from apps.entity.models import Entity, Team, Athlete, League
+from apps.core.utils.mixins import BaseResponseMixin
+
 
 
 logger = logging.getLogger(__name__)
@@ -83,58 +86,65 @@ def seed_all_leagues(request):
       season = 2025 (default: current season)
       current = true (only leagues active this season — recommended)
     """
-    season = int(request.GET.get('season', _get_current_season('soccer')))
-    current = request.GET.get('current', 'true')  # default: only active leagues
+    mixin = BaseResponseMixin()
+    try:
+        season = int(request.GET.get('season', _get_current_season('soccer')))
+        current = request.GET.get('current', 'true')  # default: only active leagues
 
-    params = {'season': season}
-    if current == 'true':
-        params['current'] = 'true'
+        params = {'season': season}
+        if current == 'true':
+            params['current'] = 'true'
 
-    resp = req.get(
-        'https://v3.football.api-sports.io/leagues',
-        headers=HEADERS_SPORTS,
-        params=params,
-        timeout=30,
-    )
-    if resp.status_code != 200:
-        return Response({'error': f'API-Sports returned {resp.status_code}'}, status=502)
-
-    all_leagues = resp.json().get('response', [])
-    created_count = 0
-    skipped_count = 0
-
-    for item in all_leagues:
-        lg = item.get('league', {})
-        country_data = item.get('country', {})
-
-        league_id = lg.get('id')
-        name = lg.get('name', '').strip()
-        if not league_id or not name:
-            continue
-
-        _, created = _get_or_create_entity(
-            name=name,
-            entity_type='league',
-            sport='soccer',
-            external_id=league_id,
-            api_source='api_sports',
-            logo_url=lg.get('logo', ''),
-            country=country_data.get('name', ''),
+        resp = req.get(
+            'https://v3.football.api-sports.io/leagues',
+            headers=HEADERS_SPORTS,
+            params=params,
+            timeout=30,
         )
-        if created:
-            created_count += 1
-        else:
-            skipped_count += 1
+        if resp.status_code != 200:
+            return mixin.error_response(
+                message=f'API-Sports returned {resp.status_code}',
+                status_code=status.HTTP_502_BAD_GATEWAY
+            )
 
-    return Response({
-        'success': True,
-        'total_from_api': len(all_leagues),
-        'newly_created': created_count,
-        'already_existed': skipped_count,
-        'total_leagues_in_db': Entity.objects.filter(
-            type='league', sport='soccer', api_source='api_sports'
-        ).count(),
-    })
+        all_leagues = resp.json().get('response', [])
+        created_count = 0
+        skipped_count = 0
+
+        for item in all_leagues:
+            lg = item.get('league', {})
+            country_data = item.get('country', {})
+
+            league_id = lg.get('id')
+            name = lg.get('name', '').strip()
+            if not league_id or not name:
+                continue
+
+            _, created = _get_or_create_entity(
+                name=name,
+                entity_type='league',
+                sport='soccer',
+                external_id=league_id,
+                api_source='api_sports',
+                logo_url=lg.get('logo', ''),
+                country=country_data.get('name', ''),
+            )
+            if created:
+                created_count += 1
+            else:
+                skipped_count += 1
+
+        data = {
+            'total_from_api': len(all_leagues),
+            'newly_created': created_count,
+            'already_existed': skipped_count,
+            'total_leagues_in_db': Entity.objects.filter(
+                type='league', sport='soccer', api_source='api_sports'
+            ).count(),
+        }
+        return mixin.success_response(data=data)
+    except Exception as exc:
+        return mixin.handle_exception(exc)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
