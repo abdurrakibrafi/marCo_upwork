@@ -5,28 +5,39 @@ from apps.sports_apis.services.balldontlie import balldontlie_service
 from apps.sports_apis.services.api_sports import api_sports_service
 from apps.sports_apis.services.api_cricket import api_cricket_service
 from apps.score.models import LiveScore
-from datetime import datetime
+from apps.score.serializers import LiveScoreSerializer
+from asgiref.sync import async_to_sync
+from channels.layers import get_channel_layer
 import logging
 
 logger = logging.getLogger(__name__)
 
+
+def _publish(live_score_obj):
+    """Push a single updated game to all connected WebSocket clients"""
+    channel_layer = get_channel_layer()
+    data = dict(LiveScoreSerializer(live_score_obj).data)
+    async_to_sync(channel_layer.group_send)(
+        'live_scores',
+        {
+            'type': 'score_update',
+            'game': data
+        }
+    )
+
+
 @shared_task
 def update_nba_live_scores():
-    """Update NBA live scores - runs every 30 seconds"""
     logger.info("Updating NBA live scores...")
-    
     result = balldontlie_service.get_live_games('nba')
-    
+
     if result['success']:
         data = result['data']
-        
-        # Cache the raw data
         cache.set('live_scores_nba', data, timeout=settings.CACHE_TTLS['live_scores'])
-        
-        # Save to database
+
         games = data.get('data', [])
         for game in games:
-            LiveScore.objects.update_or_create(
+            live_score, _ = LiveScore.objects.update_or_create(
                 sport='nba',
                 external_id=str(game.get('id')),
                 defaults={
@@ -40,27 +51,27 @@ def update_nba_live_scores():
                     'raw_data': game,
                 }
             )
-        
+            _publish(live_score)  # push to WebSocket
+
         logger.info(f"NBA: Updated {len(games)} live games")
         return f"NBA: {len(games)} games updated"
     else:
         logger.error(f"NBA update failed: {result.get('error')}")
         return f"NBA update failed: {result.get('error')}"
 
+
 @shared_task
 def update_nfl_live_scores():
-    """Update NFL live scores - runs every 30 seconds"""
     logger.info("Updating NFL live scores...")
-    
     result = balldontlie_service.get_live_games('nfl')
-    
+
     if result['success']:
         data = result['data']
         cache.set('live_scores_nfl', data, timeout=settings.CACHE_TTLS['live_scores'])
-        
+
         games = data.get('data', [])
         for game in games:
-            LiveScore.objects.update_or_create(
+            live_score, _ = LiveScore.objects.update_or_create(
                 sport='nfl',
                 external_id=str(game.get('id')),
                 defaults={
@@ -74,27 +85,27 @@ def update_nfl_live_scores():
                     'raw_data': game,
                 }
             )
-        
+            _publish(live_score)  # push to WebSocket
+
         logger.info(f"NFL: Updated {len(games)} live games")
         return f"NFL: {len(games)} games updated"
     else:
         logger.error(f"NFL update failed: {result.get('error')}")
         return f"NFL update failed"
 
+
 @shared_task
 def update_soccer_live_scores():
-    """Update Soccer live scores - runs every 30 seconds"""
     logger.info("Updating Soccer live scores...")
-    
     result = api_sports_service.get_live_fixtures()
-    
+
     if result['success']:
         data = result['data']
         cache.set('live_scores_soccer', data, timeout=settings.CACHE_TTLS['live_scores'])
-        
+
         fixtures = data.get('response', [])
         for fixture in fixtures:
-            LiveScore.objects.update_or_create(
+            live_score, _ = LiveScore.objects.update_or_create(
                 sport='soccer',
                 external_id=str(fixture.get('fixture', {}).get('id')),
                 defaults={
@@ -110,27 +121,27 @@ def update_soccer_live_scores():
                     'raw_data': fixture,
                 }
             )
-        
+            _publish(live_score)  # push to WebSocket
+
         logger.info(f"Soccer: Updated {len(fixtures)} live games")
         return f"Soccer: {len(fixtures)} games updated"
     else:
         logger.error(f"Soccer update failed: {result.get('error')}")
         return f"Soccer update failed"
 
+
 @shared_task
 def update_cricket_live_scores():
-    """Update Cricket live scores - runs every 2 minutes"""
     logger.info("Updating Cricket live scores...")
-    
     result = api_cricket_service.get_live_scores()
-    
+
     if result['success']:
         data = result['data']
         cache.set('live_scores_cricket', data, timeout=settings.CACHE_TTLS['live_scores'])
-        
+
         matches = data.get('response', [])
         for match in matches:
-            LiveScore.objects.update_or_create(
+            live_score, _ = LiveScore.objects.update_or_create(
                 sport='cricket',
                 external_id=str(match.get('id')),
                 defaults={
@@ -144,7 +155,8 @@ def update_cricket_live_scores():
                     'raw_data': match,
                 }
             )
-        
+            _publish(live_score)  # push to WebSocket
+
         logger.info(f"Cricket: Updated {len(matches)} live games")
         return f"Cricket: {len(matches)} games updated"
     else:
