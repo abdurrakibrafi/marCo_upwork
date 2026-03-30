@@ -1,6 +1,7 @@
 from django.shortcuts import render
 from django.http import JsonResponse, HttpResponse
-from datetime import datetime, time
+from datetime import datetime
+import time
 import logging
 import requests as req
 
@@ -481,7 +482,16 @@ def seed_nba_players(request):
             try:
                 athlete = entity.athlete_details
                 athlete.position = p.get('position', '')
-                athlete.jersey_number = p.get('jersey_number') or None
+                jersey = p.get('jersey_number')
+                if jersey:
+                    # Handle jersey ranges like '9-33', take first number
+                    jersey = str(jersey).split('-')[0]
+                    try:
+                        athlete.jersey_number = int(jersey)
+                    except (ValueError, TypeError):
+                        athlete.jersey_number = None
+                else:
+                    athlete.jersey_number = None
                 if team_entity:
                     athlete.current_team = team_entity
                 athlete.save()

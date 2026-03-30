@@ -39,7 +39,7 @@ class Entity(models.Model):
     
     # Metadata
     description = models.TextField(blank=True)
-    country = models.CharField(max_length=100, blank=True)
+    country = models.CharField(max_length=100, blank=True, null=True)
     founded_year = models.IntegerField(null=True, blank=True)
     
     # Stats

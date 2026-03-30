@@ -14,15 +14,16 @@ logger = logging.getLogger(__name__)
 
 
 def _publish(live_score_obj):
-    """Push a single updated game to all connected WebSocket clients"""
     channel_layer = get_channel_layer()
     data = dict(LiveScoreSerializer(live_score_obj).data)
+    payload = {'type': 'score_update', 'game': data}
+
+    # push to global group
+    async_to_sync(channel_layer.group_send)('live_scores', payload)
+
+    # push to sport-specific group
     async_to_sync(channel_layer.group_send)(
-        'live_scores',
-        {
-            'type': 'score_update',
-            'game': data
-        }
+        f"live_scores_{live_score_obj.sport}", payload
     )
 
 

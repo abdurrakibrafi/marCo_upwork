@@ -5,15 +5,35 @@ from .models import LiveScore
 from .serializers import LiveScoreSerializer
 
 class LiveScoreConsumer(AsyncWebsocketConsumer):
-    GROUP_NAME = 'live_scores'
+    GROUP_ALL = 'live_scores'
 
     async def connect(self):
-        await self.channel_layer.group_add(self.GROUP_NAME, self.channel_name)
+        # optional ?sport=soccer filter via query param
+        query_string = self.scope.get('query_string', b'').decode()
+        from urllib.parse import parse_qs
+        params = parse_qs(query_string)
+        self.sport_filter = params.get('sport', [None])[0]  # None = all sports
+
+        # join the global group always
+        await self.channel_layer.group_add(self.GROUP_ALL, self.channel_name)
+
+        # also join sport-specific group if filter provided
+        if self.sport_filter:
+            await self.channel_layer.group_add(
+                f'live_scores_{self.sport_filter}',
+                self.channel_name
+            )
+
         await self.accept()
-        await self.send_snapshot()  # send current games immediately on connect
+        await self.send_snapshot()
 
     async def disconnect(self, close_code):
-        await self.channel_layer.group_discard(self.GROUP_NAME, self.channel_name)
+        await self.channel_layer.group_discard(self.GROUP_ALL, self.channel_name)
+        if self.sport_filter:
+            await self.channel_layer.group_discard(
+                f'live_scores_{self.sport_filter}',
+                self.channel_name
+            )
 
     async def send_snapshot(self):
         games = await self.get_live_games()
@@ -24,7 +44,6 @@ class LiveScoreConsumer(AsyncWebsocketConsumer):
         }))
 
     async def score_update(self, event):
-        # called by Celery via group_send
         await self.send(text_data=json.dumps({
             'type': 'update',
             'game': event['game']
@@ -32,5 +51,7 @@ class LiveScoreConsumer(AsyncWebsocketConsumer):
 
     @database_sync_to_async
     def get_live_games(self):
-        qs = LiveScore.objects.filter(status='live').order_by('-updated_at')[:20]
-        return list(LiveScoreSerializer(qs, many=True).data)
+        qs = LiveScore.objects.filter(status='live').order_by('-updated_at')
+        if self.sport_filter:
+            qs = qs.filter(sport=self.sport_filter)
+        return list(LiveScoreSerializer(qs[:20], many=True).data)
