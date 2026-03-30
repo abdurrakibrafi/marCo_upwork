@@ -230,78 +230,11 @@ def update_soccer_fixtures(date=None):
     return "Soccer fixtures update failed"
 
 
-@shared_task
-def update_cricket_live_scores():
-    """Update Cricket live scores - runs every 2 minutes"""
-    logger.info("Updating Cricket live scores...")
- 
-    result = api_cricket_service.get_live_scores()
- 
-    if not result['success']:
-        logger.error(f"Cricket update failed: {result.get('error')}")
-        return "Cricket update failed"
- 
-    data = result['data']
- 
-    # FIX: cricket API returns 'result', not 'response'
-    matches = data.get('result', [])
- 
-    if not matches:
-        return "Cricket: 0 live matches right now"
- 
-    saved = 0
-    for match in matches:
-        # FIX: cricket uses flat string fields, not a teams array
-        home_team = match.get('event_home_team', '')
-        away_team = match.get('event_away_team', '')
-        home_score_str = match.get('event_home_final_result', '')
-        away_score_str = match.get('event_away_final_result', '')
-        event_status = (match.get('event_status') or '').lower()
- 
-        if 'live' in event_status or 'progress' in event_status:
-            status = 'live'
-        elif 'finished' in event_status or 'stumps' in event_status or 'lunch' in event_status:
-            status = 'completed'
-        else:
-            status = 'upcoming'
- 
-        external_id = str(match.get('event_key') or match.get('id') or '')
-        if not external_id or not home_team:
-            continue
- 
-        start_time = match.get('event_date_start') or match.get('event_date_stop')
-        if not start_time:
-            continue
- 
-        LiveScore.objects.update_or_create(
-            sport='cricket',
-            external_id=external_id,
-            defaults={
-                'home_team': home_team,
-                'away_team': away_team,
-                'home_logo': match.get('event_home_team_logo', ''),
-                'away_logo': match.get('event_away_team_logo', ''),
-                # Cricket scores are strings like "232/7 (45 ov)" — store as None
-                # and put the string in status_detail
-                'home_score': None,
-                'away_score': None,
-                'status': status,
-                'status_detail': f"{home_score_str} | {away_score_str}",
-                'start_time': start_time,
-                'raw_data': match,
-            }
-        )
-        saved += 1
- 
-    logger.info(f"Cricket: saved {saved} live matches")
-    return f"Cricket: {saved} matches updated"
- 
- 
 # ─────────────────────────────────────────────────────────────────────────────
-# PASTE into apps/event/tasks.py
-# Replace the existing update_cricket_fixtures function
+# CRICKET LIVE SCORES TASK REMOVED - now in apps/sports_apis/tasks.py
+# DO NOT add it back here
 # ─────────────────────────────────────────────────────────────────────────────
- 
+
 @shared_task
 def update_cricket_fixtures(date=None):
     """Update cricket fixtures"""
