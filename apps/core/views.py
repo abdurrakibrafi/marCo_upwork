@@ -1,6 +1,7 @@
 from django.shortcuts import render
 from django.http import JsonResponse, HttpResponse
 from datetime import datetime
+import json
 import time
 import logging
 import requests as req
@@ -409,121 +410,29 @@ def seed_nba_teams(request):
     return Response({'success': True, 'total_from_api': len(teams), 'newly_created': created_count})
 
 
+from apps.core.tasks import seed_nba_players_task
+
+
 @api_view(['POST'])
 @permission_classes([IsAdminUser])
 def seed_nba_players(request):
-    # Use 2026 season since it works!
-    CURRENT_SEASON = 2026
-    all_players = []
-    cursor = None
-    created_count = 0
-    page = 1
-    
-    # Get all teams for lookup
-    teams_dict = {
-        int(team.external_id): team 
-        for team in Entity.objects.filter(
-            sport='basketball', 
-            type='team', 
-            api_source='balldontlie'
-        )
-    }
-    
-    while True:
-        params = {
-            'per_page': 100,
-            'season': CURRENT_SEASON  # 2026 works!
-        }
-        if cursor:
-            params['cursor'] = cursor
-            
-        print(f"Fetching page {page} for season {CURRENT_SEASON}...")
-        resp = req.get(
-            'https://api.balldontlie.io/v1/players',
-            headers=HEADERS_BDL, 
-            params=params, 
-            timeout=15
-        )
-        
-        if resp.status_code != 200:
-            print(f"API error: {resp.status_code}")
-            break
-            
-        data = resp.json()
-        players = data.get('data', [])
-        
-        if not players:
-            break
-            
-        all_players.extend(players)
-        
-        # Process players
-        for p in players:
-            name = f"{p.get('first_name', '')} {p.get('last_name', '')}".strip()
-            if not name:
-                continue
-            
-            team_data = p.get('team')
-            team_entity = None
-            if team_data and team_data.get('id') in teams_dict:
-                team_entity = teams_dict[team_data['id']]
-            
-            entity, created = _get_or_create_entity(
-                name=name, 
-                entity_type='athlete', 
-                sport='basketball',
-                external_id=p['id'], 
-                api_source='balldontlie',
-                logo_url=f"https://cdn.nba.com/headshots/nba/latest/1040x760/{p['id']}.png",
-                country=p.get('country', ''),
-            )
-            
-            # Update athlete details
-            try:
-                athlete = entity.athlete_details
-                athlete.position = p.get('position', '')
-                jersey = p.get('jersey_number')
-                if jersey:
-                    # Handle jersey ranges like '9-33', take first number
-                    jersey = str(jersey).split('-')[0]
-                    try:
-                        athlete.jersey_number = int(jersey)
-                    except (ValueError, TypeError):
-                        athlete.jersey_number = None
-                else:
-                    athlete.jersey_number = None
-                if team_entity:
-                    athlete.current_team = team_entity
-                athlete.save()
-            except Athlete.DoesNotExist:
-                pass
-                
-            if created:
-                created_count += 1
-        
-        # Pagination
-        meta = data.get('meta', {})
-        next_cursor = meta.get('next_cursor')
-        
-        if not next_cursor:
-            break
-            
-        cursor = next_cursor
-        page += 1
-        
-        # Rate limit: 5 req/min = wait 12 seconds
-        if page % 5 == 0:  # Every 5 pages, wait a bit longer
-            print("Rate limit: waiting 15 seconds...")
-            time.sleep(15)
-        else:
-            time.sleep(12)
-    
+    """Kick off a background task to seed NBA players (non-blocking)."""
+    season = int(request.GET.get('season', 2026))
+    per_page = int(request.GET.get('per_page', 100))
+
+    task = seed_nba_players_task.apply_async(kwargs={
+        'season': season,
+        'per_page': per_page,
+        'cursor': None,
+        'page': 1,
+    })
+
     return Response({
         'success': True,
-        'season_used': CURRENT_SEASON,
-        'total_fetched': len(all_players),
-        'newly_created': created_count,
-        'pages_fetched': page
+        'message': 'NBA player seeding task queued (background).',
+        'task_id': task.id,
+        'season': season,
+        'per_page': per_page,
     })
 
 

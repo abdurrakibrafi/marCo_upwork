@@ -35,6 +35,7 @@ class LiveScore(models.Model):
     start_time = models.DateTimeField()
     
     raw_data = models.JSONField(default=dict)  # Store full API response
+    metadata = models.JSONField(default=dict, blank=True)  # Sport-specific metadata (cricket: toss, stadium, etc.)
     
     updated_at = models.DateTimeField(auto_now=True)
     created_at = models.DateTimeField(auto_now_add=True, null=True)
