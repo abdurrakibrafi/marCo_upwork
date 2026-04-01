@@ -81,6 +81,97 @@ def update_all_team_stats():
     return f"Dispatched {soccer_count} soccer league tasks + {'NBA' if has_nba else 'no NBA'}"
 
 
+@shared_task
+def seed_players_for_team(team_external_id: str, season: int = None):
+    import requests
+    from django.conf import settings
+    from apps.entity.models import Entity, Athlete
+    from datetime import datetime
+
+    # Auto-detect season if not passed
+    if season is None:
+        now = datetime.now()
+        season = now.year if now.month >= 8 else now.year - 1
+
+    headers = {'x-apisports-key': settings.API_SPORTS_KEY}
+
+    page = 1
+    created_total = 0
+
+    team_entity = Entity.objects.filter(
+        api_source='api_sports',
+        external_id=str(team_external_id)
+    ).first()
+
+    if not team_entity:
+        return f"Team {team_external_id} not found in DB"
+
+    while True:
+        resp = requests.get(
+            'https://v3.football.api-sports.io/players',
+            headers=headers,
+            params={'team': team_external_id, 'season': season, 'page': page},
+            timeout=10,
+        )
+
+        if resp.status_code != 200:
+            break
+
+        data = resp.json()
+        players = data.get('response', [])
+
+        if not players:
+            break
+
+        for item in players:
+            p = item.get('player', {})
+            player_id = str(p.get('id', ''))
+            if not player_id:
+                continue
+
+            player_entity, _ = Entity.objects.get_or_create(
+                api_source='api_sports',
+                external_id=player_id,
+                defaults={
+                    'type': 'athlete',
+                    'name': p.get('name', ''),
+                    'sport': team_entity.sport,
+                    'logo_url': p.get('photo', ''),
+                    'country': p.get('nationality', ''),
+                    'has_api_data': True,
+                }
+            )
+
+            # Parse height/weight safely
+            def parse_int(val, unit):
+                try:
+                    return int(val.replace(unit, '').strip())
+                except Exception:
+                    return None
+
+            _, was_created = Athlete.objects.get_or_create(
+                entity=player_entity,
+                defaults={
+                    'first_name':  p.get('firstname', ''),
+                    'last_name':   p.get('lastname', ''),
+                    'date_of_birth': p.get('birth', {}).get('date') or None,
+                    'nationality': p.get('nationality', ''),
+                    'height_cm':   parse_int(p.get('height', ''), 'cm'),
+                    'weight_kg':   parse_int(p.get('weight', ''), 'kg'),
+                    'current_team': team_entity,
+                }
+            )
+            if was_created:
+                created_total += 1
+
+        # Check if more pages
+        total_pages = data.get('paging', {}).get('total', 1)
+        if page >= total_pages:
+            break
+        page += 1
+
+    return f"Seeded {created_total} players for team {team_external_id} season {season}"
+
 # ─────────────────────────────────────────────────────────────────────────────
 # SOCCER — one task per league
 # ─────────────────────────────────────────────────────────────────────────────

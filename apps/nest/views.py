@@ -29,7 +29,7 @@ def get_user_nest(request):
     total_count = nest_items.count()
     paginated_items = nest_items[offset:offset + limit]
     
-    serializer = UserNestSerializer(paginated_items, many=True)
+    serializer = UserNestSerializer(paginated_items, many=True, context={'request': request})
     
     return Response({
         'total_count': total_count,
@@ -151,7 +151,7 @@ def get_nest_summary(request):
         'teams_count': len(teams),
         'athletes_count': len(athletes),
         'leagues_count': len(leagues),
-        'entities': UserNestSerializer(nest_items, many=True).data
+        'entities': UserNestSerializer(nest_items, many=True, context={'request': request}).data
     })
 
 

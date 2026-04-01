@@ -20,12 +20,13 @@ class SourceSerializer(serializers.ModelSerializer):
 class FeedItemSerializer(serializers.ModelSerializer):
     source = SourceSerializer(read_only=True)
     entity_names = serializers.SerializerMethodField()
+    entities = EntitySerializer(many=True, read_only=True)
 
     class Meta:
         model = FeedItem
         fields = [
             'id', 'title', 'url', 'summary', 'thumbnail_url',
-            'published_at', 'entity_names', 'is_trending', 'is_breaking',
+            'published_at', 'entity_names', 'entities', 'is_trending', 'is_breaking',
             'views', 'source',
         ]
 
@@ -37,13 +38,14 @@ class FeedItemCompactSerializer(serializers.ModelSerializer):
     source_name = serializers.CharField(source='source.name')
     source_logo = serializers.URLField(source='source.favicon_url')
     entity_names = serializers.SerializerMethodField()
+    entities = EntitySerializer(many=True, read_only=True)
     is_bookmarked = serializers.SerializerMethodField()
     is_liked = serializers.SerializerMethodField()
 
     class Meta:
         model = FeedItem
         fields = [
-            'id', 'source_name', 'source_logo', 'entity_names',
+            'id', 'source_name', 'source_logo', 'entity_names', 'entities',
             'title', 'summary', 'thumbnail_url', 'url',
             'published_at', 'is_breaking', 'is_trending', 'views', 'is_bookmarked', 'is_liked'
         ]

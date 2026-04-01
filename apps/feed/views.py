@@ -16,7 +16,7 @@ from apps.core.utils.mixins import BaseResponseMixin
 
 
 class FeedPagination(PageNumberPagination):
-    page_size = 10
+    page_size = 30
     page_size_query_param = 'limit'
     max_page_size = 50
 
@@ -26,7 +26,18 @@ class FeedPagination(PageNumberPagination):
 def get_nest_feed(request):
     """
     Get aggregated feed for user's nest
-    GET /api/feed/nest?page=1&sort=newest&filter=breaking
+    GET /api/feed/nest?page=1&limit=10&sort=newest&filter=breaking
+
+    filter values: breaking, trending
+    sort values: newest, oldest, popular, trending
+
+    Response:
+    {
+      "count": <total>,
+      "next": <url>,
+      "previous": <url>,
+      "results": [ ... ]
+    }
     """
     # Get user's nest entities
     nest_entities = UserNest.objects.filter(
@@ -36,6 +47,9 @@ def get_nest_feed(request):
     if not nest_entities:
         return Response({
             'message': 'No entities in your nest',
+            'count': 0,
+            'next': None,
+            'previous': None,
             'results': []
         })
     
@@ -52,16 +66,61 @@ def get_nest_feed(request):
     ).select_related('source').prefetch_related('entities')
     
     # Apply filters
-    filter_type = request.GET.get('filter')
-    if filter_type == 'breaking':
+    raw_filters = request.GET.getlist('filter') or []
+    # support comma-separated string too
+    if not raw_filters:
+        raw_filter_value = request.GET.get('filter')
+        if raw_filter_value:
+            raw_filters = [v.strip() for v in raw_filter_value.split(',') if v.strip()]
+
+    filters = [v.lower() for v in raw_filters]
+
+    # entity type filters (Teams/Athletes/Leagues)
+    entity_type_map = {
+        'teams': 'team',
+        'athletes': 'athlete',
+        'leagues': 'league',
+    }
+    selected_entity_types = [entity_type_map.get(f) for f in filters if f in entity_type_map]
+    if selected_entity_types:
+        feed = feed.filter(entities__type__in=selected_entity_types)
+
+    # content type filters (News/Videos/Articles)
+    if 'videos' in filters:
+        feed = feed.filter(source__domain__icontains='youtube')
+    if 'news' in filters or 'articles' in filters:
+        # Exclude explicit Video source domain as a proxy
+        feed = feed.exclude(source__domain__icontains='youtube')
+
+    # existing feed flags
+    if 'breaking' in filters:
         feed = feed.filter(is_breaking=True)
-    
+    if 'trending' in filters:
+        feed = feed.filter(is_trending=True)
+
+    source_id = request.GET.get('source_id')
+    if source_id:
+        feed = feed.filter(source_id=source_id)
+
+    q = request.GET.get('q', '').strip()
+    if q:
+        feed = feed.filter(
+            Q(title__icontains=q) | Q(summary__icontains=q)
+        )
+
     # Apply sorting
     sort = request.GET.get('sort', 'newest')
     if sort == 'newest':
         feed = feed.order_by('-published_at')
+    elif sort == 'oldest':
+        feed = feed.order_by('published_at')
+    elif sort == 'popular':
+        feed = feed.order_by('-views', '-published_at')
     elif sort == 'trending':
         feed = feed.filter(is_trending=True).order_by('-views', '-published_at')
+    else:
+        # fallback safe order
+        feed = feed.order_by('-published_at')
     
     # Paginate
     paginator = FeedPagination()

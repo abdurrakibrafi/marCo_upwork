@@ -308,17 +308,28 @@ def get_team_roster(request, team_id):
     if not athletes.exists():
         athletes = Athlete.objects.filter(current_team=team_entity).select_related('entity')
  
+    if not athletes.exists() and team_entity.api_source == 'api_sports':
+        from apps.entity.tasks import seed_players_for_team
+        season = _current_season(team_entity.sport)
+        seed_players_for_team.delay(team_entity.external_id, season)
+        return Response({
+            'team': EntitySerializer(team_entity, context={'request': request}).data,
+            'roster_count': 0,
+            'roster': [],
+            'message': 'Roster is being fetched, try again in 10 seconds'
+        })
+ 
     roster = []
     for a in athletes:
         roster.append({
-            'id':               a.entity.id,
-            'name':             f"{a.first_name} {a.last_name}",
-            'position':         a.position,
-            'jersey_number':    a.jersey_number,
-            'photo':            a.entity.logo_url,
-            'height_cm':        a.height_cm,
-            'weight_kg':        a.weight_kg,
-            'nationality':      a.nationality,
+            'id':            a.entity.id,
+            'name':          f"{a.first_name} {a.last_name}",
+            'position':      a.position,
+            'jersey_number': a.jersey_number,
+            'photo':         a.entity.logo_url,
+            'height_cm':     a.height_cm,
+            'weight_kg':     a.weight_kg,
+            'nationality':   a.nationality,
         })
  
     return Response({
@@ -326,7 +337,6 @@ def get_team_roster(request, team_id):
         'roster_count': len(roster),
         'roster':       roster,
     })
- 
  
 # ─────────────────────────────────────────────────────────────────────────────
 # TEAM STANDINGS  — DB first, live API fallback
