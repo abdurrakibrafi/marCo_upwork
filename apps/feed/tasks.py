@@ -349,3 +349,25 @@ def fetch_brave_news_for_trending():
     for entity in entities:
         fetch_brave_news_for_entity.delay(entity.id)
     return f"Triggered Brave news fetch for {entities.count()} trending entities"
+
+
+@shared_task
+def fetch_brave_news_for_all_entities():
+    """
+    Fetch fresh news for EVERY active entity in the database.
+    Runs daily to ensure all entities have up-to-date content,
+    regardless of whether any user has added them to their nest.
+    
+    Staggered 2 seconds apart to avoid rate limiting.
+    """
+    entities = Entity.objects.filter(is_active=True)
+    count = entities.count()
+    
+    for i, entity in enumerate(entities):
+        fetch_brave_news_for_entity.apply_async(
+            args=[entity.id],
+            countdown=i * 2  # stagger 2s apart
+        )
+    
+    logger.info(f"Triggered news fetch for {count} active entities")
+    return f"Triggered news fetch for {count} entities"

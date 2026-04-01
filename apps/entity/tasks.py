@@ -340,3 +340,48 @@ def update_nba_standings(self):
 
     logger.info(f"NBA: updated {updated} teams for season {season_label}")
     return f"NBA: updated {updated} teams"
+
+
+@shared_task
+def bootstrap_all_entities():
+    """
+    Comprehensive bootstrap: ensures EVERY active entity in DB has fresh data.
+    
+    - Fetches recent news from Brave News API for all entities
+    - Seeds roster for soccer teams without players
+    
+    Runs weekly (Sunday 3am) to catch any new entities added via admin.
+    Also used for one-time backfill on deployments.
+    """
+    from apps.feed.tasks import fetch_brave_news_for_entity
+    
+    entities = Entity.objects.filter(is_active=True)
+    total = entities.count()
+    
+    logger.info(f"Starting bootstrap of {total} entities")
+    
+    for i, entity in enumerate(entities):
+        # Fetch news for all entities, staggered 3s apart
+        fetch_brave_news_for_entity.apply_async(
+            args=[entity.id],
+            countdown=i * 3
+        )
+        
+        # Seed roster for soccer teams with no players yet
+        if entity.type == 'team' and entity.sport == 'soccer' and entity.api_source == 'api_sports':
+            from apps.entity.models import Athlete
+            has_players = Athlete.objects.filter(
+                entity__external_id=entity.external_id,
+                entity__api_source='api_sports'
+            ).exists()
+            
+            # Check if team has been linked to players (indirect way through current_team)
+            # If no direct athletes, try seeding
+            if not has_players and entity.external_id:
+                seed_players_for_team.apply_async(
+                    args=[entity.external_id],
+                    countdown=i * 3 + 1
+                )
+    
+    logger.info(f"Bootstrap dispatched {total} entities")
+    return f"Bootstrapped {total} entities — news + roster"

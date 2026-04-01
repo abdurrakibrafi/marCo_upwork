@@ -46,13 +46,20 @@ app.conf.beat_schedule = {
         'task': 'apps.feed.tasks.poll_all_active_sources',
         'schedule': 300.0,
     },
-    'brave-news-nests': {
-        'task': 'apps.feed.tasks.fetch_brave_news_for_all_nest_entities',
-        'schedule': 1800.0,
+    # Daily fresh news for ALL entities (not just nest + trending)
+    'brave-news-all-entities-morning': {
+        'task': 'apps.feed.tasks.fetch_brave_news_for_all_entities',
+        'schedule': crontab(hour=2, minute=0),  # daily 2am
     },
-    'brave-news-trending': {
-        'task': 'apps.feed.tasks.fetch_brave_news_for_trending',
-        'schedule': 3600.0,
+    'brave-news-all-entities-afternoon': {
+        'task': 'apps.feed.tasks.fetch_brave_news_for_all_entities',
+        'schedule': crontab(hour=14, minute=0),  # daily 2pm
+    },
+
+    # ── Bootstrap (weekly, Sunday 3am) ─────────────────────────────────────
+    'bootstrap-all-entities': {
+        'task': 'apps.entity.tasks.bootstrap_all_entities',
+        'schedule': crontab(hour=3, minute=0, day_of_week=0),
     },
 
     # ── Cleanup / trending ─────────────────────────────────────────────────
