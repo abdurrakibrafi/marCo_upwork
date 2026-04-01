@@ -13,6 +13,7 @@ urlpatterns = [
     path('team/<int:team_id>/stats/', views.get_team_stats, name='team_stats'),
     path('team/<int:team_id>/roster/', views.get_team_roster, name='team_roster'),
     path('team/<int:team_id>/standings/', views.get_team_standings, name='team_standings'),
+    path('team/<int:team_id>/fixtures/', views.get_team_fixtures, name='team_fixtures'),
     
     # Athlete data
     path('athlete/<int:athlete_id>/stats/', views.get_athlete_stats, name='athlete_stats'),

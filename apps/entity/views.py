@@ -1,5 +1,6 @@
 
 from django.shortcuts import render
+from django.db.models import Q
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated, AllowAny
 from rest_framework.response import Response
@@ -877,3 +878,26 @@ def list_entities(request):
     serializer = EntitySerializer(paginated, many=True, context={'request': request})
     return paginator.get_paginated_response(serializer.data)
  
+
+@api_view(['GET'])
+@permission_classes([AllowAny])
+def get_team_fixtures(request, team_id):
+    """
+    GET /api/entities/team/{team_id}/fixtures/
+    """
+    from apps.event.models import Event
+    from apps.event.serializers import EventSerializer as EvSerializer
+
+    team_entity = get_object_or_404(Entity, id=team_id, type='team')
+
+    events = Event.objects.filter(
+        Q(home_entity=team_entity) | Q(away_entity=team_entity)
+    ).select_related(
+        'home_entity', 'away_entity', 'league'
+    ).order_by('-start_time')[:50]
+
+    return Response({
+        'team': EntitySerializer(team_entity, context={'request': request}).data,
+        'fixtures_count': events.count(),
+        'fixtures': EvSerializer(events, many=True).data,
+    })
