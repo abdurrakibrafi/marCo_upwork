@@ -1,4 +1,5 @@
 from django.urls import path, include
+from rest_framework import views
 from rest_framework.routers import DefaultRouter
 from rest_framework_simplejwt.views import TokenRefreshView
 from .views import (
@@ -18,7 +19,8 @@ from .views import (
     VerifyEmailChangeView,
     SocialAuthView,
     UserProfileGenericView,
-    ParmanentAccountDeleteView
+    ParmanentAccountDeleteView,
+    get_user_profile_info
 )
 
 urlpatterns = [
@@ -67,5 +69,7 @@ urlpatterns = [
     ),
 
     path("social-auth/", SocialAuthView.as_view(), name="social-auth"),
+
+    path("profile-info/", get_user_profile_info, name="user-profile-info"),
 
 ]

@@ -1,6 +1,6 @@
 from rest_framework import generics, status, permissions
 from rest_framework.response import Response
-from rest_framework.decorators import action
+from rest_framework.decorators import action, api_view, permission_classes
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework.views import APIView
 from django.contrib.auth import authenticate, get_user_model
@@ -10,6 +10,9 @@ from allauth.socialaccount.providers.apple.views import AppleOAuth2Adapter
 from allauth.socialaccount.providers.oauth2.client import OAuth2Client
 from dj_rest_auth.registration.views import SocialLoginView
 from rest_framework.throttling import AnonRateThrottle, UserRateThrottle
+
+from apps.feed.models import Bookmark
+from apps.nest.models import UserNest
 from .serializers import (
     RegisterSerializer,
     VerifyEmailSerializer,
@@ -508,3 +511,18 @@ class UserProfileGenericView(BaseResponseMixin, RetrieveUpdateAPIView):
     
     def post(self, request, *args, **kwargs):
         return self.put(request, *args, **kwargs)
+    
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def get_user_profile_info(request):
+    user = request.user
+    profile = getattr(user, 'profile', None)
+
+    return Response({
+        'email': user.email,
+        'full_name': profile.full_name if profile else None,
+        'daily_streak': user.streak.current_streak if hasattr(user, 'streak') else 0,
+        'nest_count': UserNest.objects.filter(user=user).count(),
+        'saved_posts_count': Bookmark.objects.filter(user=user).count(),
+    })

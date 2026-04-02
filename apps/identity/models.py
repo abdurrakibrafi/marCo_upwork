@@ -164,3 +164,25 @@ def create_user_profile(sender, instance, created, **kwargs):
 @receiver(post_save, sender=settings.AUTH_USER_MODEL)
 def save_user_profile(sender, instance, **kwargs):
     instance.profile.save()
+
+
+class DailyStreak(models.Model):
+    user = models.OneToOneField(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='streak')
+    current_streak = models.IntegerField(default=0)
+    last_active_date = models.DateField(null=True, blank=True)
+
+    def update_streak(self):
+        today = timezone.now().date()
+        if self.last_active_date == today:
+            return
+        if self.last_active_date == today - timezone.timedelta(days=1):
+            self.current_streak += 1
+        else:
+            self.current_streak = 1
+        self.last_active_date = today
+        self.save()
+
+@receiver(post_save, sender=settings.AUTH_USER_MODEL)
+def create_user_streak(sender, instance, created, **kwargs):
+    if created:
+        DailyStreak.objects.create(user=instance)

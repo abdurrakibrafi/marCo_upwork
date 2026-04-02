@@ -146,8 +146,133 @@ def get_entity_by_slug(request, slug):
     else:
         serializer = EntitySerializer(entity, context={'request': request})
     return Response(serializer.data)
- 
- 
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# UNIVERSAL ENDPOINTS — frontend uses these for any entity type
+# ─────────────────────────────────────────────────────────────────────────────
+
+@api_view(['GET'])
+@permission_classes([AllowAny])
+def get_entity_stats(request, entity_id):
+    """
+    Universal stats — works for team, league, athlete.
+    GET /api/entities/{entity_id}/stats/
+
+    - team    → single team stats card (wins/losses/form/points)
+    - league  → list of all teams stats in that league
+    - athlete → player stats (goals/assists/appearances)
+    """
+    entity = get_object_or_404(Entity, id=entity_id)
+
+    if entity.type == 'team':
+        return get_team_stats(request._request, entity_id)
+
+    elif entity.type == 'league':
+        season = request.GET.get('season') or str(_current_season('soccer'))
+        return _get_standings_for_league(request, entity, season)
+
+    elif entity.type == 'athlete':
+        return get_athlete_stats(request._request, entity_id)
+
+    return Response({
+        'entity': EntitySerializer(entity, context={'request': request}).data,
+        'stats': {},
+        'message': 'No stats available for this entity type',
+    })
+
+
+@api_view(['GET'])
+@permission_classes([AllowAny])
+def get_entity_fixtures(request, entity_id):
+    """
+    Universal fixtures — works for team and league.
+    GET /api/entities/{entity_id}/fixtures/
+
+    - team   → all matches where this team is home or away
+    - league → all matches in this league
+    """
+    from apps.event.models import Event
+    from apps.event.serializers import EventSerializer as EvSerializer
+
+    entity = get_object_or_404(Entity, id=entity_id)
+
+    if entity.type == 'team':
+        events = Event.objects.filter(
+            Q(home_entity=entity) | Q(away_entity=entity)
+        ).select_related(
+            'home_entity', 'away_entity', 'league'
+        ).order_by('-start_time')[:50]
+
+    elif entity.type == 'league':
+        events = Event.objects.filter(
+            league__api_source=entity.api_source,
+            league__external_id=entity.external_id,
+        ).select_related(
+            'home_entity', 'away_entity', 'league'
+        ).order_by('-start_time')[:50]
+
+    else:
+        events = Event.objects.none()
+
+    return Response({
+        'entity':          EntitySerializer(entity, context={'request': request}).data,
+        'fixtures_count':  events.count(),
+        'fixtures':        EvSerializer(events, many=True).data,
+    })
+
+
+@api_view(['GET'])
+@permission_classes([AllowAny])
+def get_entity_roster(request, entity_id):
+    """
+    Universal roster — works for team and athlete.
+    GET /api/entities/{entity_id}/roster/
+
+    - team    → list of players in the team
+    - athlete → just that athlete's bio/details
+    """
+    entity = get_object_or_404(Entity, id=entity_id)
+
+    if entity.type == 'team':
+        return get_team_roster(request._request, entity_id)
+
+    elif entity.type == 'athlete':
+        return get_athlete_bio(request._request, entity_id)
+
+    return Response({
+        'entity':  EntitySerializer(entity, context={'request': request}).data,
+        'roster':  [],
+        'message': 'Roster only available for teams',
+    })
+
+
+@api_view(['GET'])
+@permission_classes([AllowAny])
+def get_entity_standings(request, entity_id):
+    """
+    Universal standings — works for team and league.
+    GET /api/entities/{entity_id}/standings/
+
+    - team   → full league table with this team highlighted
+    - league → full league table
+    """
+    entity = get_object_or_404(Entity, id=entity_id)
+    season = request.GET.get('season') or str(_current_season('soccer'))
+
+    if entity.type == 'team':
+        return get_team_standings(request._request, entity_id)
+
+    elif entity.type == 'league':
+        return _get_standings_for_league(request, entity, season)
+
+    return Response({
+        'entity':    EntitySerializer(entity, context={'request': request}).data,
+        'standings': [],
+        'message':   'Standings only available for teams and leagues',
+    })
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # TEAM STATS  — DB first, live API fallback
 # ─────────────────────────────────────────────────────────────────────────────

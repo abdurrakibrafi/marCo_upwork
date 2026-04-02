@@ -36,7 +36,7 @@ class FeedItemSerializer(serializers.ModelSerializer):
 
 class FeedItemCompactSerializer(serializers.ModelSerializer):
     source_name = serializers.CharField(source='source.name')
-    source_logo = serializers.URLField(source='source.favicon_url')
+    source_logo = serializers.SerializerMethodField()
     entity_names = serializers.SerializerMethodField()
     entities = EntitySerializer(many=True, read_only=True)
     is_bookmarked = serializers.SerializerMethodField()
@@ -52,6 +52,19 @@ class FeedItemCompactSerializer(serializers.ModelSerializer):
 
     def get_entity_names(self, obj):
         return [e.name for e in obj.entities.all()]
+
+    def get_source_logo(self, obj):
+        # Prefer source favicon
+        source_logo = getattr(obj.source, 'favicon_url', None)
+        if source_logo:
+            return source_logo
+
+        # Fallback to first entity logo
+        entity = obj.entities.first()
+        if entity and entity.logo_url:
+            return entity.logo_url
+
+        return ''
 
     def get_is_bookmarked(self, obj):
         request = self.context.get('request')

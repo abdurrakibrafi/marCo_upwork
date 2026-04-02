@@ -314,21 +314,22 @@ def update_cricket_fixtures(date=None):
     logger.info(f"Cricket fixtures: saved {saved} for {date}")
     return f"Cricket: {saved} fixtures updated"
  
-
 @shared_task
 def update_all_fixtures():
-    """Update fixtures for all sports"""
-    today = timezone.now().date().isoformat()
-    tomorrow = (timezone.now() + timedelta(days=1)).date().isoformat()
+    """Update fixtures for all sports — today + next 7 days"""
+    dates = [
+        (timezone.now().date() + timedelta(days=i)).isoformat()
+        for i in range(8)
+    ]
     
-    # Update today and tomorrow
-    for date in [today, tomorrow]:
+    for date in dates:
+        update_soccer_fixtures.delay(date)
         update_nba_fixtures.delay(date)
         update_nfl_fixtures.delay(date)
-        update_soccer_fixtures.delay(date)
         update_cricket_fixtures.delay(date)
     
-    return "All fixtures update triggered"
+    logger.info(f"update_all_fixtures: queued {len(dates)} days")
+    return f"Fixtures triggered for {dates[0]} to {dates[-1]}"
 
 
 # Helper functions

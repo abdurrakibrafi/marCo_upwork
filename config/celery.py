@@ -10,7 +10,7 @@ app.autodiscover_tasks()
 app.autodiscover_tasks(['apps.sports_apis'])
 
 app.conf.beat_schedule = {
-    # ── Live scores ────────────────────────────────────────────────────────
+    # ── Live scores (keep as is) ─────────────────────────────────────────
     'live-scores-nba': {
         'task': 'apps.sports_apis.tasks.update_nba_live_scores',
         'schedule': 120.0,
@@ -19,7 +19,6 @@ app.conf.beat_schedule = {
         'task': 'apps.sports_apis.tasks.update_nfl_live_scores',
         'schedule': 120.0,
     },
-    # FIXED: was defined twice before — second definition silently killed first
     'live-scores-soccer': {
         'task': 'apps.event.tasks.update_soccer_live_scores_only',
         'schedule': 120.0,
@@ -29,40 +28,43 @@ app.conf.beat_schedule = {
         'schedule': 120.0,
     },
 
-    # ── Fixtures ───────────────────────────────────────────────────────────
+    # ── Fixtures ─────────────────────────────────────────────────────────
     'fixtures-daily': {
         'task': 'apps.event.tasks.update_all_fixtures',
         'schedule': crontab(hour=6, minute=0),
     },
 
-     # ── Event detail population (every 5 min) ─────────────────────────────
+    # ── Event detail population ──────────────────────────────────────────
     'check-completed-events': {
         'task': 'apps.event.tasks.check_completed_events',
-        'schedule': 300.0,  # every 5 minutes
+        'schedule': 300.0,
     },
 
-    # ── RSS / news ─────────────────────────────────────────────────────────
+    # ── RSS / news ────────────────────────────────────────────────────────
     'poll-rss-sources': {
         'task': 'apps.feed.tasks.poll_all_active_sources',
         'schedule': 300.0,
     },
-    # Daily fresh news for ALL entities (not just nest + trending)
-    'brave-news-all-entities-morning': {
+    
+    # FIXED: Brave news - ONCE per week for ALL entities
+    'brave-news-all-entities-weekly': {
         'task': 'apps.feed.tasks.fetch_brave_news_for_all_entities',
-        'schedule': crontab(hour=2, minute=0),  # daily 2am
-    },
-    'brave-news-all-entities-afternoon': {
-        'task': 'apps.feed.tasks.fetch_brave_news_for_all_entities',
-        'schedule': crontab(hour=14, minute=0),  # daily 2pm
+        'schedule': crontab(hour=3, minute=0, day_of_week=0),  # Sunday 3am only
     },
 
-    # ── Bootstrap (weekly, Sunday 3am) ─────────────────────────────────────
+    # OPTIONAL: High-priority entities only (top 100) - twice weekly
+    'brave-news-priority-entities': {
+        'task': 'apps.feed.tasks.fetch_brave_news_for_priority_entities',
+        'schedule': crontab(hour=3, minute=0, day_of_week=3),  # Wednesday 3am
+    },
+
+    # ── Bootstrap (monthly, not weekly) ──────────────────────────────────
     'bootstrap-all-entities': {
         'task': 'apps.entity.tasks.bootstrap_all_entities',
-        'schedule': crontab(hour=3, minute=0, day_of_week=0),
+        'schedule': crontab(hour=3, minute=0, day_of_week=0, day_of_month=1),  # 1st Sunday
     },
 
-    # ── Cleanup / trending ─────────────────────────────────────────────────
+    # ── Cleanup / trending ────────────────────────────────────────────────
     'cleanup-feeds-4am': {
         'task': 'apps.feed.tasks.cleanup_old_feed_items',
         'schedule': crontab(hour=4, minute=0),
@@ -72,13 +74,12 @@ app.conf.beat_schedule = {
         'schedule': crontab(minute=30),
     },
 
-    # ── Stats ──────────────────────────────────────────────────────────────
-    'team-stats-hourly': {
+    # ── Stats (weekly instead of hourly) ──────────────────────────────────
+    'team-stats-weekly': {
         'task': 'apps.entity.tasks.update_all_team_stats',
-        'schedule': crontab(minute=45),
+        'schedule': crontab(hour=5, minute=0, day_of_week=0),  # Sunday 5am
     },
 }
-
 
 @app.task(bind=True)
 def debug_task(self):
