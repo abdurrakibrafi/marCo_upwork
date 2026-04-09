@@ -8,7 +8,8 @@ from .models import OTP, UserProfile
 from django.core.mail import send_mail
 from django.conf import settings
 # from apps.accounts.utils.send_otp_email import send_otp_email
-from apps.identity.local_mail import send_otp_email
+# from apps.identity.local_mail import send_otp_email
+from apps.identity.utils.mail_service import send_otp_email
 
 
 

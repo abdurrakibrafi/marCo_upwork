@@ -107,3 +107,4 @@ watchfiles==1.1.1
 wcwidth==0.6.0
 websockets==16.0
 whitenoise==6.11.0
+resend==2.27.0
