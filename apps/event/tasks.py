@@ -701,17 +701,13 @@ def fetch_event_details(self, event_id: int):
  
 @shared_task
 def check_completed_events():
-    """
-    Runs every 5 minutes.
-    Finds soccer events that just finished and don't have stats yet,
-    then fires fetch_event_details for each one.
-    """
     from apps.event.models import Event, EventStatistics
     from django.utils import timezone
     from datetime import timedelta
- 
-    # Events completed in the last 3 hours that have no statistics yet
-    cutoff = timezone.now() - timedelta(hours=3)
+
+    # Extend window to 24 hours to catch any missed events
+    cutoff = timezone.now() - timedelta(hours=24)  # ← was 3, now 24
+    
     completed_without_stats = (
         Event.objects
         .filter(
@@ -724,11 +720,27 @@ def check_completed_events():
             id__in=EventStatistics.objects.values_list('event_id', flat=True)
         )
     )
- 
+
     count = 0
-    for event in completed_without_stats:
+    for event in completed_without_stats[:50]:  # cap at 50 per run
         fetch_event_details.delay(event.id)
         count += 1
- 
+
     logger.info(f"check_completed_events: triggered {count} detail fetches")
     return f"Triggered {count} event detail fetches"
+
+
+@shared_task
+def cleanup_stale_live_events():
+    """
+    Any event marked 'live' that started more than 5 hours ago
+    and hasn't been updated → force to 'completed'
+    """
+    cutoff = timezone.now() - timedelta(hours=5)
+    stale = Event.objects.filter(
+        status='live',
+        start_time__lte=cutoff,
+    )
+    count = stale.update(status='completed')
+    logger.info(f"Cleaned up {count} stale live events")
+    return f"Cleaned {count} stale live events"

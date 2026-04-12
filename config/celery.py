@@ -73,6 +73,10 @@ app.conf.beat_schedule = {
         'task': 'apps.feed.tasks.mark_trending_items',
         'schedule': crontab(minute=30),
     },
+    'cleanup-stale-live-events': {
+        'task': 'apps.event.tasks.cleanup_stale_live_events',
+        'schedule': crontab(minute=0),  # every hour
+    },
 
     # ── Stats (weekly instead of hourly) ──────────────────────────────────
     'team-stats-weekly': {
