@@ -54,22 +54,23 @@ def get_nest_calendar(request):
             'home_entity', 'away_entity', 'league'
         ).order_by('start_time')
 
-        # Materialize queryset once to avoid a second count() query
+        # Materialize queryset once to avoid duplicate serialization work
         events_list = list(events)
+        serialized_events = EventSerializer(events_list, many=True).data
 
         grouped = {}
-        for event in events_list:
+        for i, event in enumerate(events_list):
             date_key = event.start_time.date().isoformat()
             if date_key not in grouped:
                 grouped[date_key] = []
-            grouped[date_key].append(EventSerializer(event).data)
+            grouped[date_key].append(serialized_events[i])
 
         data = {
             'start_date': start_date.isoformat(),
             'end_date': end_date.isoformat(),
             'total_count': len(events_list),
             'events_by_date': grouped,  # for calendar grid
-            'events': EventSerializer(events_list, many=True).data,  # flat list
+            'events': serialized_events,
         }
         return mixin.success_response(data=data)
     except Exception as exc:
@@ -101,7 +102,7 @@ def get_matches_of_day(request):
         ).values_list('entity_id', flat=True)
 
         # Get all matches on this date involving user's nest entities
-        matches = Event.objects.filter(
+        matches_qs = Event.objects.filter(
             start_time__date=query_date,
         ).filter(
             Q(home_entity_id__in=nest_entities) |
@@ -111,12 +112,14 @@ def get_matches_of_day(request):
         ).order_by('start_time')
 
         # If no nest matches, show popular matches of the day
-        if not matches.exists():
-            matches = Event.objects.filter(
+        if not matches_qs.exists():
+            matches_qs = Event.objects.filter(
                 start_time__date=query_date,
             ).select_related(
                 'home_entity', 'away_entity', 'league'
             ).order_by('start_time')[:10]
+
+        matches = list(matches_qs)
 
         # Separate live vs upcoming vs completed
         live = [e for e in matches if e.status == 'live']
@@ -125,7 +128,7 @@ def get_matches_of_day(request):
 
         data = {
             'date': query_date.isoformat(),
-            'total_count': len(list(matches)),
+            'total_count': len(matches),
             'live': EventSerializer(live, many=True).data,
             'upcoming': EventSerializer(upcoming, many=True).data,
             'completed': EventSerializer(completed, many=True).data,
