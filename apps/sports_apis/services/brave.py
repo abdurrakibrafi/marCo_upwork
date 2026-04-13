@@ -47,22 +47,20 @@ class BraveSearchService:
         )
         return domains
 
-    def _build_queries(self, entity_name: str, entity_type: str, sport: str) -> list[str]:
+    def _build_queries(self, name: str, entity_type: str, sport: str) -> list[str]:
         queries = []
 
-        # Query 1: General news for the entity
-        queries.append(f"{entity_name} {sport} news")
-
-        # Query 2: Type-aware search
-        if entity_type == "team":
-            queries.append(f"{entity_name} {sport} match news")
-        elif entity_type == "athlete":
-            queries.append(f"{entity_name} {sport} highlights")
-        elif entity_type == "league":
-            queries.append(f"{entity_name} {sport} standings")
-
-        # Query 3: RSS-heavy sports sites
-        queries.append(f"{entity_name} {sport} rss")
+        if entity_type == 'team':
+            queries.append(f'"{name}" {sport}')           # exact match
+            queries.append(f'"{name}" match results {sport}')
+        
+        elif entity_type == 'athlete':
+            queries.append(f'"{name}" footballer')         # exact match + context
+            queries.append(f'"{name}" {sport} player')
+        
+        elif entity_type == 'league':
+            queries.append(f'"{name}" {sport} standings')
+            queries.append(f'"{name}" table results')
 
         return queries
 

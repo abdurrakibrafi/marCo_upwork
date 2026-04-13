@@ -702,27 +702,22 @@ def fetch_event_details(self, event_id: int):
 @shared_task
 def check_completed_events():
     from apps.event.models import Event, EventStatistics
-    from django.utils import timezone
-    from datetime import timedelta
 
-    # Extend window to 24 hours to catch any missed events
-    cutoff = timezone.now() - timedelta(hours=24)  # ← was 3, now 24
-    
     completed_without_stats = (
         Event.objects
         .filter(
             status='completed',
             sport='soccer',
             api_source='api_sports',
-            start_time__gte=cutoff,
         )
         .exclude(
             id__in=EventStatistics.objects.values_list('event_id', flat=True)
         )
+        .order_by('-start_time')  # most recent first
     )
 
     count = 0
-    for event in completed_without_stats[:50]:  # cap at 50 per run
+    for event in completed_without_stats[:50]:
         fetch_event_details.delay(event.id)
         count += 1
 

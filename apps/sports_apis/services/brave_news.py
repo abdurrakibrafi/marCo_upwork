@@ -37,14 +37,6 @@ class BraveNewsService:
         }
 
     def fetch_news_for_entity(self, entity_name: str, entity_type: str, sport: str) -> list[dict]:
-        """
-        Fetch latest news articles for a sports entity.
-        Returns list of normalized article dicts.
-        """
-        if not self.api_key:
-            logger.warning("Brave API key not set")
-            return []
-
         queries = self._build_queries(entity_name, entity_type, sport)
         seen_urls = set()
         articles = []
@@ -55,13 +47,22 @@ class BraveNewsService:
                 url = item.get('url')
                 if not url or url in seen_urls:
                     continue
+                
+                # ── Relevance filter ──────────────────────────────
+                title = (item.get('title', '') or '').lower()
+                description = (item.get('description', '') or '').lower()
+                name_lower = entity_name.lower()
+                
+                # Skip if entity name not mentioned at all
+                if name_lower not in title and name_lower not in description:
+                    continue
+                # ─────────────────────────────────────────────────
+                
                 seen_urls.add(url)
-
                 article = self._normalize(item)
                 if article:
                     articles.append(article)
 
-        logger.info(f"Brave news for '{entity_name}': {len(articles)} articles")
         return articles
 
     def _build_queries(self, name: str, entity_type: str, sport: str) -> list[str]:
