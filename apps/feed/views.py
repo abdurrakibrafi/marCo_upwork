@@ -57,10 +57,18 @@ def get_nest_feed(request):
     hidden_sources = HiddenSource.objects.filter(
         user=request.user
     ).values_list('source_id', flat=True)
-    
-    # Base queryset
+ 
+    # Get user's manually added custom sources
+    from apps.source.models import UserCustomSource
+    user_custom_source_ids = UserCustomSource.objects.filter(
+        user=request.user,
+        is_active=True,
+    ).values_list('source_id', flat=True)
+ 
+    # Base queryset: entity-based feed OR custom source feed — unified
     feed = FeedItem.objects.filter(
-        entities__in=nest_entities
+        Q(entities__in=nest_entities) |
+        Q(source_id__in=user_custom_source_ids)
     ).exclude(
         source_id__in=hidden_sources
     ).select_related('source').prefetch_related('entities')

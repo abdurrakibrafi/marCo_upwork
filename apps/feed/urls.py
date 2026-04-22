@@ -14,7 +14,7 @@ urlpatterns = [
     # Source management
     path('source/hide/', views.hide_source, name='hide_source'),
     path('source/unhide/', views.unhide_source, name='unhide_source'),
-    path('sources/hidden/', views.get_hidden_sources, name='hidden_sources'),
+    path('source/hidden/', views.get_hidden_sources, name='hidden_sources'),
 
 
     # Bookmarks

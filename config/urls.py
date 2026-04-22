@@ -42,6 +42,7 @@ urlpatterns = [
     path('api/calendar/', include('apps.event.urls')),
     path('api/feed/', include('apps.feed.urls')),
     path('api/core/', include('apps.core.urls')),
+    path('api/source/', include('apps.source.urls')),
 
     # Health & Status
     path('api/health/', views.health_check, name='health_check'),

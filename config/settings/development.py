@@ -29,7 +29,7 @@ DATABASES = {
 #     }
 # }
 
-RESEND_API_KEY = env("RESEND_API_KEY")
+# RESEND_API_KEY = env("RESEND_API_KEY")
 
 EMAIL_HOST = env.str('EMAIL_HOST_DEV', default='smtp4dev')  
 EMAIL_PORT = env.int('EMAIL_PORT_DEV', default=25)          

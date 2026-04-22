@@ -15,6 +15,7 @@ from apps.feed.models import Bookmark
 from apps.nest.models import UserNest
 from .serializers import (
     RegisterSerializer,
+    ResendEmailChangeOTPSerializer,
     VerifyEmailSerializer,
     PasswordResetRequestSerializer,
     PasswordResetOTPVerifySerializer,
@@ -30,16 +31,25 @@ from .serializers import (
     SocialAuthSerializer,
     UserProfileSerializer ,
     ParmanentAccountDeleteSerializer,
+    ChangeEmailSerializer
 )
+# from apps.identity.utils.mail_service import send_otp_email
+from apps.identity.utils.local_mail import send_otp_email
+
 # from apps.notification.services.notification_service import NotificationService
 from rest_framework.generics import RetrieveUpdateAPIView
 from django.conf import settings
 from apps.core.utils.mixins import BaseResponseMixin
-from apps.identity.models import UserProfile  
+from apps.identity.models import OTP, UserProfile  
 from rest_framework import generics, status
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.parsers import MultiPartParser, FormParser
+
+import random
+
+from datetime import timedelta
+from django.utils import timezone
 
 User = get_user_model()
 
@@ -416,18 +426,134 @@ class ProfileUpdateView(BaseResponseMixin, generics.UpdateAPIView):
 
 
 class VerifyEmailChangeView(BaseResponseMixin, generics.GenericAPIView):
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [IsAuthenticated]
     serializer_class = VerifyEmailChangeSerializer
 
     def post(self, request):
-        serializer = self.get_serializer(
-            data=request.data, context={"request": request}
-        )
+        serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        serializer.save()
-        return self.success_response(
-            message="Email successfully updated."
-        )
+
+        otp_code = serializer.validated_data["otp"]
+
+        try:
+            try:
+                otp = OTP.objects.get(
+                    user=request.user,
+                    otp=otp_code,
+                    purpose="email_change",
+                    is_used=False,
+                )
+
+                if not otp.is_valid():
+                    return self.bad_request_response(
+                        message="OTP is invalid or expired", error_code="INVALID_OTP"
+                    )
+
+                # Get profile and update email
+                profile = request.user.profile
+                if not profile.temp_email:
+                    return self.bad_request_response(
+                        message="No pending email change found",
+                        error_code="NO_PENDING_EMAIL_CHANGE",
+                    )
+
+                old_email = request.user.email
+                new_email = profile.temp_email
+
+                # Update user email
+                request.user.email = new_email
+                request.user.save()
+
+                # Clear temp email
+                profile.temp_email = None
+                profile.save()
+
+                # Mark OTP as used
+                otp.is_used = True
+                otp.save()
+
+                return self.success_response(
+                    data={
+                        "old_email": old_email,
+                        "new_email": new_email,
+                        "email_changed": True,
+                    },
+                    message="Email changed successfully",
+                )
+
+            except OTP.DoesNotExist:
+                return self.bad_request_response(
+                    message="Invalid OTP", error_code="INVALID_OTP"
+                )
+
+        except Exception as e:
+            return self.handle_exception(e)
+
+
+class ResendEmailChangeOTPView(BaseResponseMixin, generics.GenericAPIView):
+    permission_classes = [IsAuthenticated]
+    serializer_class = ResendEmailChangeOTPSerializer
+
+    def post(self, request):
+        try:
+            profile = request.user.profile
+
+            if not profile.temp_email:
+                return self.bad_request_response(
+                    message="No pending email change found",
+                )
+
+            # Invalidate old OTPs
+            OTP.objects.filter(
+                user=request.user, purpose="email_change", is_used=False
+            ).update(is_used=True)
+
+            # Generate new OTP
+            otp_code = str(random.randint(1000, 9999))
+            OTP.objects.create(
+                user=request.user,
+                otp=otp_code,
+                purpose="email_change",
+                expires_at=timezone.now() + timedelta(minutes=10),
+            )
+
+            send_otp_email(profile.user, otp_code, "email_change", to_email=profile.temp_email)
+
+
+            return self.success_response(
+                data={"temp_email": profile.temp_email, "otp_sent": True},
+                message="OTP sent to your new email address",
+            )
+
+        except Exception as e:
+            return self.handle_exception(e)
+
+
+class CancelEmailChangeView(BaseResponseMixin, generics.GenericAPIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        try:
+            profile = request.user.profile
+
+            if not profile.temp_email:
+                return self.bad_request_response(
+                    message="No pending email change found",
+                )
+
+            # Clear temp email
+            profile.temp_email = None
+            profile.save()
+
+            # Invalidate OTPs
+            OTP.objects.filter(
+                user=request.user, purpose="email_change", is_used=False
+            ).update(is_used=True)
+
+            return self.success_response(message="Email change cancelled successfully")
+
+        except Exception as e:
+            return self.handle_exception(e)
 
 
 class SocialAuthView(BaseResponseMixin, generics.GenericAPIView):
@@ -512,7 +638,6 @@ class UserProfileGenericView(BaseResponseMixin, RetrieveUpdateAPIView):
     def post(self, request, *args, **kwargs):
         return self.put(request, *args, **kwargs)
     
-
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def get_user_profile_info(request):
@@ -526,3 +651,36 @@ def get_user_profile_info(request):
         'nest_count': UserNest.objects.filter(user=user).count(),
         'saved_posts_count': Bookmark.objects.filter(user=user).count(),
     })
+
+
+class ChangeEmailView(BaseResponseMixin, generics.GenericAPIView):
+    permission_classes = [IsAuthenticated]
+    serializer_class = ChangeEmailSerializer
+
+    def post(self, request):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        new_email = serializer.validated_data['new_email']
+        user = request.user
+
+        profile = user.profile
+        profile.temp_email = new_email
+        profile.save()
+
+        OTP.objects.filter(user=user, purpose="email_change", is_used=False).update(is_used=True)
+
+        otp_code = "".join(random.choices("0123456789", k=4))
+        OTP.objects.create(
+            user=user,
+            otp=otp_code,
+            purpose="email_change",
+            expires_at=timezone.now() + timedelta(minutes=10),
+        )
+
+        send_otp_email(user, otp_code, "email_change", to_email=new_email)
+
+        return self.success_response(
+            data={"temp_email": new_email},
+            message="OTP sent to your new email address. Please verify to complete the change."
+        )

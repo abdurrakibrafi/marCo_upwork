@@ -7,14 +7,11 @@ import random
 from .models import OTP, UserProfile
 from django.core.mail import send_mail
 from django.conf import settings
-# from apps.accounts.utils.send_otp_email import send_otp_email
-# from apps.identity.local_mail import send_otp_email
-from apps.identity.utils.mail_service import send_otp_email
 
-
+# from apps.identity.utils.mail_service import send_otp_email
+from apps.identity.utils.local_mail import send_otp_email
 
 User = get_user_model()
-
 
 class LoginSerializer(serializers.Serializer):
     email = serializers.EmailField(required=True)
@@ -397,6 +394,43 @@ class VerifyEmailChangeSerializer(serializers.Serializer):
 from apps.identity.models import SOCIAL_AUTH_PROVIDERS
 
 
+class ChangeEmailSerializer(serializers.Serializer):
+    """Serializer for initiating email change"""
+    new_email = serializers.EmailField(required=True)
+
+    def validate_new_email(self, value):
+        user = self.context['request'].user
+        
+        # Check if email is same as current
+        if user.email == value:
+            raise serializers.ValidationError("New email must be different from current email.")
+        
+        # Check if email is already taken
+        if User.objects.filter(email=value).exists():
+            raise serializers.ValidationError("This email is already in use.")
+        
+        return value
+
+
+
+class ResendEmailChangeOTPSerializer(serializers.Serializer):
+    """Serializer for resending email change OTP"""
+    new_email = serializers.EmailField(required=True)
+
+    def validate_new_email(self, value):
+        user = self.context['request'].user
+        
+        # Check if user has a pending email change
+        if not hasattr(user, 'profile') or not user.profile.temp_email:
+            raise serializers.ValidationError("No pending email change found.")
+        
+        # Check if the new_email matches the pending change
+        if user.profile.temp_email != value:
+            raise serializers.ValidationError("Email does not match pending change.")
+        
+        return value
+
+
 class SocialAuthSerializer(serializers.Serializer):
     email = serializers.EmailField()
     provider = serializers.ChoiceField(choices=SOCIAL_AUTH_PROVIDERS)  # Add validation
@@ -437,7 +471,7 @@ class SocialAuthSerializer(serializers.Serializer):
 
 
 class UserProfileSerializer(serializers.ModelSerializer):
-    profile_picture = serializers.ImageField(required=False)
+    profile_picture = serializers.ImageField(required=False, use_url=False)
     email = serializers.EmailField(source='user.email', read_only=True)
 
     class Meta:
@@ -447,8 +481,16 @@ class UserProfileSerializer(serializers.ModelSerializer):
             'bio', 'profile_picture', 'profile_completed'
         ]
         
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        profile_picture = data.get('profile_picture')
+        if profile_picture:
+            data['profile_picture'] = f"/media/{profile_picture.lstrip('/')}"
+        return data
+
     def validate_date_of_birth(self, value):
         from datetime import date
         if value and value > date.today():
             raise serializers.ValidationError("Date of birth cannot be in the future.")
         return value
+    

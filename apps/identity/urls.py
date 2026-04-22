@@ -3,9 +3,11 @@ from rest_framework import views
 from rest_framework.routers import DefaultRouter
 from rest_framework_simplejwt.views import TokenRefreshView
 from .views import (
+    CancelEmailChangeView,
     RegisterView,
     LoginView,
     LogoutView,
+    ResendEmailChangeOTPView,
     VerifyEmailView,
     PasswordResetRequestView,
     PasswordResetOTPVerifyView,
@@ -20,7 +22,8 @@ from .views import (
     SocialAuthView,
     UserProfileGenericView,
     ParmanentAccountDeleteView,
-    get_user_profile_info
+    get_user_profile_info,
+    ChangeEmailView,  # ADD THIS
 )
 
 urlpatterns = [
@@ -62,10 +65,27 @@ urlpatterns = [
     
     path("profile/update/", ProfileUpdateView.as_view(), name="profile-update"),
     path("profile/", UserProfileGenericView.as_view(), name="user-profile"),
+   
+    path(
+        "profile/change-email/",
+        ChangeEmailView.as_view(),
+        name="change-email",
+    ),
     path(
         "profile/verify-email-change/",
         VerifyEmailChangeView.as_view(),
         name="verify-email-change",
+    ),
+    
+    path(
+        "profile/resend-email-change-otp/",
+        ResendEmailChangeOTPView.as_view(),
+        name="resend-email-change-otp",
+    ),
+    path(
+        "profile/cancel-email-change/",
+        CancelEmailChangeView.as_view(),
+        name="cancel-email-change",
     ),
 
     path("social-auth/", SocialAuthView.as_view(), name="social-auth"),

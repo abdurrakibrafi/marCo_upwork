@@ -1,3 +1,5 @@
+from datetime import timedelta
+
 from django.db import models
 from django.contrib.auth.models import AbstractUser
 from django.contrib.auth.base_user import BaseUserManager
@@ -85,7 +87,6 @@ class User(AbstractUser):
         self.save()
 
     class Meta:
-        db_table = ""
         managed = True
         verbose_name = "User"
         verbose_name_plural = "Users"
@@ -158,12 +159,7 @@ class UserProfile(models.Model):
 @receiver(post_save, sender=settings.AUTH_USER_MODEL)
 def create_user_profile(sender, instance, created, **kwargs):
     if created:
-        UserProfile.objects.create(user=instance)
-
-
-@receiver(post_save, sender=settings.AUTH_USER_MODEL)
-def save_user_profile(sender, instance, **kwargs):
-    instance.profile.save()
+        UserProfile.objects.get_or_create(user=instance)
 
 
 class DailyStreak(models.Model):
@@ -175,12 +171,13 @@ class DailyStreak(models.Model):
         today = timezone.now().date()
         if self.last_active_date == today:
             return
-        if self.last_active_date == today - timezone.timedelta(days=1):
+        if self.last_active_date == today - timedelta(days=1):  # FIXED
             self.current_streak += 1
         else:
             self.current_streak = 1
         self.last_active_date = today
         self.save()
+
 
 @receiver(post_save, sender=settings.AUTH_USER_MODEL)
 def create_user_streak(sender, instance, created, **kwargs):

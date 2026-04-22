@@ -20,7 +20,7 @@ app.conf.beat_schedule = {
         'schedule': 120.0,
     },
     'live-scores-soccer': {
-        'task': 'apps.event.tasks.update_soccer_live_scores_only',
+        'task': 'apps.sports_apis.tasks.update_soccer_live_scores',
         'schedule': 120.0,
     },
     'live-scores-cricket': {
@@ -53,10 +53,11 @@ app.conf.beat_schedule = {
     },
 
     # OPTIONAL: High-priority entities only (top 100) - twice weekly
-    'brave-news-priority-entities': {
-        'task': 'apps.feed.tasks.fetch_brave_news_for_priority_entities',
-        'schedule': crontab(hour=3, minute=0, day_of_week=3),  # Wednesday 3am
-    },
+    # DISABLED: fetch_brave_news_for_priority_entities function doesn't exist
+    # 'brave-news-priority-entities': {
+    #     'task': 'apps.feed.tasks.fetch_brave_news_for_priority_entities',
+    #     'schedule': crontab(hour=3, minute=0, day_of_week=3),  # Wednesday 3am
+    # },
 
     # ── Bootstrap (monthly, not weekly) ──────────────────────────────────
     'bootstrap-all-entities': {
@@ -82,6 +83,15 @@ app.conf.beat_schedule = {
     'team-stats-weekly': {
         'task': 'apps.entity.tasks.update_all_team_stats',
         'schedule': crontab(hour=5, minute=0, day_of_week=0),  # Sunday 5am
+    },
+
+    'enrich-logos-weekly': {
+        'task': 'apps.sports_apis.tasks.enrich_missing_logos',
+        'schedule': crontab(hour=2, minute=0, day_of_week=1),  # Monday 2am
+    },
+    'enrich-highlights-daily': {
+        'task': 'apps.sports_apis.tasks.enrich_event_highlights_today',
+        'schedule': crontab(hour=23, minute=30),  # 11:30pm daily
     },
 }
 
