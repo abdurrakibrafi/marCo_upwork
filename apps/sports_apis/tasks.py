@@ -9,7 +9,7 @@ from apps.score.models import LiveScore
 from apps.score.serializers import LiveScoreSerializer
 from asgiref.sync import async_to_sync
 from channels.layers import get_channel_layer
-from datetime import datetime
+from datetime import datetime, timedelta
 import logging
 
 logger = logging.getLogger(__name__)
@@ -389,6 +389,45 @@ def update_soccer_live_scores():
         logger.info(f"Soccer: cleaned up {stale_count} stale live scores")
 
     logger.info(f"Soccer: {saved} fixtures saved, {len(live_ext_ids)} live")
+
+    # ── Sync LiveScore status → Event model ──────────────────
+    try:
+        from apps.event.models import Event as _Event
+
+        # 1. Mark Events as live if their LiveScore is live
+        live_ext_ids_for_sync = list(
+            LiveScore.objects.filter(sport='soccer', status='live')
+            .values_list('external_id', flat=True)
+        )
+        if live_ext_ids_for_sync:
+            synced_live = _Event.objects.filter(
+                api_source='api_sports',
+                external_id__in=live_ext_ids_for_sync,
+                status='upcoming',
+            ).update(status='live')
+            if synced_live:
+                logger.info(f"Soccer sync: {synced_live} Events → live")
+
+        # 2. Mark Events as completed if their LiveScore is completed
+        completed_ext_ids = list(
+            LiveScore.objects.filter(sport='soccer', status='completed')
+            .values_list('external_id', flat=True)
+        )
+        if completed_ext_ids:
+            synced_done = _Event.objects.filter(
+                api_source='api_sports',
+                external_id__in=completed_ext_ids,
+                status__in=['live', 'upcoming'],
+            ).update(status='completed')
+            if synced_done:
+                logger.info(f"Soccer sync: {synced_done} Events → completed")
+                # Trigger stats fetch for newly completed events
+                from apps.event.tasks import fetch_event_details, check_completed_events
+                check_completed_events.delay()
+
+    except Exception as e:
+        logger.error(f"LiveScore→Event sync failed: {e}")
+
     return f"Soccer: {saved} fixtures ({len(live_ext_ids)} live)"
 
 
@@ -516,49 +555,108 @@ def enrich_entity_logo(entity_id: int):
 @shared_task
 def enrich_event_highlights_today():
     """
-    Fetch YouTube highlights from TheSportsDB for yesterday's completed events
-    and store them in our Event model's highlights relation.
-    Runs daily at 11:30pm.
+    Fetch YouTube highlights from TheSportsDB for completed events
+    and store them in EventHighlight + event.metadata.
+ 
+    TheSportsDB returns highlights with empty home_team/away_team fields.
+    We parse the event_name string ("Team A vs Team B") instead.
+ 
+    Runs daily at 11:30pm. Also checks yesterday in case of delays.
     """
-    from apps.event.models import Event
+    from apps.event.models import Event, EventHighlight
     from apps.sports_apis.services.thesportsdb import thesportsdb_service
  
-    yesterday = (timezone.now() - timedelta(days=1)).date().isoformat()
+    matched_total = 0
  
-    highlights = thesportsdb_service.get_event_highlights(yesterday)
-    if not highlights:
-        return f"No highlights found for {yesterday}"
+    # Check both yesterday and today — highlights often appear hours after game
+    for days_ago in [0, 1]:
+        check_date = (timezone.now() - timedelta(days=days_ago)).date()
+        date_str = check_date.isoformat()
  
-    matched = 0
-    for hl in highlights:
-        home = hl.get('home_team', '').lower()
-        away = hl.get('away_team', '').lower()
-        url  = hl.get('highlight_url', '')
- 
-        if not url or not home or not away:
+        highlights = thesportsdb_service.get_event_highlights(date_str)
+        if not highlights:
             continue
  
-        # Try to find the matching event in our DB by team name similarity
-        candidates = Event.objects.filter(
-            start_time__date=yesterday,
-            status='completed',
-        ).select_related('home_entity', 'away_entity')
+        # Filter to sports we care about
+        relevant = [
+            h for h in highlights
+            if h['sport'] in ('soccer', 'cricket', 'basketball', 'ice hockey', 'baseball')
+        ]
  
-        for event in candidates:
-            home_sim = _name_similarity(home, event.home_entity.name if event.home_entity else '')
-            away_sim = _name_similarity(away, event.away_entity.name if event.away_entity else '')
+        for hl in relevant:
+            url = hl.get('highlight_url', '')
+            if not url:
+                continue
  
-            if home_sim >= 0.5 and away_sim >= 0.5:
-                # Store highlight URL in event metadata
-                meta = event.metadata or {}
+            # Parse "Team A vs Team B" from event_name
+            event_name = hl.get('event_name', '')
+            if ' vs ' in event_name:
+                parts = event_name.split(' vs ', 1)
+                home_str = parts[0].strip()
+                away_str = parts[1].strip()
+            elif ' v ' in event_name:
+                parts = event_name.split(' v ', 1)
+                home_str = parts[0].strip()
+                away_str = parts[1].strip()
+            else:
+                # Can't parse — skip
+                continue
+ 
+            if not home_str or not away_str:
+                continue
+ 
+            # Find matching completed event in our DB
+            candidates = Event.objects.filter(
+                start_time__date=check_date,
+                status='completed',
+            ).select_related('home_entity', 'away_entity')
+ 
+            best_event = None
+            best_score = 0.0
+ 
+            for event in candidates:
+                home_name = event.home_entity.name if event.home_entity else ''
+                away_name = event.away_entity.name if event.away_entity else ''
+ 
+                home_sim = _name_similarity(home_str, home_name)
+                away_sim = _name_similarity(away_str, away_name)
+                combined = (home_sim + away_sim) / 2
+ 
+                if combined > best_score:
+                    best_score = combined
+                    best_event = event
+ 
+            # Require at least 40% combined similarity
+            if not best_event or best_score < 0.55:
+                continue
+ 
+            # Save to EventHighlight table
+            highlight_obj, created = EventHighlight.objects.get_or_create(
+                event=best_event,
+                video_url=url,
+                defaults={
+                    'title':         event_name,
+                    'thumbnail_url': hl.get('thumbnail', ''),
+                    'source':        'youtube',
+                    'external_id':   url.split('v=')[-1].split('&')[0] if 'v=' in url else '',
+                }
+            )
+ 
+            # Also store in metadata for quick access without join
+            if created:
+                meta = best_event.metadata or {}
                 meta['highlight_url'] = url
                 meta['highlight_thumb'] = hl.get('thumbnail', '')
-                event.metadata = meta
-                event.save(update_fields=['metadata'])
-                matched += 1
-                break
+                best_event.metadata = meta
+                best_event.save(update_fields=['metadata'])
+                matched_total += 1
+                logger.info(
+                    f"  ✓ Highlight matched: {event_name} → "
+                    f"{best_event.home_entity.name} vs {best_event.away_entity.name} "
+                    f"(score={best_score:.2f})"
+                )
  
-    return f"Highlights enriched: {matched} events matched for {yesterday}"
+    return f"Highlights enriched: {matched_total} events matched"
  
  
 @shared_task

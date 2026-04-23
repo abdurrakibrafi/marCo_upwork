@@ -54,12 +54,18 @@ class FeedItemCompactSerializer(serializers.ModelSerializer):
         return [e.name for e in obj.entities.all()]
 
     def get_source_logo(self, obj):
-        # Prefer source favicon
-        source_logo = getattr(obj.source, 'favicon_url', None)
-        if source_logo:
-            return source_logo
+        # 1. Source has its own favicon — use it
+        source_favicon = getattr(obj.source, 'favicon_url', None)
+        if source_favicon:
+            return source_favicon
 
-        # Fallback to first entity logo
+        # 2. Generate from domain
+        domain = getattr(obj.source, 'domain', None)
+        if domain:
+            clean = domain.replace('https://', '').replace('http://', '').rstrip('/')
+            return f'https://www.google.com/s2/favicons?domain={clean}&sz=64'
+
+        # 3. Fallback to first entity logo
         entity = obj.entities.first()
         if entity and entity.logo_url:
             return entity.logo_url
