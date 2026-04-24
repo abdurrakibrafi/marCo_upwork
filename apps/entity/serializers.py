@@ -1,6 +1,15 @@
 from rest_framework import serializers
 from apps.entity.models import Entity, Team, Athlete, League, EntityStats
 
+
+class EntityCompactSerializer(serializers.ModelSerializer):
+    """Minimal entity serializer for nested responses"""
+    
+    class Meta:
+        model = Entity
+        fields = ['id', 'type', 'name', 'slug', 'sport', 'logo_url']
+
+
 class EntitySerializer(serializers.ModelSerializer):
     """Basic entity serializer"""
     

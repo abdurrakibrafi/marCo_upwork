@@ -15,6 +15,8 @@ from apps.feed.serializers import FeedItemCompactSerializer
 from .models import UserCustomSource
 from .serializers import SourceSuggestionSerializer, UserCustomSourceSerializer
 from apps.sports_apis.services.ai_service import source_ai_service
+from apps.nest.models import UserNest
+from apps.entity.serializers import EntityCompactSerializer
 
 logger = logging.getLogger(__name__)
 
@@ -323,24 +325,67 @@ def get_source_feed(request, source_id):
     GET /api/source/<source_id>/feed/
     
     Returns feed items from a specific source the user has added.
+    FILTERS items to only show articles about entities in the user's nest.
+    Example: If user has [Ronaldo, Manchester United] in nest, only shows
+    articles about those entities from the source.
+    
     Supports pagination: ?page=1&limit=20
+    
+    Response includes:
+    - Feed items with titles, summaries, URLs
+    - Matching entities for each item (why user is seeing it)
+    - Source info
     """
     # Verify user has this source
-    get_object_or_404(
+    user_source = get_object_or_404(
         UserCustomSource,
         user=request.user,
         source_id=source_id,
         is_active=True,
     )
 
+    # Get user's nest entities
+    user_entities = list(
+        UserNest.objects.filter(user=request.user).values_list('entity_id', flat=True)
+    )
+
+    if not user_entities:
+        # User has no entities in nest — return empty feed with helpful message
+        return Response({
+            'count': 0,
+            'source': UserCustomSourceSerializer(user_source).data,
+            'results': [],
+            'message': 'Add entities to your nest to see relevant articles from this source.',
+        })
+
+    # Get all feed items from this source that have entities matching user's nest
     feed = FeedItem.objects.filter(
         source_id=source_id,
-    ).order_by('-published_at')
+        entities__id__in=user_entities,  # Only articles about user's entities
+    ).distinct().order_by('-published_at')
 
     paginator = SourceFeedPagination()
     paginated = paginator.paginate_queryset(feed, request)
-    serializer = FeedItemCompactSerializer(paginated, many=True, context={'request': request})
-    return paginator.get_paginated_response(serializer.data)
+    
+    # Custom response: include matching entities for each item
+    enriched_items = []
+    for item in paginated:
+        item_data = FeedItemCompactSerializer(item, context={'request': request}).data
+        
+        # Get entities that match user's nest for this item
+        matching_entities = item.entities.filter(id__in=user_entities)
+        item_data['matching_entities'] = EntityCompactSerializer(
+            matching_entities, many=True
+        ).data
+        
+        enriched_items.append(item_data)
+
+    return Response({
+        'count': feed.count(),
+        'source': UserCustomSourceSerializer(user_source).data,
+        'results': enriched_items,
+        'message': f'Showing {len(enriched_items)} article(s) about your entities',
+    })
 
 
 @api_view(['POST'])
