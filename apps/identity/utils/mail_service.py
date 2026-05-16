@@ -1,8 +1,16 @@
+import logging
 import resend
 from django.template.loader import render_to_string
 from django.conf import settings
 
-resend.api_key = settings.RESEND_API_KEY
+logger = logging.getLogger(__name__)
+
+# Set the API key if provided in settings; avoid raising on import when not set.
+resend_api_key = getattr(settings, "RESEND_API_KEY", None)
+if resend_api_key:
+    resend.api_key = resend_api_key
+else:
+    logger.warning("RESEND_API_KEY is not set; email sending may fail in this environment")
 
 
 def send_otp_email(user, otp_code, purpose, to_email=None):

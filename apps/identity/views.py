@@ -33,8 +33,8 @@ from .serializers import (
     ParmanentAccountDeleteSerializer,
     ChangeEmailSerializer
 )
-# from apps.identity.utils.mail_service import send_otp_email
-from apps.identity.utils.local_mail import send_otp_email
+from apps.identity.utils.mail_service import send_otp_email
+# from apps.identity.utils.local_mail import send_otp_email
 
 # from apps.notification.services.notification_service import NotificationService
 from rest_framework.generics import RetrieveUpdateAPIView
