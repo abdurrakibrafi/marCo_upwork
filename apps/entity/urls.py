@@ -1,9 +1,12 @@
 from django.urls import path
 from . import views
+from . import views_search
 
 urlpatterns = [
     # ── Discovery ────────────────────────────────────────────────────────
-    path('search/', views.search_entities, name='search_entities'),
+    path('search/', views_search.search_entities, name='search_entities'),
+    path('search-ai/', views_search.search_entities_ai, name='search_entities_ai'),
+    path('suggest-canonical/', views_search.suggest_canonical_entity, name='suggest_canonical'),
     path('list/', views.list_entities, name='list_entities'),
     path('trending/', views.get_trending, name='get_trending'),
 

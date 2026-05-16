@@ -1,5 +1,5 @@
 from django.contrib import admin
-from apps.feed.models import Source, FeedItem, UserSource, HiddenSource
+from apps.feed.models import Source, FeedItem, UserSource, HiddenSource, RSSSource, EntitySource
 
 
 @admin.register(Source)
@@ -7,6 +7,36 @@ class SourceAdmin(admin.ModelAdmin):
     list_display = ['name', 'domain', 'discovery_source', 'is_verified', 'is_active', 'poll_failures']
     list_filter = ['discovery_source', 'is_verified', 'is_active']
     search_fields = ['name', 'rss_url', 'domain']
+
+
+@admin.register(RSSSource)
+class RSSSourceAdmin(admin.ModelAdmin):
+    list_display = ['name', 'sport', 'is_active', 'is_verified', 'estimated_quality', 'fetch_failures', 'last_fetched_at']
+    list_filter = ['sport', 'is_active', 'is_verified', 'estimated_quality']
+    search_fields = ['name', 'url']
+    filter_horizontal = ['entities']
+    fieldsets = (
+        ('Basic Info', {
+            'fields': ('name', 'url', 'sport', 'keywords')
+        }),
+        ('Configuration', {
+            'fields': ('is_active', 'fetch_interval_hours', 'estimated_quality')
+        }),
+        ('Targeting', {
+            'fields': ('entities',)
+        }),
+        ('Status', {
+            'fields': ('is_verified', 'last_fetched_at', 'fetch_failures'),
+            'classes': ('collapse',)
+        }),
+    )
+
+
+@admin.register(EntitySource)
+class EntitySourceAdmin(admin.ModelAdmin):
+    list_display = ['user_nest', 'source', 'priority', 'added_at']
+    list_filter = ['priority', 'added_at']
+    search_fields = ['user_nest__user__email', 'source__name']
 
 
 @admin.register(FeedItem)

@@ -168,3 +168,100 @@ class Like(models.Model):
  
     def __str__(self):
         return f"{self.user.email} liked: {self.feed_item.title[:60]}"
+
+
+class RSSSource(models.Model):
+    """
+    Admin-managed RSS feed source.
+    Used for automatic, scheduled news fetching for entities.
+    """
+    
+    SPORT_CHOICES = Entity.SPORT_CHOICES
+    
+    # Feed info
+    name = models.CharField(max_length=200, help_text="e.g., 'La Liga Official'")
+    url = models.URLField(max_length=2000, unique=True)
+    
+    # Sport/entity targeting
+    sport = models.CharField(
+        max_length=50,
+        choices=SPORT_CHOICES,
+        help_text="Sport this feed covers"
+    )
+    entities = models.ManyToManyField(
+        Entity,
+        related_name='rss_sources',
+        blank=True,
+        help_text="Entities this feed provides news for"
+    )
+    
+    # Keywords (for smart matching)
+    keywords = models.JSONField(
+        default=list,
+        help_text='["La Liga", "Spanish Football", "LALIGA"]'
+    )
+    
+    # Configuration
+    is_active = models.BooleanField(default=True)
+    fetch_interval_hours = models.PositiveIntegerField(default=6)
+    last_fetched_at = models.DateTimeField(null=True, blank=True)
+    fetch_failures = models.PositiveIntegerField(default=0)
+    
+    # Quality
+    is_verified = models.BooleanField(default=False, help_text="Admin verified")
+    estimated_quality = models.CharField(
+        max_length=20,
+        choices=[('high', 'High'), ('medium', 'Medium'), ('low', 'Low')],
+        default='medium'
+    )
+    
+    # Timestamps
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    class Meta:
+        ordering = ['sport', 'name']
+        indexes = [
+            models.Index(fields=['sport', 'is_active']),
+            models.Index(fields=['is_verified']),
+        ]
+    
+    def __str__(self):
+        return f"{self.name} ({self.sport})"
+
+
+class EntitySource(models.Model):
+    """
+    Link between a UserNest entity and user-selected sources for that entity.
+    
+    When user adds Barcelona to nest + selects ESPN as source,
+    this tracks that ESPN should be included in Barcelona's feed.
+    """
+    
+    from apps.nest.models import UserNest
+    
+    user_nest = models.ForeignKey(
+        UserNest,
+        on_delete=models.CASCADE,
+        related_name='selected_sources'
+    )
+    source = models.ForeignKey(
+        Source,
+        on_delete=models.CASCADE,
+        related_name='entity_selections'
+    )
+    
+    # User preference for this source
+    priority = models.IntegerField(
+        default=0,
+        help_text="Higher = shown first in feed"
+    )
+    
+    added_at = models.DateTimeField(auto_now_add=True)
+    
+    class Meta:
+        unique_together = ['user_nest', 'source']
+        ordering = ['-priority', '-added_at']
+    
+    def __str__(self):
+        return f"{self.user_nest.entity.name} ← {self.source.name}"

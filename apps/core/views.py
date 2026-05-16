@@ -13,6 +13,8 @@ from rest_framework.response import Response
 from django.conf import settings
 
 from apps.entity.models import Entity, Team, Athlete, League
+from apps.entity.utils.normalizers import normalize_entity_name, find_similar_entity, is_duplicate
+from apps.entity.utils.embeddings import get_embedding_service
 from apps.core.utils.mixins import BaseResponseMixin
 
 
@@ -35,11 +37,26 @@ def _get_current_season(sport='soccer'):
 
 def _get_or_create_entity(name, entity_type, sport, external_id, api_source,
                           logo_url='', country=''):
+    """
+    Get or create entity with deduplication and normalization.
+    
+    - Normalizes name (lowercase, no accents)
+    - Checks for existing similar entities
+    - Links to canonical entity if it's a duplicate
+    - Generates embeddings for AI matching
+    """
+    from apps.entity.models import CanonicalEntity
+    
+    # Normalize the incoming name
+    normalized = normalize_entity_name(name)
+    
+    # Step 1: Check for exact duplicate by (api_source, external_id)
     entity, created = Entity.objects.get_or_create(
         api_source=api_source,
         external_id=str(external_id),
         defaults={
             'name': name,
+            'normalized_name': normalized,
             'type': entity_type,
             'sport': sport,
             'logo_url': logo_url,
@@ -47,10 +64,40 @@ def _get_or_create_entity(name, entity_type, sport, external_id, api_source,
             'has_api_data': True,
         }
     )
+    
+    # Step 2: If new entity, check for similar duplicates by name
+    if created:
+        # Look for similar entities with same sport/type
+        similar_entities = Entity.objects.filter(
+            type=entity_type,
+            sport=sport,
+            api_source=api_source,  # Same API source
+        ).exclude(id=entity.id)
+        
+        duplicate_entity, score = find_similar_entity(name, similar_entities, threshold=0.90)
+        
+        if duplicate_entity:
+            # Link to the canonical entity instead of creating new one
+            entity.canonical_entity = duplicate_entity
+            entity.save(update_fields=['canonical_entity'])
+            logger.info(f"Marked '{name}' as duplicate of '{duplicate_entity.name}' (score: {score:.2f})")
+        else:
+            # Generate embedding for this new entity
+            try:
+                embedding_service = get_embedding_service()
+                if embedding_service:
+                    embedding = embedding_service.generate_embedding(f"{name} {sport} {entity_type}")
+                    entity.embedding = embedding
+                    entity.save(update_fields=['embedding'])
+            except Exception as e:
+                logger.warning(f"Could not generate embedding for {name}: {e}")
+    
+    # Step 3: Update logo if missing
     if not created and logo_url and not entity.logo_url:
         entity.logo_url = logo_url
         entity.save(update_fields=['logo_url'])
-
+    
+    # Step 4: Create sub-models if needed
     if entity_type == 'team':
         Team.objects.get_or_create(entity=entity)
     elif entity_type == 'league':
@@ -64,7 +111,7 @@ def _get_or_create_entity(name, entity_type, sport, external_id, api_source,
                 'last_name': parts[1] if len(parts) > 1 else '',
             }
         )
-
+    
     entity.refresh_from_db()
     return entity, created
 

@@ -53,6 +53,23 @@ class Entity(models.Model):
     has_api_data = models.BooleanField(default=False)  # True if supported by API
     rss_discovery_done = models.BooleanField(default=False)
     
+    # AI & Deduplication
+    embedding = models.JSONField(null=True, blank=True)  # Cached OpenAI embedding
+    canonical_entity = models.ForeignKey(
+        'self',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='duplicates',
+        help_text='Points to canonical entity if this is a duplicate'
+    )
+    normalized_name = models.CharField(
+        max_length=200,
+        blank=True,
+        db_index=True,
+        help_text='Normalized (lowercase, no accents) for deduplication'
+    )
+    
     # Timestamps
     created_at = models.DateTimeField(auto_now_add=True, null=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -198,3 +215,72 @@ class EntityStats(models.Model):
     
     def __str__(self):
         return f"{self.entity.name} - {self.season} ({self.stat_type})"
+
+
+class CanonicalEntity(models.Model):
+    """
+    Canonical entity reference with manual override capability.
+    
+    Maps all name variations to a single canonical entity.
+    Allows admins to manually curate and merge entities.
+    """
+    
+    entity = models.OneToOneField(
+        Entity,
+        on_delete=models.CASCADE,
+        related_name='canonical',
+        help_text='The canonical Entity this canonical refers to'
+    )
+    
+    sport = models.CharField(max_length=50, choices=Entity.SPORT_CHOICES)
+    entity_type = models.CharField(max_length=20, choices=Entity.TYPE_CHOICES)
+    
+    # Canonical name (official)
+    canonical_name = models.CharField(max_length=200, db_index=True)
+    
+    # Alternative names/variations
+    name_variations = models.JSONField(
+        default=list,
+        help_text='JSON array: ["Real Madrid", "RM", "Real Madrid CF"]'
+    )
+    
+    # External IDs across APIs
+    external_ids = models.JSONField(
+        default=dict,
+        help_text='JSON: {"api_sports": 541, "balldontlie": 25, "thesportsdb": "133603"}'
+    )
+    
+    # Flags
+    is_curated = models.BooleanField(
+        default=False,
+        help_text='True if manually verified by admin'
+    )
+    is_verified = models.BooleanField(
+        default=False,
+        help_text='True if data quality checked'
+    )
+    
+    # Timestamps
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    class Meta:
+        ordering = ['sport', 'canonical_name']
+        indexes = [
+            models.Index(fields=['sport', 'canonical_name']),
+            models.Index(fields=['is_curated', 'is_verified']),
+        ]
+    
+    def __str__(self):
+        return f"{self.canonical_name} ({self.entity.sport}/{self.entity.type})"
+    
+    def add_variation(self, name: str):
+        """Add name variation."""
+        if name not in self.name_variations:
+            self.name_variations.append(name)
+            self.save(update_fields=['name_variations'])
+    
+    def add_external_id(self, api_source: str, external_id):
+        """Add external ID for an API source."""
+        self.external_ids[api_source] = str(external_id)
+        self.save(update_fields=['external_ids'])
