@@ -195,6 +195,9 @@ def poll_single_source(self, source_id: int):
         raise self.retry(exc=Exception(result.get('error')))
 
     candidate_entities = list(source.entities.all())
+    is_global_source = not candidate_entities
+    if is_global_source:
+        candidate_entities = list(Entity.objects.filter(is_active=True))
 
     new_items = 0
     for entry in result.get('entries', []):
@@ -204,14 +207,11 @@ def poll_single_source(self, source_id: int):
 
         text = f"{entry.get('title', '')} {entry.get('summary', '')}".lower()
 
-        # BUG FIX: use relaxed matching instead of strict `name in text`
+        # Match entry text against candidate entities
         matched_entities = [e for e in candidate_entities if _entity_matches_text(e, text)]
 
-        # If source has no entities linked yet, accept all entries
-        if not candidate_entities:
-            matched_entities = []
-
-        if not matched_entities and candidate_entities:
+        # If article doesn't match any entity, skip it
+        if not matched_entities:
             continue
 
         url_hash = hashlib.md5(url.encode()).hexdigest()
