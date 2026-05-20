@@ -371,3 +371,43 @@ def fetch_brave_news_for_all_entities():
     
     logger.info(f"Triggered news fetch for {count} active entities")
     return f"Triggered news fetch for {count} entities"
+
+
+@shared_task
+def ensure_entity_has_rss_source(entity_id: int):
+    """
+    Guaranteed fallback: targeted Google News RSS per entity.
+    No API key needed. Fires every time user adds entity to nest.
+    Also backfills orphan FeedItems by title matching.
+    """
+    import urllib.parse
+
+    try:
+        entity = Entity.objects.get(id=entity_id, is_active=True)
+    except Entity.DoesNotExist:
+        return f"Entity {entity_id} not found"
+
+    query = urllib.parse.quote(entity.name)
+    google_news_url = f"https://news.google.com/rss/search?q={query}&hl=en&gl=US&ceid=US:en"
+
+    source, created = Source.objects.get_or_create(
+        rss_url=google_news_url,
+        defaults={
+            'name': f'Google News - {entity.name}',
+            'domain': 'news.google.com',
+            'is_active': True,
+            'discovery_source': 'known',
+        }
+    )
+    source.entities.add(entity)
+    poll_single_source.delay(source.id)
+
+    linked = 0
+    for item in FeedItem.objects.filter(entities__isnull=True).iterator():
+        text = f"{item.title} {item.summary or ''}".lower()
+        if _entity_matches_text(entity, text):
+            item.entities.add(entity)
+            linked += 1
+
+    logger.info(f"ensure_entity_has_rss_source: {entity.name}, source={'created' if created else 'linked'}, backfilled={linked}")
+    return f"Google News RSS {'created' if created else 'linked'} for {entity.name}, {linked} orphan items backfilled"

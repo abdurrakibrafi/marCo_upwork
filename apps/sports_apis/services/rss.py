@@ -8,6 +8,20 @@ from bs4 import BeautifulSoup
 logger = logging.getLogger(__name__)
 
 
+def _safe_parse(url: str, timeout: int = 15) -> feedparser.FeedParserDict:
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        "Accept": "application/rss+xml, application/rdf+xml, application/atom+xml, application/xml, text/xml, */*"
+    }
+    try:
+        resp = requests.get(url, headers=headers, timeout=timeout)
+        resp.raise_for_status()
+        return feedparser.parse(resp.content)
+    except Exception as e:
+        logger.debug(f"Requests fetch failed for {url}, falling back to direct parse: {e}")
+        return feedparser.parse(url)
+
+
 class RSSDiscoveryService:
     """Discovers RSS/Atom feeds for a domain."""
 
@@ -71,7 +85,7 @@ class RSSDiscoveryService:
 
     def _validate_feed(self, feed_url: str) -> bool:
         try:
-            parsed = feedparser.parse(feed_url)
+            parsed = _safe_parse(feed_url)
             # feedparser sets bozo to 1 if there was a problem
             if parsed.bozo and not parsed.entries:
                 return False
@@ -101,7 +115,7 @@ class RSSPollingService:
         if not feed_url:
             return {'success': False, 'error': 'no feed url'}
 
-        parsed = feedparser.parse(feed_url)
+        parsed = _safe_parse(feed_url)
         if parsed.bozo and not parsed.entries:
             return {'success': False, 'error': 'failed to parse feed'}
 
