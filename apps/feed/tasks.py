@@ -354,13 +354,12 @@ def fetch_brave_news_for_trending():
 @shared_task
 def fetch_brave_news_for_all_entities():
     """
-    Fetch fresh news for EVERY active entity in the database.
-    Runs daily to ensure all entities have up-to-date content,
-    regardless of whether any user has added them to their nest.
+    Fetch fresh news for active entities in the database that are followed by users.
+    Filters out unfollowed entities to conserve Brave Search API key quota.
     
     Staggered 2 seconds apart to avoid rate limiting.
     """
-    entities = Entity.objects.filter(is_active=True)
+    entities = Entity.objects.filter(is_active=True, follower_count__gt=0)
     count = entities.count()
     
     for i, entity in enumerate(entities):
@@ -369,7 +368,7 @@ def fetch_brave_news_for_all_entities():
             countdown=i * 2  # stagger 2s apart
         )
     
-    logger.info(f"Triggered news fetch for {count} active entities")
+    logger.info(f"Triggered news fetch for {count} followed active entities")
     return f"Triggered news fetch for {count} entities"
 
 

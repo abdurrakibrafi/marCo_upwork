@@ -696,6 +696,13 @@ def fetch_event_details(self, event_id: int):
         logger.warning(f"fetch_event_details: timeline failed for {event_id}: {e}")
  
     logger.info(f"fetch_event_details: completed for event {event_id}")
+
+    try:
+        from apps.sports_apis.tasks import fetch_highlight_for_event
+        fetch_highlight_for_event.apply_async(args=[event_id], countdown=900)
+    except Exception as e:
+        logger.error(f"Failed to queue highlight fetch for event {event_id}: {e}")
+
     return f"Event {event_id} details fetched"
  
  

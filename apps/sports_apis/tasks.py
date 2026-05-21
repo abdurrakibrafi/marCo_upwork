@@ -687,3 +687,158 @@ def fix_stale_cricket_live_scores():
             total_fixed += count
  
     return f"Fixed {total_fixed} stale cricket live scores"
+
+
+@shared_task(bind=True, max_retries=3, default_retry_delay=900)
+def fetch_highlight_for_event(self, event_id: int):
+    """
+    Search for a highlight video (YouTube) for a given Event.
+    Tries TheSportsDB first, then falls back to Brave Search.
+    Retries up to 3 times (every 15 minutes) if not found.
+    """
+    from apps.event.models import Event, EventHighlight
+    from apps.sports_apis.services.thesportsdb import thesportsdb_service
+    import requests
+    from django.conf import settings
+
+    try:
+        event = Event.objects.select_related('home_entity', 'away_entity').get(id=event_id)
+    except Event.DoesNotExist:
+        return f"Event {event_id} not found"
+
+    # Check if highlight already exists
+    if EventHighlight.objects.filter(event=event).exists():
+        return f"Highlight already exists for Event {event_id}"
+
+    home_name = event.home_entity.name if event.home_entity else ''
+    away_name = event.away_entity.name if event.away_entity else ''
+
+    if not home_name or not away_name:
+        return f"Event {event_id} is missing home/away entities"
+
+    found_url = None
+    found_thumb = None
+    found_title = None
+
+    # ── 1. Try TheSportsDB First ───────────────────────────────────────────
+    try:
+        date_str = event.start_time.date().isoformat()
+        highlights = thesportsdb_service.get_event_highlights(date_str)
+        if highlights:
+            best_score = 0.0
+            best_hl = None
+            for hl in highlights:
+                event_name = hl.get('event_name', '')
+                if ' vs ' in event_name:
+                    parts = event_name.split(' vs ', 1)
+                    h_str, a_str = parts[0].strip(), parts[1].strip()
+                elif ' v ' in event_name:
+                    parts = event_name.split(' v ', 1)
+                    h_str, a_str = parts[0].strip(), parts[1].strip()
+                else:
+                    continue
+
+                home_sim = _name_similarity(h_str, home_name)
+                away_sim = _name_similarity(a_str, away_name)
+                combined = (home_sim + away_sim) / 2
+
+                if combined > best_score:
+                    best_score = combined
+                    best_hl = hl
+
+            if best_hl and best_score >= 0.55:
+                found_url = best_hl.get('highlight_url')
+                found_thumb = best_hl.get('thumbnail')
+                found_title = best_hl.get('event_name')
+                logger.info(f"Highlight found via TheSportsDB for Event {event_id} (score={best_score:.2f})")
+    except Exception as e:
+        logger.warning(f"TheSportsDB highlight lookup failed for Event {event_id}: {e}")
+
+    # ── 2. Fallback to Brave Search ────────────────────────────────────────
+    if not found_url:
+        brave_key = getattr(settings, 'BRAVESEARCH_KEY', '')
+        if brave_key:
+            query = f'"{home_name}" vs "{away_name}" {event.sport} highlights site:youtube.com'
+            headers = {
+                "X-Subscription-Token": brave_key,
+                "Accept": "application/json",
+            }
+            url = "https://api.search.brave.com/res/v1/web/search"
+            try:
+                resp = requests.get(url, headers=headers, params={"q": query, "count": 3}, timeout=10)
+                if resp.status_code == 200:
+                    data = resp.json()
+                    web_results = data.get('web', {}).get('results', [])
+                    for item in web_results:
+                        item_url = item.get('url', '')
+                        if 'youtube.com/watch' in item_url or 'youtu.be/' in item_url:
+                            found_url = item_url
+                            found_title = item.get('title', f"{home_name} vs {away_name} Highlights")
+                            found_thumb = item.get('thumbnail', {}).get('src', '') if isinstance(item.get('thumbnail'), dict) else ''
+                            logger.info(f"Highlight found via Brave Search for Event {event_id}: {found_url}")
+                            break
+            except Exception as e:
+                logger.warning(f"Brave search fallback failed for Event {event_id}: {e}")
+
+    # ── 3. Save if found, otherwise retry ──────────────────────────────────
+    if found_url:
+        yt_id = ''
+        if 'v=' in found_url:
+            yt_id = found_url.split('v=')[-1].split('&')[0]
+        elif 'youtu.be/' in found_url:
+            yt_id = found_url.split('youtu.be/')[-1].split('?')[0]
+
+        highlight_obj, created = EventHighlight.objects.get_or_create(
+            event=event,
+            video_url=found_url,
+            defaults={
+                'title': found_title or f"{home_name} vs {away_name} Highlights",
+                'thumbnail_url': found_thumb or '',
+                'source': 'youtube',
+                'external_id': yt_id,
+            }
+        )
+
+        # Sync to event metadata
+        meta = event.metadata or {}
+        meta['highlight_url'] = found_url
+        meta['highlight_thumb'] = found_thumb or ''
+        event.metadata = meta
+        event.save(update_fields=['metadata'])
+
+        return f"Successfully saved highlight for Event {event_id}"
+    else:
+        # Retry up to 3 times (with 15 min delays)
+        if self.request.retries < self.max_retries:
+            logger.info(f"Highlight not found yet for Event {event_id}. Retrying in 15 minutes (Retry {self.request.retries + 1}/{self.max_retries})...")
+            raise self.retry()
+        else:
+            return f"Highlight search completed. No highlight found for Event {event_id}"
+
+
+@shared_task
+def fetch_highlights_for_recently_completed_events():
+    """
+    Scans for events completed in the last 24 hours that do not have highlights
+    and triggers a fetch task for each of them.
+    """
+    from apps.event.models import Event, EventHighlight
+    from django.utils import timezone
+    from datetime import timedelta
+
+    cutoff = timezone.now() - timedelta(hours=24)
+    # Find completed events in last 24 hours
+    events = Event.objects.filter(
+        status='completed',
+        start_time__gte=cutoff,
+    ).exclude(
+        id__in=EventHighlight.objects.values_list('event_id', flat=True)
+    )
+
+    count = 0
+    for event in events:
+        fetch_highlight_for_event.delay(event.id)
+        count += 1
+
+    logger.info(f"fetch_highlights_for_recently_completed_events: triggered {count} tasks")
+    return f"Triggered highlight checks for {count} completed events"

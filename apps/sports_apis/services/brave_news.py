@@ -67,16 +67,7 @@ class BraveNewsService:
 
     def _build_queries(self, name: str, entity_type: str, sport: str) -> list[str]:
         """Build search queries based on entity type."""
-        queries = [f"{name} {sport} news"]
-
-        if entity_type == 'team':
-            queries.append(f"{name} match results")
-        elif entity_type == 'athlete':
-            queries.append(f"{name} latest news")
-        elif entity_type == 'league':
-            queries.append(f"{name} standings results")
-
-        return queries
+        return [f"{name} {sport} news"]
 
     def _search_news(self, query: str) -> list[dict]:
         """Call Brave news search endpoint."""

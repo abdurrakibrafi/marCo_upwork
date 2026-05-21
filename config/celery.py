@@ -93,6 +93,10 @@ app.conf.beat_schedule = {
         'task': 'apps.sports_apis.tasks.enrich_event_highlights_today',
         'schedule': crontab(hour=23, minute=30),  # 11:30pm daily
     },
+    'fetch-highlights-recently-completed': {
+        'task': 'apps.sports_apis.tasks.fetch_highlights_for_recently_completed_events',
+        'schedule': 1800.0,  # every 30 minutes
+    },
 }
 
 @app.task(bind=True)

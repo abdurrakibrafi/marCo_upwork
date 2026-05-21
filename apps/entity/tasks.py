@@ -361,11 +361,12 @@ def bootstrap_all_entities():
     logger.info(f"Starting bootstrap of {total} entities")
     
     for i, entity in enumerate(entities):
-        # Fetch news for all entities, staggered 3s apart
-        fetch_brave_news_for_entity.apply_async(
-            args=[entity.id],
-            countdown=i * 3
-        )
+        # Fetch news only if the entity is followed, to conserve Brave Search API quota
+        if entity.follower_count > 0:
+            fetch_brave_news_for_entity.apply_async(
+                args=[entity.id],
+                countdown=i * 3
+            )
         
         # Seed roster for soccer teams with no players yet
         if entity.type == 'team' and entity.sport == 'soccer' and entity.api_source == 'api_sports':
