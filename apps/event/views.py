@@ -12,67 +12,232 @@ from apps.core.utils.mixins import BaseResponseMixin
 from apps.nest.models import UserNest
 
 
-@api_view(['GET'])
+# @api_view(['GET'])
+# @permission_classes([IsAuthenticated])
+# def get_nest_calendar(request):
+#     """
+#     Get calendar events for user's nest entities
+#     GET /api/calendar/nest?start_date=2026-03-14&end_date=2026-03-21
+#     """
+#     mixin = BaseResponseMixin()
+#     try:
+#         nest_entities = UserNest.objects.filter(
+#             user=request.user
+#         ).values_list('entity_id', flat=True)
+
+#         if not nest_entities:
+#             return mixin.success_response(
+#                 data={'events': []},
+#                 message='No entities in your nest'
+#             )
+
+#         # Date range — default to current week
+#         start_date_str = request.GET.get('start_date')
+#         end_date_str = request.GET.get('end_date')
+
+#         try:
+#             start_date = datetime.fromisoformat(start_date_str).date() if start_date_str else timezone.now().date()
+#             end_date = datetime.fromisoformat(end_date_str).date() if end_date_str else start_date + timedelta(days=7)
+#         except ValueError:
+#             return mixin.error_response(
+#                 message='Invalid date format. Use YYYY-MM-DD',
+#                 status_code=status.HTTP_400_BAD_REQUEST
+#             )
+
+#         events = Event.objects.filter(
+#             start_time__date__gte=start_date,
+#             start_time__date__lte=end_date,
+#         ).filter(
+#             Q(home_entity_id__in=nest_entities) |
+#             Q(away_entity_id__in=nest_entities)
+#         ).select_related(
+#             'home_entity', 'away_entity', 'league'
+#         ).order_by('start_time')
+
+#         # Materialize queryset once to avoid duplicate serialization work
+#         events_list = list(events)
+#         serialized_events = EventSerializer(events_list, many=True).data
+
+#         grouped = {}
+#         for i, event in enumerate(events_list):
+#             date_key = event.start_time.date().isoformat()
+#             if date_key not in grouped:
+#                 grouped[date_key] = []
+#             grouped[date_key].append(serialized_events[i])
+
+#         data = {
+#             'start_date': start_date.isoformat(),
+#             'end_date': end_date.isoformat(),
+#             'total_count': len(events_list),
+#             'events_by_date': grouped,  # for calendar grid
+#             'events': serialized_events,
+#         }
+#         return mixin.success_response(data=data)
+#     except Exception as exc:
+#         return mixin.handle_exception(exc)
+
+
+"""
+apps/event/views.py  — get_nest_calendar এবং get_event_detail
+
+তোমার existing views-এর সাথে merge করো।
+BaseResponseMixin, EventSerializer, UserNest — তোমার existing imports রাখো।
+"""
+from django.db.models import Q
+from django.utils import timezone
+from rest_framework.decorators import api_view, permission_classes
+from rest_framework.permissions import IsAuthenticated
+
+# তোমার existing imports অনুযায়ী রাখো — নিচের lines পরিবর্তন করো না
+from apps.core.utils.mixins import BaseResponseMixin
+from apps.event.models import Event
+from apps.event.serializers import EventSerializer
+from apps.nest.models import UserNest   # UserNest.entity → FK to Entity
+
+
+@api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def get_nest_calendar(request):
     """
-    Get calendar events for user's nest entities
-    GET /api/calendar/nest?start_date=2026-03-14&end_date=2026-03-21
+    ইউজারের নেস্টে থাকা team/league-এর শুধু live + upcoming ম্যাচ।
+    Grouped by date।
+
+    Query params (optional):
+      sport  — 'soccer' | 'nba' | 'cricket'
+      status — 'live' | 'upcoming'
+      days   — upcoming কত দিন পর্যন্ত দেখাবে (default 7)
+
+    Response:
+    {
+      "Success": true,
+      "Data": {
+        "start_date": "YYYY-MM-DD",
+        "total_count": 12,
+        "events_by_date": {
+          "2025-12-15": [ {...}, ... ],
+          "2025-12-16": [ {...}, ... ]
+        },
+        "events": [ flat list ]
+      }
+    }
     """
     mixin = BaseResponseMixin()
     try:
-        nest_entities = UserNest.objects.filter(
-            user=request.user
-        ).values_list('entity_id', flat=True)
-
-        if not nest_entities:
+        # 1. ইউজারের নেস্ট থেকে entity ids
+        nest_entity_ids = list(
+            UserNest.objects.filter(user=request.user)
+            .values_list("entity_id", flat=True)
+        )
+        if not nest_entity_ids:
             return mixin.success_response(
-                data={'events': []},
-                message='No entities in your nest'
+                data={
+                    "start_date": timezone.now().date().isoformat(),
+                    "total_count": 0,
+                    "events_by_date": {},
+                    "events": [],
+                },
+                message="No entities in your nest.",
             )
 
-        # Date range — default to current week
-        start_date_str = request.GET.get('start_date')
-        end_date_str = request.GET.get('end_date')
+        # 2. Status filter
+        status_param = request.query_params.get("status")
+        allowed_statuses = (
+            [status_param] if status_param in ("live", "upcoming")
+            else ["live", "upcoming"]
+        )
 
+        # 3. Days window (upcoming only; live always included)
         try:
-            start_date = datetime.fromisoformat(start_date_str).date() if start_date_str else timezone.now().date()
-            end_date = datetime.fromisoformat(end_date_str).date() if end_date_str else start_date + timedelta(days=7)
+            days = int(request.query_params.get("days", 7))
         except ValueError:
-            return mixin.error_response(
-                message='Invalid date format. Use YYYY-MM-DD',
-                status_code=status.HTTP_400_BAD_REQUEST
+            days = 7
+        cutoff = timezone.now() + timezone.timedelta(days=days)
+
+        # 4. Queryset
+        qs = (
+            Event.objects.filter(
+                api_source="statpal",
+                status__in=allowed_statuses,
             )
+            .filter(
+                Q(home_entity_id__in=nest_entity_ids)
+                | Q(away_entity_id__in=nest_entity_ids)
+            )
+            .filter(
+                Q(status="live")
+                | Q(status="upcoming", start_time__lte=cutoff)
+            )
+            .select_related("home_entity", "away_entity", "league")
+            .order_by("start_time")
+        )
 
-        events = Event.objects.filter(
-            start_time__date__gte=start_date,
-            start_time__date__lte=end_date,
-        ).filter(
-            Q(home_entity_id__in=nest_entities) |
-            Q(away_entity_id__in=nest_entities)
-        ).select_related(
-            'home_entity', 'away_entity', 'league'
-        ).order_by('start_time')
+        # 5. Optional sport filter
+        sport = request.query_params.get("sport")
+        if sport:
+            # Entity.sport 'basketball' কিন্তু Event.sport 'nba' — তাই raw slug দিয়ে filter
+            qs = qs.filter(sport=sport.lower())
 
-        # Materialize queryset once to avoid duplicate serialization work
-        events_list = list(events)
-        serialized_events = EventSerializer(events_list, many=True).data
+        # 6. Serialize
+        events_list = list(qs)
+        serialized   = EventSerializer(events_list, many=True).data
 
-        grouped = {}
-        for i, event in enumerate(events_list):
-            date_key = event.start_time.date().isoformat()
-            if date_key not in grouped:
-                grouped[date_key] = []
-            grouped[date_key].append(serialized_events[i])
+        # 7. Group by date
+        events_by_date: dict = {}
+        for event_obj, event_data in zip(events_list, serialized):
+            date_key = event_obj.start_time.date().isoformat()
+            events_by_date.setdefault(date_key, []).append(event_data)
 
-        data = {
-            'start_date': start_date.isoformat(),
-            'end_date': end_date.isoformat(),
-            'total_count': len(events_list),
-            'events_by_date': grouped,  # for calendar grid
-            'events': serialized_events,
-        }
-        return mixin.success_response(data=data)
+        return mixin.success_response(
+            data={
+                "start_date":     timezone.now().date().isoformat(),
+                "total_count":    len(events_list),
+                "events_by_date": events_by_date,
+                "events":         list(serialized),
+            }
+        )
+
+    except Exception as exc:
+        return mixin.handle_exception(exc)
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def get_event_detail(request, event_id: int):
+    """Single event detail including metadata (lineups, goals, etc.)"""
+    mixin = BaseResponseMixin()
+    try:
+        event = (
+            Event.objects.select_related("home_entity", "away_entity", "league")
+            .get(pk=event_id)
+        )
+        return mixin.success_response(data=EventSerializer(event).data)
+    except Event.DoesNotExist:
+        return mixin.error_response(message="Event not found.", status_code=404)
+    except Exception as exc:
+        return mixin.handle_exception(exc)
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def get_event_detail(request, event_id: int):
+    """
+    Full detail for a single event including metadata (lineups, etc.)
+
+    Response shape:
+    {
+        "Success": true,
+        "Data": { <EventSerializer with metadata> }
+    }
+    """
+    mixin = BaseResponseMixin()
+    try:
+        event = (
+            Event.objects.select_related("home_entity", "away_entity", "league")
+            .get(pk=event_id)
+        )
+        return mixin.success_response(data=EventSerializer(event).data)
+    except Event.DoesNotExist:
+        return mixin.error_response("Event not found.", status=404)
     except Exception as exc:
         return mixin.handle_exception(exc)
 

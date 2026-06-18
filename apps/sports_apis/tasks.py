@@ -1,3 +1,5 @@
+from datetime import timedelta
+import time
 from celery import shared_task
 from django.core.cache import cache
 from django.conf import settings
@@ -11,7 +13,7 @@ from asgiref.sync import async_to_sync
 from channels.layers import get_channel_layer
 from datetime import datetime, timedelta
 import logging
-
+from apps.sports_apis.services.statpal import statpal_service
 logger = logging.getLogger(__name__)
 
 
@@ -32,6 +34,7 @@ def _publish(live_score_obj):
     except Exception as e:
         logger.error(f"WebSocket publish failed: {e}")
 
+
 @shared_task
 def update_nba_live_scores():
     """
@@ -49,7 +52,8 @@ def update_nba_live_scores():
         return f"NBA update failed: {result.get('error')}"
 
     data = result['data']
-    cache.set('live_scores_nba', data, timeout=settings.CACHE_TTLS.get('live_scores', 120))
+    cache.set('live_scores_nba', data,
+              timeout=settings.CACHE_TTLS.get('live_scores', 120))
 
     all_games = data.get('data', [])
 
@@ -91,7 +95,8 @@ def update_nba_live_scores():
 
         saved += 1
 
-    live_count = sum(1 for g in all_games if g.get('status', '') in LIVE_STATUSES)
+    live_count = sum(1 for g in all_games if g.get(
+        'status', '') in LIVE_STATUSES)
     logger.info(f"NBA: {saved} games saved, {live_count} live")
     return f"NBA: {saved} games ({live_count} live)"
 
@@ -102,21 +107,23 @@ def _nba_logo(team_id) -> str:
         return ''
     return f"https://cdn.nba.com/logos/nba/{team_id}/global/L/logo.svg"
 
+
 @shared_task
 def update_nfl_live_scores():
     """Update NFL live scores - runs every 2 minutes"""
     logger.info("Updating NFL live scores...")
-    
+
     result = balldontlie_service.get_live_games('nfl')
-    
+
     if result['success']:
         data = result['data']
-        cache.set('live_scores_nfl', data, timeout=settings.CACHE_TTLS['live_scores'])
-        
+        cache.set('live_scores_nfl', data,
+                  timeout=settings.CACHE_TTLS['live_scores'])
+
         # For NFL, filter games that are currently live
         all_games = data.get('data', [])
         games = [game for game in all_games if game.get('status') == 'Live']
-        
+
         for game in games:
             live_score, _ = LiveScore.objects.update_or_create(
                 sport='nfl',
@@ -133,24 +140,26 @@ def update_nfl_live_scores():
                 }
             )
             _publish(live_score)  # push to WebSocket
-        
+
         logger.info(f"NFL: Updated {len(games)} live games")
         return f"NFL: {len(games)} games updated"
     else:
         logger.error(f"NFL update failed: {result.get('error')}")
         return f"NFL update failed"
 
+
 @shared_task
 def update_soccer_live_scores():
     """Update Soccer live scores - runs every 2 minutes"""
     logger.info("Updating Soccer live scores...")
-    
+
     result = api_sports_service.get_live_fixtures()
-    
+
     if result['success']:
         data = result['data']
-        cache.set('live_scores_soccer', data, timeout=settings.CACHE_TTLS['live_scores'])
-        
+        cache.set('live_scores_soccer', data,
+                  timeout=settings.CACHE_TTLS['live_scores'])
+
         fixtures = data.get('response', [])
         for fixture in fixtures:
             live_score, _ = LiveScore.objects.update_or_create(
@@ -170,13 +179,13 @@ def update_soccer_live_scores():
                 }
             )
             _publish(live_score)  # push to WebSocket
-        
+
         logger.info(f"Soccer: Updated {len(fixtures)} live games")
         return f"Soccer: {len(fixtures)} games updated"
     else:
         logger.error(f"Soccer update failed: {result.get('error')}")
         return f"Soccer update failed"
-    
+
 
 @shared_task
 def update_cricket_live_scores():
@@ -199,11 +208,11 @@ def update_cricket_live_scores():
     for match in matches:
         home_team = match.get('event_home_team', '')
         away_team = match.get('event_away_team', '')
-        
+
         # these are the actual score strings like "84/1"
         home_score_str = match.get('event_home_final_result', '') or ''
         away_score_str = match.get('event_away_final_result', '') or ''
-        
+
         # run rates
         home_rr = match.get('event_home_rr') or ''
         away_rr = match.get('event_away_rr') or ''
@@ -223,20 +232,21 @@ def update_cricket_live_scores():
         # elif 'finished' in event_status or 'stumps' in event_status:
         #     status = 'completed'
         # else:
-        #     status = 'live' 
+        #     status = 'live'
 
         event_status = (match.get('event_status') or '').lower()
-        LIVE_KEYWORDS = ('live', 'progress', 'lunch', 'tea', 'drinks', 'innings break')
-        COMPLETED_KEYWORDS = ('finished', 'stumps', 'result', 'ended', 'complete', 
-                            'won', 'drawn', 'tied', 'abandoned', 'cancelled', 
-                            'no result', 'postponed', 'suspended', 'interrupted')
+        LIVE_KEYWORDS = ('live', 'progress', 'lunch',
+                         'tea', 'drinks', 'innings break')
+        COMPLETED_KEYWORDS = ('finished', 'stumps', 'result', 'ended', 'complete',
+                              'won', 'drawn', 'tied', 'abandoned', 'cancelled',
+                              'no result', 'postponed', 'suspended', 'interrupted')
 
         if any(k in event_status for k in LIVE_KEYWORDS):
             status = 'live'
         elif any(k in event_status for k in COMPLETED_KEYWORDS):
             status = 'completed'
         else:
-            status = 'upcoming' 
+            status = 'upcoming'
 
         external_id = str(match.get('event_key', ''))
         if not external_id or not home_team:
@@ -307,13 +317,14 @@ def update_soccer_live_scores():
         # No live games right now — mark all soccer LiveScore rows as completed
         stale = LiveScore.objects.filter(sport='soccer', status='live').count()
         if stale:
-            LiveScore.objects.filter(sport='soccer', status='live').update(status='completed')
+            LiveScore.objects.filter(
+                sport='soccer', status='live').update(status='completed')
             logger.info(f"Soccer: no live games, marked {stale} as completed")
         return "Soccer: 0 live fixtures"
 
     saved = 0
     for fixture in fixtures:
-        fix_data   = fixture.get('fixture', {})
+        fix_data = fixture.get('fixture', {})
         teams_data = fixture.get('teams', {})
         goals_data = fixture.get('goals', {})
         league_data = fixture.get('league', {})
@@ -323,8 +334,8 @@ def update_soccer_live_scores():
             continue
 
         status_short = fix_data.get('status', {}).get('short', '')
-        status_long  = fix_data.get('status', {}).get('long', '')
-        elapsed      = fix_data.get('status', {}).get('elapsed')
+        status_long = fix_data.get('status', {}).get('long', '')
+        elapsed = fix_data.get('status', {}).get('elapsed')
 
         # Map API-Sports status codes to our status
         if status_short in ('FT', 'AET', 'PEN', 'AWD', 'WO'):
@@ -431,15 +442,9 @@ def update_soccer_live_scores():
     return f"Soccer: {saved} fixtures ({len(live_ext_ids)} live)"
 
 
-import logging
-import time
-from celery import shared_task
-from django.utils import timezone
-from datetime import timedelta
- 
 logger = logging.getLogger(__name__)
- 
- 
+
+
 def _name_similarity(a: str, b: str) -> float:
     """Simple word overlap similarity 0.0-1.0."""
     a_words = set(a.lower().split())
@@ -448,27 +453,28 @@ def _name_similarity(a: str, b: str) -> float:
         return 0.0
     overlap = a_words & b_words
     return len(overlap) / max(len(a_words), len(b_words))
- 
- 
+
+
 @shared_task
 def enrich_missing_logos(dry_run: bool = False):
     """
     Find all entities with no logo_url and try to fill from TheSportsDB.
     Focuses on: cricket teams, cricket leagues (major ones only), NBA teams.
- 
+
     Rate limit: free key = 30 req/min, so we sleep 2s between calls.
     """
     from apps.entity.models import Entity
     from apps.sports_apis.services.thesportsdb import thesportsdb_service
- 
-    missing = Entity.objects.filter(logo_url='').order_by('type', 'sport', 'name')
+
+    missing = Entity.objects.filter(
+        logo_url='').order_by('type', 'sport', 'name')
     total = missing.count()
     logger.info(f"enrich_missing_logos: {total} entities need logos")
- 
+
     updated = 0
     skipped = 0
     not_found = 0
- 
+
     for entity in missing:
         # Skip obscure cricket tour series — TheSportsDB won't have them
         # e.g. "Afghanistan A tour of Oman", "Under-19s tour of Nepal"
@@ -479,31 +485,32 @@ def enrich_missing_logos(dry_run: bool = False):
         if any(kw in name.lower() for kw in skip_keywords) and entity.type == 'league':
             skipped += 1
             continue
- 
+
         logo_url = ''
- 
+
         if entity.type == 'team':
             logo_url = thesportsdb_service.get_team_badge(name)
- 
+
             # If no exact match, try stripping common suffixes
             if not logo_url:
                 stripped = (name.replace(' Women', '')
-                               .replace(' Men', '')
-                               .replace(' FC', '')
-                               .replace(' CF', '')
-                               .replace(' SC', '')
-                               .strip())
+                            .replace(' Men', '')
+                            .replace(' FC', '')
+                            .replace(' CF', '')
+                            .replace(' SC', '')
+                            .strip())
                 if stripped != name:
                     logo_url = thesportsdb_service.get_team_badge(stripped)
- 
+
         elif entity.type == 'league':
             # Only try major cricket leagues — skip obscure bilateral tours
             major_keywords = ['ipl', 'bbl', 'cpl', 'psl', 'icc', 'test',
                               'world cup', 'champions', 'premier', 'super',
                               'league', 't20', 'one day', 'odi']
             if any(kw in name.lower() for kw in major_keywords):
-                logo_url = thesportsdb_service.get_league_badge(name, entity.sport)
- 
+                logo_url = thesportsdb_service.get_league_badge(
+                    name, entity.sport)
+
         if logo_url:
             if not dry_run:
                 entity.logo_url = logo_url
@@ -512,15 +519,15 @@ def enrich_missing_logos(dry_run: bool = False):
             logger.info(f"  ✓ [{entity.type}] {name} → {logo_url[:60]}")
         else:
             not_found += 1
- 
+
         # Respect rate limit — 30 req/min free = 1 req/2s
         time.sleep(2)
- 
+
     result = f"Logo enrichment done: {updated} updated, {skipped} skipped (obscure tours), {not_found} not found on TheSportsDB"
     logger.info(result)
     return result
- 
- 
+
+
 @shared_task
 def enrich_entity_logo(entity_id: int):
     """
@@ -529,65 +536,66 @@ def enrich_entity_logo(entity_id: int):
     """
     from apps.entity.models import Entity
     from apps.sports_apis.services.thesportsdb import thesportsdb_service
- 
+
     try:
         entity = Entity.objects.get(id=entity_id)
     except Entity.DoesNotExist:
         return f"Entity {entity_id} not found"
- 
+
     if entity.logo_url:
         return f"Entity {entity_id} already has logo"
- 
+
     logo_url = ''
     if entity.type == 'team':
         logo_url = thesportsdb_service.get_team_badge(entity.name)
     elif entity.type == 'league':
-        logo_url = thesportsdb_service.get_league_badge(entity.name, entity.sport)
- 
+        logo_url = thesportsdb_service.get_league_badge(
+            entity.name, entity.sport)
+
     if logo_url:
         entity.logo_url = logo_url
         entity.save(update_fields=['logo_url'])
         return f"Enriched {entity.name} → {logo_url[:60]}"
- 
+
     return f"No logo found for {entity.name}"
- 
- 
+
+
 @shared_task
 def enrich_event_highlights_today():
     """
     Fetch YouTube highlights from TheSportsDB for completed events
     and store them in EventHighlight + event.metadata.
- 
+
     TheSportsDB returns highlights with empty home_team/away_team fields.
     We parse the event_name string ("Team A vs Team B") instead.
- 
+
     Runs daily at 11:30pm. Also checks yesterday in case of delays.
     """
     from apps.event.models import Event, EventHighlight
     from apps.sports_apis.services.thesportsdb import thesportsdb_service
- 
+
     matched_total = 0
- 
+
     # Check both yesterday and today — highlights often appear hours after game
     for days_ago in [0, 1]:
         check_date = (timezone.now() - timedelta(days=days_ago)).date()
         date_str = check_date.isoformat()
- 
+
         highlights = thesportsdb_service.get_event_highlights(date_str)
         if not highlights:
             continue
- 
+
         # Filter to sports we care about
         relevant = [
             h for h in highlights
             if h['sport'] in ('soccer', 'cricket', 'basketball', 'ice hockey', 'baseball')
         ]
- 
+
         for hl in relevant:
             url = hl.get('highlight_url', '')
             if not url:
                 continue
- 
+
             # Parse "Team A vs Team B" from event_name
             event_name = hl.get('event_name', '')
             if ' vs ' in event_name:
@@ -601,35 +609,35 @@ def enrich_event_highlights_today():
             else:
                 # Can't parse — skip
                 continue
- 
+
             if not home_str or not away_str:
                 continue
- 
+
             # Find matching completed event in our DB
             candidates = Event.objects.filter(
                 start_time__date=check_date,
                 status='completed',
             ).select_related('home_entity', 'away_entity')
- 
+
             best_event = None
             best_score = 0.0
- 
+
             for event in candidates:
                 home_name = event.home_entity.name if event.home_entity else ''
                 away_name = event.away_entity.name if event.away_entity else ''
- 
+
                 home_sim = _name_similarity(home_str, home_name)
                 away_sim = _name_similarity(away_str, away_name)
                 combined = (home_sim + away_sim) / 2
- 
+
                 if combined > best_score:
                     best_score = combined
                     best_event = event
- 
+
             # Require at least 40% combined similarity
             if not best_event or best_score < 0.55:
                 continue
- 
+
             # Save to EventHighlight table
             highlight_obj, created = EventHighlight.objects.get_or_create(
                 event=best_event,
@@ -641,7 +649,7 @@ def enrich_event_highlights_today():
                     'external_id':   url.split('v=')[-1].split('&')[0] if 'v=' in url else '',
                 }
             )
- 
+
             # Also store in metadata for quick access without join
             if created:
                 meta = best_event.metadata or {}
@@ -655,10 +663,10 @@ def enrich_event_highlights_today():
                     f"{best_event.home_entity.name} vs {best_event.away_entity.name} "
                     f"(score={best_score:.2f})"
                 )
- 
+
     return f"Highlights enriched: {matched_total} events matched"
- 
- 
+
+
 @shared_task
 def fix_stale_cricket_live_scores():
     """
@@ -668,13 +676,13 @@ def fix_stale_cricket_live_scores():
     Also safe to run periodically as a cleanup.
     """
     from apps.score.models import LiveScore
- 
+
     COMPLETED_STATUSES = [
         'Cancelled', 'Postponed', 'Suspended', 'Abandoned',
         'Interrupted', 'Result', 'Finished', 'Ended',
         'No Result', 'Drawn', 'Won', 'Tied',
     ]
- 
+
     total_fixed = 0
     for status_str in COMPLETED_STATUSES:
         count = LiveScore.objects.filter(
@@ -685,7 +693,7 @@ def fix_stale_cricket_live_scores():
         if count:
             logger.info(f"  Fixed '{status_str}': {count}")
             total_fixed += count
- 
+
     return f"Fixed {total_fixed} stale cricket live scores"
 
 
@@ -702,7 +710,8 @@ def fetch_highlight_for_event(self, event_id: int):
     from django.conf import settings
 
     try:
-        event = Event.objects.select_related('home_entity', 'away_entity').get(id=event_id)
+        event = Event.objects.select_related(
+            'home_entity', 'away_entity').get(id=event_id)
     except Event.DoesNotExist:
         return f"Event {event_id} not found"
 
@@ -750,9 +759,11 @@ def fetch_highlight_for_event(self, event_id: int):
                 found_url = best_hl.get('highlight_url')
                 found_thumb = best_hl.get('thumbnail')
                 found_title = best_hl.get('event_name')
-                logger.info(f"Highlight found via TheSportsDB for Event {event_id} (score={best_score:.2f})")
+                logger.info(
+                    f"Highlight found via TheSportsDB for Event {event_id} (score={best_score:.2f})")
     except Exception as e:
-        logger.warning(f"TheSportsDB highlight lookup failed for Event {event_id}: {e}")
+        logger.warning(
+            f"TheSportsDB highlight lookup failed for Event {event_id}: {e}")
 
     # ── 2. Fallback to Brave Search ────────────────────────────────────────
     if not found_url:
@@ -765,7 +776,8 @@ def fetch_highlight_for_event(self, event_id: int):
             }
             url = "https://api.search.brave.com/res/v1/web/search"
             try:
-                resp = requests.get(url, headers=headers, params={"q": query, "count": 3}, timeout=10)
+                resp = requests.get(url, headers=headers, params={
+                                    "q": query, "count": 3}, timeout=10)
                 if resp.status_code == 200:
                     data = resp.json()
                     web_results = data.get('web', {}).get('results', [])
@@ -773,12 +785,16 @@ def fetch_highlight_for_event(self, event_id: int):
                         item_url = item.get('url', '')
                         if 'youtube.com/watch' in item_url or 'youtu.be/' in item_url:
                             found_url = item_url
-                            found_title = item.get('title', f"{home_name} vs {away_name} Highlights")
-                            found_thumb = item.get('thumbnail', {}).get('src', '') if isinstance(item.get('thumbnail'), dict) else ''
-                            logger.info(f"Highlight found via Brave Search for Event {event_id}: {found_url}")
+                            found_title = item.get(
+                                'title', f"{home_name} vs {away_name} Highlights")
+                            found_thumb = item.get('thumbnail', {}).get(
+                                'src', '') if isinstance(item.get('thumbnail'), dict) else ''
+                            logger.info(
+                                f"Highlight found via Brave Search for Event {event_id}: {found_url}")
                             break
             except Exception as e:
-                logger.warning(f"Brave search fallback failed for Event {event_id}: {e}")
+                logger.warning(
+                    f"Brave search fallback failed for Event {event_id}: {e}")
 
     # ── 3. Save if found, otherwise retry ──────────────────────────────────
     if found_url:
@@ -810,7 +826,8 @@ def fetch_highlight_for_event(self, event_id: int):
     else:
         # Retry up to 3 times (with 15 min delays)
         if self.request.retries < self.max_retries:
-            logger.info(f"Highlight not found yet for Event {event_id}. Retrying in 15 minutes (Retry {self.request.retries + 1}/{self.max_retries})...")
+            logger.info(
+                f"Highlight not found yet for Event {event_id}. Retrying in 15 minutes (Retry {self.request.retries + 1}/{self.max_retries})...")
             raise self.retry()
         else:
             return f"Highlight search completed. No highlight found for Event {event_id}"
@@ -840,5 +857,265 @@ def fetch_highlights_for_recently_completed_events():
         fetch_highlight_for_event.delay(event.id)
         count += 1
 
-    logger.info(f"fetch_highlights_for_recently_completed_events: triggered {count} tasks")
+    logger.info(
+        f"fetch_highlights_for_recently_completed_events: triggered {count} tasks")
     return f"Triggered highlight checks for {count} completed events"
+
+
+"""========================================================
+
+            (((--------New Code StatPal Integration---------)))
+
+==========================================================="""
+
+
+logger = logging.getLogger(__name__)
+
+# ========================================================
+# SOCCER PARSER
+# ========================================================
+
+
+def parse_soccer_live(payload):
+    """Soccer live matches parser - শুধু numeric status (live) গুলো নিবে"""
+    matches = []
+    live_matches = payload.get('live_matches', {})
+    leagues = live_matches.get('league', [])
+
+    if isinstance(leagues, dict):
+        leagues = [leagues]
+
+    for league in leagues:
+        league_matches = league.get('match', [])
+        if isinstance(league_matches, dict):
+            league_matches = [league_matches]
+
+        for match in league_matches:
+            status = match.get('status', '')
+            # শুধু numeric status (live) গুলো নিবে
+            if status and str(status).replace("'", "").replace("+", "").isdigit():
+                matches.append({
+                    'match': match,
+                    'league': league.get('name', 'Unknown'),
+                    'status_minute': status
+                })
+
+    return matches
+
+# ========================================================
+# CRICKET PARSER
+# ========================================================
+
+
+def parse_cricket_live(payload):
+    """Cricket live matches parser - Stumps, Innings, Session ইত্যাদি live"""
+    matches = []
+    scores = payload.get('scores', {})
+    categories = scores.get('category', [])
+
+    if isinstance(categories, dict):
+        categories = [categories]
+
+    LIVE_KEYWORDS = ['stumps', 'innings',
+                     'session', 'drinks', 'tea', 'rain', 'lunch']
+
+    for cat in categories:
+        match_data = cat.get('match')
+        if not match_data:
+            continue
+
+        if isinstance(match_data, dict):
+            match_data = [match_data]
+
+        for match in match_data:
+            status = str(match.get('status', '')).lower().strip()
+            # Check if it's live
+            is_live = any(keyword in status for keyword in LIVE_KEYWORDS)
+            # Also check if it's not finished
+            is_finished = status in ['finished',
+                                     'completed', 'abandoned', 'cancelled']
+
+            if is_live and not is_finished:
+                matches.append({
+                    'match': match,
+                    'category': cat.get('name', 'Unknown'),
+                    'status_detail': status
+                })
+
+    return matches
+
+# ========================================================
+# MAIN TASK: UPDATE LIVE SCORES
+# ========================================================
+
+
+@shared_task
+def update_statpal_live_scores(sport):
+    """
+    StatPal থেকে লাইভ স্কোর এনে LiveScore মডেলে সেভ করবে
+    """
+    logger.info(f"🔄 Fetching live scores for {sport}...")
+    
+    result = statpal_service.get_live_scores(sport)
+    if not result['success']:
+        logger.error(f"❌ Failed to fetch {sport}: {result.get('error')}")
+        return f"Failed: {result.get('error')}"
+    
+    payload = result.get('data', {})
+    saved_count = 0
+    skipped_count = 0
+    
+    # Sport-specific parsing
+    if sport.lower() == 'soccer':
+        parsed = parse_soccer_live(payload)
+        logger.info(f"⚽ Found {len(parsed)} live soccer matches")
+        
+        for item in parsed:
+            match = item['match']
+            external_id = str(match.get('main_id', match.get('fallback_id_1', '')))
+            if not external_id:
+                skipped_count += 1
+                continue
+            
+            home = match.get('home', {})
+            away = match.get('away', {})
+            
+            # Get scores
+            home_goals = home.get('goals', '0')
+            away_goals = away.get('goals', '0')
+            
+            # Get start time
+            start_time = None
+            if match.get('date') and match.get('time'):
+                try:
+                    from datetime import datetime
+                    start_time = f"{match.get('date')} {match.get('time')}"
+                except:
+                    start_time = match.get('date', '')
+            
+            # Save
+            try:
+                live_score, created = LiveScore.objects.update_or_create(
+                    sport='soccer',
+                    external_id=external_id,
+                    defaults={
+                        'home_team': home.get('name', ''),
+                        'away_team': away.get('name', ''),
+                        'home_score': int(home_goals) if str(home_goals).isdigit() else 0,
+                        'away_score': int(away_goals) if str(away_goals).isdigit() else 0,
+                        'status': 'live',
+                        'status_detail': f"{item['status_minute']}'",
+                        'start_time': start_time,
+                        'raw_data': match,
+                    }
+                )
+                saved_count += 1
+                logger.info(f"✅ Soccer: {home.get('name')} vs {away.get('name')} ({item['status_minute']}')")
+            except Exception as e:
+                logger.error(f"❌ Error saving soccer match {external_id}: {e}")
+                skipped_count += 1
+    
+    elif sport.lower() == 'cricket':
+        parsed = parse_cricket_live(payload)
+        logger.info(f"🏏 Found {len(parsed)} live cricket matches")
+        
+        for item in parsed:
+            match = item['match']
+            external_id = str(match.get('id', match.get('main_id', '')))
+            if not external_id:
+                skipped_count += 1
+                continue
+            
+            home = match.get('home', {})
+            away = match.get('away', {})
+            
+            # Get scores
+            home_score = match.get('home_score', 0)
+            away_score = match.get('away_score', 0)
+            
+            # Get start time
+            start_time = match.get('start_time', match.get('date', ''))
+            
+            # Save
+            try:
+                live_score, created = LiveScore.objects.update_or_create(
+                    sport='cricket',
+                    external_id=external_id,
+                    defaults={
+                        'home_team': home.get('name', ''),
+                        'away_team': away.get('name', ''),
+                        'home_score': int(home_score) if str(home_score).isdigit() else 0,
+                        'away_score': int(away_score) if str(away_score).isdigit() else 0,
+                        'status': 'live',
+                        'status_detail': item['status_detail'],
+                        'start_time': start_time,
+                        'raw_data': match,
+                    }
+                )
+                saved_count += 1
+                logger.info(f"✅ Cricket: {home.get('name')} vs {away.get('name')} ({item['status_detail']})")
+            except Exception as e:
+                logger.error(f"❌ Error saving cricket match {external_id}: {e}")
+                skipped_count += 1
+    
+    else:
+        return f"Unknown sport: {sport}"
+    
+    result_msg = f"✅ {sport}: {saved_count} saved, {skipped_count} skipped"
+    logger.info(result_msg)
+    return result_msg
+
+# ========================================================
+# BULK UPDATE TASK
+# ========================================================
+
+
+@shared_task
+def trigger_all_statpal_live_updates():
+    """সব স্পোর্টের লাইভ স্কোর আপডেট করুন"""
+    sports = ['soccer', 'cricket']
+    results = []
+
+    for sport in sports:
+        result = update_statpal_live_scores.delay(sport)
+        results.append(result.id)
+
+    return f"🔄 Triggered updates for: {', '.join(sports)}"
+
+# ========================================================
+# FORCE UPDATE (Direct - without Celery)
+# ========================================================
+
+
+def force_update_all_scores():
+    """Celery ছাড়া সরাসরি আপডেট করুন (Debugging এর জন্য)"""
+    from apps.score.models import LiveScore
+
+    # Clear existing
+    deleted = LiveScore.objects.filter(status='live').delete()
+    print(f"🗑️ Deleted {deleted[0]} old live scores")
+
+    results = {}
+
+    # Soccer
+    print("\n⚽ Updating Soccer...")
+    results['soccer'] = update_statpal_live_scores('soccer')
+    print(results['soccer'])
+
+    # Cricket
+    print("\n🏏 Updating Cricket...")
+    results['cricket'] = update_statpal_live_scores('cricket')
+    print(results['cricket'])
+
+    # Summary
+    print("\n" + "="*50)
+    print("📊 FINAL SUMMARY")
+    print("="*50)
+    total = LiveScore.objects.filter(status='live').count()
+    print(f"Total live scores: {total}")
+
+    for sport in ['soccer', 'cricket']:
+        count = LiveScore.objects.filter(sport=sport, status='live').count()
+        print(f"{sport}: {count}")
+
+    return results

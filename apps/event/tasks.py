@@ -17,7 +17,7 @@ from apps.event.models import (
     Event, EventStatistics, EventLineup, EventPlayerStats, EventTimeline
 )
 logger = logging.getLogger(__name__)
-
+from apps.sports_apis.services.statpal import statpal_service
 
 @shared_task
 def update_nba_fixtures(date=None):
@@ -746,3 +746,714 @@ def cleanup_stale_live_events():
     count = stale.update(status='completed')
     logger.info(f"Cleaned up {count} stale live events")
     return f"Cleaned {count} stale live events"
+
+
+"""--------------------new code (tatpal integration)------------------"""
+
+
+from apps.entity.utils.matcher import get_or_create_precise_entity
+from apps.sports_apis.services.statpal import statpal_service
+
+# --- StatPal Calendar Sync Logic ---
+
+@shared_task
+def sync_statpal_fixtures_task(sport, days=7):
+    today = timezone.now().date()
+    
+    for i in range(days + 1):
+        target_date = (today + timedelta(days=i)).isoformat()
+        logger.info(f"Syncing {sport} fixtures for {target_date} via StatPal")
+        
+        result = statpal_service.get_fixtures_by_date(sport, target_date)
+        
+        if not result['success']:
+            continue
+            
+        # StatPal data mapping - adjusting based on typical structure
+        # Note: If 'data' is a list directly, or inside a 'results' key
+        raw_response = result.get('data', {})
+        fixtures = raw_response if isinstance(raw_response, list) else raw_response.get('data', [])
+        
+        for fix in fixtures:
+            try:
+                # টিম ডাটা এক্সট্রাক্ট করা (StatPal keys অনুযায়ী)
+                home = fix.get('home_team', fix.get('localteam', {}))
+                away = fix.get('away_team', fix.get('visitorteam', {}))
+                
+                if not home.get('name') or not away.get('name'): continue
+
+                # টিম ক্রিয়েট বা গেট করা
+                home_team = _get_or_create_team_entity('statpal', str(home.get('id')), home.get('name'), sport, logo_url=home.get('logo'))
+                away_team = _get_or_create_team_entity('statpal', str(away.get('id')), away.get('name'), sport, logo_url=away.get('logo'))
+
+                # ইভেন্ট সেভ করা
+                Event.objects.update_or_create(
+                    api_source='statpal',
+                    external_id=str(fix.get('id')),
+                    defaults={
+                        'sport': sport,
+                        'home_entity': home_team,
+                        'away_entity': away_team,
+                        'start_time': fix.get('start_time') or fix.get('date_time'),
+                        'status': _map_statpal_status(str(fix.get('status'))),
+                        'home_score': fix.get('home_score', 0),
+                        'away_score': fix.get('away_score', 0),
+                        'metadata': fix
+                    }
+                )
+            except Exception as e:
+                logger.error(f"Error processing fixture {fix.get('id')}: {e}")
+
+def _map_statpal_status(status_raw):
+    """Internal helper to map StatPal status to DB choices"""
+    s = status_raw.lower()
+    if s in ['finished', 'ft', 'completed']: return 'completed'
+    if s in ['live', 'in_play']: return 'live'
+    if s in ['postponed']: return 'postponed'
+    return 'upcoming'
+
+
+from apps.entity.utils.matcher import get_or_create_precise_entity
+
+@shared_task
+def sync_statpal_calendar_unified(sport, offset=None):
+    result = statpal_service.get_fixtures(sport, offset)
+    if not result['success']: return
+
+    raw = result['data']
+    matches = []
+
+    # --- Extract matches based on your JSON samples ---
+    if sport == 'soccer':
+        # Soccer pattern: matches_DD_MM_YYYY -> league -> match
+        for key in raw.keys():
+            if key.startswith('matches_'):
+                for lg in raw[key].get('league', []):
+                    matches.extend(lg.get('match', []))
+    
+    elif sport == 'nba':
+        # NBA pattern: livescores/scores -> tournament -> match
+        matches = raw.get('scores', {}).get('tournament', {}).get('match', [])
+    
+    elif sport == 'cricket':
+        # Cricket pattern: scores -> category -> match
+        for cat in raw.get('scores', {}).get('category', []):
+            m = cat.get('match')
+            if m: matches.append(m)
+
+    # --- Processing with Precise ID Matching ---
+    for m in matches:
+        home_raw = m.get('home', {})
+        away_raw = m.get('away', {})
+        
+        home = get_or_create_precise_entity(home_raw.get('id'), home_raw.get('name'), sport)
+        away = get_or_create_precise_entity(away_raw.get('id'), away_raw.get('name'), sport)
+
+        if home and away:
+            Event.objects.update_or_create(
+                api_source='statpal',
+                external_id=str(m.get('id') or m.get('main_id')),
+                defaults={
+                    'sport': sport,
+                    'home_entity': home,
+                    'away_entity': away,
+                    'start_time': m.get('date') + " " + m.get('time', '00:00'),
+                    'status': 'completed' if m.get('status') == 'Finished' else 'upcoming',
+                    'home_score': m.get('ft', {}).get('home_goals', home_raw.get('totalscore', 0)),
+                    'away_score': m.get('ft', {}).get('away_goals', away_raw.get('totalscore', 0)),
+                    'metadata': m
+                }
+            )
+
+
+@shared_task
+def sync_statpal_unified_task(sport, mode='fixtures', offset=None):
+    from apps.entity.utils.matcher import get_or_create_precise_entity
+    from apps.sports_apis.services.statpal import statpal_service
+    import logging
+    logger = logging.getLogger(__name__)
+
+    result = statpal_service.get_live_scores(sport) if mode == 'live' else statpal_service.get_fixtures(sport, offset)
+    
+    if not result['success']:
+        logger.error(f"StatPal API Call Failed: {result.get('error')}")
+        return "Failed"
+
+    data = result.get('data', {})
+    matches = []
+
+    # --- Resilient Parsing ---
+    try:
+        if sport == 'soccer':
+            # সকারের ক্ষেত্রে root_key ডাইনামিক হয় (যেমন: matches_18_06_2026)
+            for key, value in data.items():
+                if isinstance(value, dict) and 'league' in value:
+                    for lg in value.get('league', []):
+                        matches.extend(lg.get('match', []))
+        elif sport == 'nba':
+            root = data.get('livescores') or data.get('scores', {})
+            matches = root.get('tournament', {}).get('match', [])
+        elif sport == 'cricket':
+            root = data.get('scores', {})
+            for cat in root.get('category', []):
+                m = cat.get('match')
+                if m: matches.append(m)
+    except Exception as e:
+        logger.error(f"JSON Parsing Error: {e}")
+
+    logger.info(f"StatPal {sport}: Found {len(matches)} matches to process")
+
+    saved = 0
+    for m in matches:
+        try:
+            home_raw = m.get('home', {})
+            away_raw = m.get('away', {})
+            
+            home = get_or_create_precise_entity(home_raw.get('id'), home_raw.get('name'), sport, logo=home_raw.get('logo'))
+            away = get_or_create_precise_entity(away_raw.get('id'), away_raw.get('name'), sport, logo=away_raw.get('logo'))
+
+            Event.objects.update_or_create(
+                api_source='statpal',
+                external_id=str(m.get('id') or m.get('main_id')),
+                defaults={
+                    'sport': sport,
+                    'home_entity': home,
+                    'away_entity': away,
+                    'status': 'completed' if m.get('status') == 'Finished' else 'upcoming',
+                    'home_score': home_raw.get('totalscore', 0) or m.get('home_score', 0),
+                    'away_score': away_raw.get('totalscore', 0) or m.get('away_score', 0),
+                    'start_time': timezone.now(), # Temporary for testing
+                    'metadata': m
+                }
+            )
+            saved += 1
+        except Exception as e:
+            logger.error(f"Error saving match: {e}")
+
+    return f"StatPal {sport}: {saved} matches saved"
+
+
+
+from apps.entity.utils.matcher import get_or_create_precise_entity
+from apps.sports_apis.services.statpal import statpal_service
+from django.utils import timezone
+
+@shared_task
+def sync_statpal_all_live_task():
+    """
+    Fetches Live Scores for all sports and saves them as Events.
+    """
+    sports = ['soccer', 'cricket', 'nba']
+    total_saved = 0
+
+    for sport in sports:
+        if sport == 'soccer': res = statpal_service.get_soccer_live()
+        elif sport == 'cricket': res = statpal_service.get_cricket_live()
+        else: res = statpal_service.get_nba_live()
+
+        if not res['success']: continue
+        data = res['data']
+        matches = []
+
+        # --- parsing based on your samples ---
+        if sport == 'soccer':
+            for lg in data.get('live_matches', {}).get('league', []):
+                matches.extend(lg.get('match', []))
+        elif sport == 'cricket':
+            for cat in data.get('scores', {}).get('category', []):
+                m = cat.get('match')
+                if m: matches.append(m)
+        elif sport == 'nba':
+            matches = data.get('livescores', {}).get('tournament', {}).get('match', [])
+
+        # --- Saving to Event Table ---
+        for m in matches:
+            try:
+                home_raw, away_raw = m.get('home', {}), m.get('away', {})
+                # Get precise IDs
+                home = get_or_create_precise_entity(home_raw.get('id'), home_raw.get('name'), sport)
+                away = get_or_create_precise_entity(away_raw.get('id'), away_raw.get('name'), sport)
+
+                Event.objects.update_or_create(
+                    api_source='statpal',
+                    external_id=str(m.get('main_id') or m.get('id')),
+                    defaults={
+                        'sport': 'basketball' if sport == 'nba' else sport,
+                        'home_entity': home,
+                        'away_entity': away,
+                        'status': 'completed' if m.get('status') == 'Finished' else 'live',
+                        'home_score': home_raw.get('goals') or home_raw.get('totalscore') or 0,
+                        'away_score': away_raw.get('goals') or away_raw.get('totalscore') or 0,
+                        'start_time': timezone.now(),
+                        'metadata': m
+                    }
+                )
+                total_saved += 1
+            except Exception:
+                continue
+
+    return f"StatPal Sync: {total_saved} matches saved to DB"
+
+
+from apps.entity.utils.matcher import get_or_create_precise_entity
+from apps.sports_apis.services.statpal import statpal_service
+from django.utils import timezone
+from celery import shared_task
+
+@shared_task
+def sync_statpal_working_task():
+    from apps.entity.utils.matcher import get_or_create_precise_entity
+    from datetime import datetime
+
+    res = statpal_service.get_soccer_live()
+    if not res['success']: return "Failed"
+
+    data = res['data']
+    leagues_raw = data.get('live_matches', {}).get('league', [])
+    
+    saved_count = 0
+    for lg_raw in leagues_raw:
+        league_entity = get_or_create_precise_entity(
+            lg_raw.get('id'), lg_raw.get('name'), 'soccer', entity_type='league'
+        )
+
+        matches = lg_raw.get('match', [])
+        for m in matches:
+            try:
+                home_raw = m.get('home', {})
+                away_raw = m.get('away', {})
+                
+                home = get_or_create_precise_entity(home_raw.get('id'), home_raw.get('name'), 'soccer')
+                away = get_or_create_precise_entity(away_raw.get('id'), away_raw.get('name'), 'soccer')
+
+                try:
+                    dt_str = f"{m.get('date')} {m.get('time')}"
+                    start_time = datetime.strptime(dt_str, "%d.%m.%Y %H:%M")
+                except:
+                    start_time = timezone.now()
+
+                from apps.event.models import Event
+                Event.objects.update_or_create(
+                    api_source='statpal',
+                    external_id=str(m.get('main_id')),
+                    defaults={
+                        'sport': 'soccer',
+                        'home_entity': home,
+                        'away_entity': away,
+                        'league': league_entity, # লিগ ম্যাপ করা হলো
+                        'status': 'live' if m.get('status') not in ['FT', 'Finished'] else 'completed',
+                        'status_detail': m.get('status', 'live'),
+                        'home_score': int(home_raw.get('goals', 0)),
+                        'away_score': int(away_raw.get('goals', 0)),
+                        'venue_name': m.get('venue', ''), 
+                        'start_time': start_time,
+                        'metadata': m
+                    }
+                )
+                saved_count += 1
+            except Exception as e:
+                continue
+
+    return f"Processed {saved_count} matches with full info."
+
+
+@shared_task
+def sync_statpal_orchestrator_task():
+    """
+    Unified task for Soccer, NBA, and Cricket.
+    Updates both 'Event' (Calendar) and 'LiveScore' (Real-time).
+    """
+    from apps.score.models import LiveScore
+    from apps.sports_apis.tasks import _publish
+    from apps.event.models import Event
+
+    sports = ['soccer', 'cricket', 'nba']
+    total_matches = 0
+
+    for sport in sports:
+        if sport == 'soccer': res = statpal_service.get_soccer_live()
+        elif sport == 'cricket': res = statpal_service.get_cricket_live()
+        else: res = statpal_service.get_nba_live()
+
+        if not res['success']: continue
+        data = res['data']
+        matches = []
+
+        # --- Dynamic Parsing for V1 & V2 ---
+        if sport == 'soccer':
+            for lg in data.get('live_matches', {}).get('league', []):
+                matches.extend(lg.get('match', []))
+        elif sport == 'cricket':
+            for cat in data.get('scores', {}).get('category', []):
+                m = cat.get('match')
+                if m: matches.append(m)
+        elif sport == 'nba':
+            matches = data.get('livescores', {}).get('tournament', {}).get('match', [])
+
+        # --- Saving and Publishing ---
+        for m in matches:
+            try:
+                h_raw, a_raw = m.get('home', {}), m.get('away', {})
+                h_score = h_raw.get('goals') or h_raw.get('totalscore') or 0
+                a_score = a_raw.get('goals') or a_raw.get('totalscore') or 0
+
+                home = get_or_create_precise_entity(h_raw.get('id'), h_raw.get('name'), sport, logo=h_raw.get('logo'))
+                away = get_or_create_precise_entity(a_raw.get('id'), a_raw.get('name'), sport, logo=a_raw.get('logo'))
+
+                # 1. Update Event (For Calendar/Detail page)
+                Event.objects.update_or_create(
+                    api_source='statpal',
+                    external_id=str(m.get('main_id') or m.get('id')),
+                    defaults={
+                        'sport': 'basketball' if sport == 'nba' else sport,
+                        'home_entity': home, 'away_entity': away,
+                        'status': 'live', 'home_score': int(h_score), 'away_score': int(a_score),
+                        'start_time': timezone.now(), 'metadata': m
+                    }
+                )
+
+                # 2. Update LiveScore (For WebSocket/Live Ticker)
+                live_obj, _ = LiveScore.objects.update_or_create(
+                    sport=sport, external_id=str(m.get('main_id') or m.get('id')),
+                    defaults={
+                        'home_team': home.name, 'away_team': away.name,
+                        'home_score': int(h_score), 'away_score': int(a_score),
+                        'status': 'live', 'status_detail': m.get('status', 'live'),
+                        'start_time': timezone.now(), 'raw_data': m
+                    }
+                )
+                
+                # Push update to WebSocket
+                _publish(live_obj)
+                total_matches += 1
+            except:
+                continue
+
+    return f"StatPal Orchestrator: Processed {total_matches} matches across all sports."
+
+
+
+"""
+apps/event/tasks.py
+
+sync_statpal_data() — Soccer + NBA + Cricket একসাথে sync করে।
+
+StatPal response root keys:
+  Soccer live  : live_matches → league[]          → match[]
+  Soccer daily : <dynamic_key> → league[]         → match[]
+  NBA live     : livescores → tournament           → match[]
+  NBA daily    : scores → tournament               → match[]
+  Cricket live : scores → category[]              → match  (single object)
+  Cricket fix  : fixtures → category[]            → match  (single object)
+
+LiveScore fields: sport, external_id, home_team, away_team, home_logo, away_logo,
+                  home_score, away_score, status, status_detail, start_time,
+                  raw_data, updated_at  (unique_together: sport + external_id)
+
+Event fields   : api_source, external_id, sport, home_entity, away_entity, league,
+                 status, status_detail, home_score, away_score, venue_name,
+                 start_time, metadata  (unique_together: api_source + external_id)
+"""
+import logging
+from datetime import datetime
+
+from celery import shared_task
+from django.core.cache import cache
+from django.db import transaction
+from django.utils import timezone
+
+from apps.event.models import Event
+from apps.score.models import LiveScore
+from apps.sports_apis.services.statpal import statpal_service
+from apps.entity.utils.matcher import get_or_create_precise_entity
+
+logger = logging.getLogger(__name__)
+
+# ------------------------------------------------------------------ #
+# Status helpers
+# ------------------------------------------------------------------ #
+_FINISHED = {
+    "FT", "AET", "PEN", "Finished", "After Over Time",
+    "Full-time", "finished", "ft", "aet", "CANC", "ABD",
+}
+_LIVE = {
+    "1H", "2H", "HT", "ET", "BT", "P", "SUSP", "INT", "LIVE",
+    "In Progress", "In Play", "live",
+}
+
+
+def _map_status(raw: str):
+    """Returns 'live', 'upcoming', or None (= skip completed)."""
+    if raw in _FINISHED:
+        return None
+    if raw in _LIVE:
+        return "live"
+    return "upcoming"
+
+
+def _parse_dt(date_str: str, time_str: str) -> datetime:
+    try:
+        naive = datetime.strptime(f"{date_str} {time_str}", "%d.%m.%Y %H:%M")
+        return timezone.make_aware(naive, timezone.get_current_timezone())
+    except Exception:
+        return timezone.now()
+
+
+def _safe_int(val) -> int:
+    try:
+        return int(str(val).split("/")[0].split("&")[0].strip())
+    except Exception:
+        return 0
+
+
+# ------------------------------------------------------------------ #
+# Extractors — return normalised list of dicts
+# ------------------------------------------------------------------ #
+
+def _soccer_rows(data: dict) -> list:
+    if "live_matches" in data:
+        leagues = data["live_matches"].get("league", [])
+    else:
+        leagues = []
+        for v in data.values():
+            if isinstance(v, dict) and "league" in v:
+                leagues = v["league"]
+                break
+
+    rows = []
+    for lg in leagues:
+        for m in lg.get("match", []):
+            home = m.get("home", {})
+            away = m.get("away", {})
+            rows.append({
+                "external_id": str(m.get("main_id") or m.get("id", "")),
+                "sport": "soccer",
+                "league_id":   str(lg.get("id", "")),
+                "league_name": lg.get("name", ""),
+                "home_id":   str(home.get("id", "")),
+                "home_name": home.get("name", ""),
+                "away_id":   str(away.get("id", "")),
+                "away_name": away.get("name", ""),
+                "home_score": _safe_int(home.get("goals") or home.get("score")),
+                "away_score": _safe_int(away.get("goals") or away.get("score")),
+                "status_raw": m.get("status", "NS"),
+                "date":  m.get("date", ""),
+                "time":  m.get("time", "00:00"),
+                "venue": m.get("venue", ""),
+                "raw":   m,
+            })
+    return rows
+
+
+def _nba_rows(data: dict) -> list:
+    tournament = (
+        data.get("livescores", {}).get("tournament")
+        or data.get("scores", {}).get("tournament")
+        or {}
+    )
+    league_id   = str(tournament.get("id", "nba"))
+    league_name = tournament.get("league", "NBA")
+
+    rows = []
+    for m in tournament.get("match", []):
+        home = m.get("home", {})
+        away = m.get("away", {})
+        rows.append({
+            "external_id": str(m.get("id", "")),
+            "sport": "nba",
+            "league_id":   league_id,
+            "league_name": league_name,
+            "home_id":   str(home.get("id", "")),
+            "home_name": home.get("name", ""),
+            "away_id":   str(away.get("id", "")),
+            "away_name": away.get("name", ""),
+            "home_score": _safe_int(home.get("totalscore")),
+            "away_score": _safe_int(away.get("totalscore")),
+            "status_raw": m.get("status", "NS"),
+            "date":  m.get("date", ""),
+            "time":  m.get("time", "00:00"),
+            "venue": m.get("venue", ""),
+            "raw":   m,
+        })
+    return rows
+
+
+def _cricket_rows(data: dict) -> list:
+    categories = (
+        data.get("scores", {}).get("category", [])
+        or data.get("fixtures", {}).get("category", [])
+    )
+
+    rows = []
+    for cat in categories:
+        m = cat.get("match")
+        if not m:
+            continue
+        match_list = m if isinstance(m, list) else [m]
+        for match in match_list:
+            home = match.get("home", {})
+            away = match.get("away", {})
+            rows.append({
+                "external_id": str(match.get("id", "")),
+                "sport": "cricket",
+                "league_id":   str(cat.get("id", "")),
+                "league_name": cat.get("name", ""),
+                "home_id":   str(home.get("id", "")),
+                "home_name": home.get("name", ""),
+                "away_id":   str(away.get("id", "")),
+                "away_name": away.get("name", ""),
+                "home_score": _safe_int(home.get("totalscore")),
+                "away_score": _safe_int(away.get("totalscore")),
+                "status_raw": match.get("status", "NS"),
+                "date":  match.get("date", ""),
+                "time":  match.get("time", "00:00"),
+                "venue": match.get("venue", ""),
+                "raw":   match,
+            })
+    return rows
+
+
+# ------------------------------------------------------------------ #
+# _publish — existing WebSocket helper (imported at call site)
+# ------------------------------------------------------------------ #
+
+def _publish(live_obj: LiveScore):
+    """
+    Call your existing publish function.
+    Adjust the import path to wherever _publish lives in your project.
+    """
+    try:
+        from apps.score.consumers import publish_live_score   # adjust if needed
+        publish_live_score(live_obj)
+    except ImportError:
+        pass   # WebSocket layer not available (e.g. during tests)
+    except Exception:
+        logger.exception("WebSocket publish failed for LiveScore id=%s", live_obj.pk)
+
+
+# ------------------------------------------------------------------ #
+# Core save helpers
+# ------------------------------------------------------------------ #
+
+def _save_event(row: dict) -> Event | None:
+    """Save to Event model. Returns None if match is completed (skip)."""
+    status = _map_status(row["status_raw"])
+    if status is None or not row["external_id"]:
+        return None
+
+    sport = row["sport"]
+    league = get_or_create_precise_entity(
+        row["league_id"], row["league_name"], sport, entity_type="league"
+    )
+    home = get_or_create_precise_entity(
+        row["home_id"], row["home_name"], sport, entity_type="team"
+    )
+    away = get_or_create_precise_entity(
+        row["away_id"], row["away_name"], sport, entity_type="team"
+    )
+    start_time = _parse_dt(row["date"], row["time"])
+
+    event, _ = Event.objects.update_or_create(
+        api_source="statpal",
+        external_id=row["external_id"],
+        defaults={
+            "sport":        sport,
+            "home_entity":  home,
+            "away_entity":  away,
+            "league":       league,
+            "status":       status,
+            "status_detail": row["status_raw"],
+            "home_score":   row["home_score"],
+            "away_score":   row["away_score"],
+            "venue_name":   row["venue"],
+            "start_time":   start_time,
+            "metadata":     row["raw"],
+        },
+    )
+    return event
+
+
+def _save_livescore(row: dict, event: Event):
+    """
+    Upsert LiveScore (unique: sport + external_id).
+    LiveScore.sport choices: 'nba', 'soccer', 'cricket', etc.
+    Only saves when status is live or upcoming (completed already skipped upstream).
+    """
+    status = _map_status(row["status_raw"])
+    if status is None:
+        return
+
+    # LiveScore.sport must match its SPORTS_CHOICES — 'nba' not 'basketball'
+    ls_sport = row["sport"]   # 'soccer', 'nba', 'cricket'
+
+    live_obj, _ = LiveScore.objects.update_or_create(
+        sport=ls_sport,
+        external_id=row["external_id"],
+        defaults={
+            "home_team":     row["home_name"],
+            "away_team":     row["away_name"],
+            "home_logo":     event.home_entity.logo_url,
+            "away_logo":     event.away_entity.logo_url,
+            "home_score":    row["home_score"] or None,
+            "away_score":    row["away_score"] or None,
+            "status":        status,
+            "status_detail": row["status_raw"],
+            "start_time":    event.start_time,
+            "raw_data":      row["raw"],
+        },
+    )
+
+    if status == "live":
+        _publish(live_obj)
+        cache.set(f"live_scores_{ls_sport}", True, timeout=120)
+
+
+# ------------------------------------------------------------------ #
+# Celery task
+# ------------------------------------------------------------------ #
+
+@shared_task(bind=True, max_retries=3, default_retry_delay=60)
+def sync_statpal_data(self):
+    """
+    Fetches live + today's fixtures for Soccer, NBA, Cricket.
+    Saves to both Event and LiveScore models.
+    Publishes via WebSocket for live matches.
+
+    Recommended beat schedule: every 60 seconds.
+    """
+    fetches = [
+        ("soccer",  statpal_service.get_soccer_live,     _soccer_rows),
+        ("soccer",  statpal_service.get_soccer_fixtures,  _soccer_rows),
+        ("nba",     statpal_service.get_nba_live,         _nba_rows),
+        ("nba",     statpal_service.get_nba_fixtures,     _nba_rows),
+        ("cricket", statpal_service.get_cricket_live,     _cricket_rows),
+        ("cricket", statpal_service.get_cricket_fixtures, _cricket_rows),
+    ]
+
+    saved = skipped = errors = 0
+
+    for sport, fetch_fn, extract_fn in fetches:
+        result = fetch_fn()
+        if not result["success"]:
+            logger.warning("[StatPal] %s fetch failed: %s", sport, result.get("error"))
+            continue
+
+        for row in extract_fn(result["data"]):
+            try:
+                with transaction.atomic():
+                    event = _save_event(row)
+                    if event is None:
+                        skipped += 1
+                        continue
+                    _save_livescore(row, event)
+                    saved += 1
+            except Exception as exc:
+                errors += 1
+                logger.exception(
+                    "[StatPal] Save failed — external_id=%r sport=%s: %s",
+                    row.get("external_id"), sport, exc,
+                )
+
+    msg = f"sync_statpal_data — saved={saved}, skipped={skipped}, errors={errors}"
+    logger.info(msg)
+    return msg

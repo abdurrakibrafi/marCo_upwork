@@ -27,7 +27,7 @@ wait_for_db() {
 wait_for_db
 
 # Only run migrations/collectstatic for web server
-if [[ "$1" == "uvicorn" ]] || [[ -z "$1" ]]; then
+if [[ "$1" == "uvicorn" ]] || [[ "$1" == "gunicorn" ]] || [[ -z "$1" ]]; then
     echo "🌐 Web server detected, running migrations..."
     python manage.py migrate --fake-initial || true
     python manage.py migrate --run-syncdb || true

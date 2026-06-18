@@ -1,0 +1,2181 @@
+Get Leagues
+get
+https://statpal.io/api/v2/soccer/leagues
+import http.client
+conn = http.client.HTTPSConnection("statpal.io")
+headers = { 'Accept': "application/json" }
+conn.request("GET", "/api/v2/soccer/leagues?access_key=b5b07a3f-b019-4a18-8969-6045169feda9", headers=headers)
+res = conn.getresponse()
+data = res.read()
+print(data.decode("utf-8"))
+{
+"leagues": {
+"sport": "soccer",
+"league": [
+{
+"id": "3800",
+"country": "africa",
+"name": "CAF African Nations Championship",
+"season": "2025",
+"date_start": "02.08.2025",
+"date_end": "30.08.2025"
+},
+{
+"id": "3976",
+"country": "africa",
+"name": "CAF Women's Africa Cup of Nations",
+"season": "2025",
+"date_start": "05.07.2025",
+"date_end": "26.07.2025"
+}
+]
+}
+}
+Get Seasons
+get
+https://statpal.io/api/v2/soccer/leagues/seasons
+import http.client
+conn = http.client.HTTPSConnection("statpal.io")
+headers = { 'Accept': "application/json" }
+conn.request("GET", "/api/v2/soccer/leagues/seasons?access_key=b5b07a3f-b019-4a18-8969-6045169feda9", headers=headers)
+res = conn.getresponse()
+data = res.read()
+print(data.decode("utf-8"))
+{
+"seasons": {
+"sport": "soccer",
+"league": [
+{
+"id": "3800",
+"country": "africa",
+"name": "CAF African Nations Championship",
+"matches": {
+"season": [
+{
+"name": "2016"
+},
+{
+"name": "2018"
+},
+{
+"name": "2020"
+},
+{
+"name": "2021"
+},
+{
+"name": "2025"
+}
+]
+},
+"standings": {
+"season": {
+"name": "2025"
+}
+}
+},
+{
+"id": "3976",
+"country": "africa",
+"name": "CAF Women's Africa Cup of Nations",
+"matches": {
+"season": [
+{
+"name": "2022"
+},
+{
+"name": "2024"
+},
+{
+"name": "2025"
+}
+]
+},
+"standings": null
+}
+]
+}
+}
+Get Matches Today / Live
+get
+https://statpal.io/api/v2/soccer/matches/live
+import http.client
+conn = http.client.HTTPSConnection("statpal.io")
+headers = { 'Accept': "application/json" }
+conn.request("GET", "/api/v2/soccer/matches/live?access_key=b5b07a3f-b019-4a18-8969-6045169feda9", headers=headers)
+res = conn.getresponse()
+data = res.read()
+print(data.decode("utf-8"))
+{
+"live_matches": {
+"updated": "26.11.2025 16:54:37",
+"updated_ts": 1764176077,
+"league": [
+{
+"id": "2905",
+"name": "Andorra: Primera Divisió",
+"country": "andorra",
+"cup": "False",
+"match": [
+{
+"main_id": "2025112611667",
+"fallback_id_1": "6099244",
+"fallback_id_2": "6606657",
+"fallback_id_3": "8708898",
+"status": "FT",
+"date": "26.11.2025",
+"time": "13:30",
+"inj_time": "",
+"inj_minute": "",
+"venue": "Centre d'Entrenament de la FAF 1",
+"home": {
+"id": "2337666",
+"name": "FC Santa Coloma",
+"goals": "1",
+"win_on_agg": "false"
+},
+"away": {
+"id": "2337667",
+"name": "Inter Escaldes",
+"goals": "3",
+"win_on_agg": "true"
+},
+"events": {
+"event": [
+{
+"id": "66102484",
+"type": "goal",
+"team": "away",
+"minute": "2",
+"extra_min": "",
+"player": "J. Martinez",
+"player_id": "3400123",
+"assist_player": "L. Gomez",
+"assist_id": "3312345",
+"result": "[0 - 1]"
+},
+{
+"id": "66102485",
+"type": "yellowcard",
+"team": "away",
+"minute": "21",
+"extra_min": "",
+"player": "C. Lopez",
+"player_id": "3398765",
+"assist_player": "",
+"assist_id": "",
+"result": ""
+},
+{
+"id": "66102486",
+"type": "goal",
+"team": "home",
+"minute": "45",
+"extra_min": "2",
+"player": "M. Sanchez",
+"player_id": "3309987",
+"assist_player": "D. Ruiz",
+"assist_id": "3322999",
+"result": "[1 - 1]"
+}
+]
+},
+"ht": {
+"home_goals": 1,
+"away_goals": 1
+},
+"ft": {
+"home_goals": 1,
+"away_goals": 3
+},
+"et": null,
+"penalties": {
+"home_pen": 3,
+"away_pen": 4,
+"penalty_events": [
+{
+"id": "66707336",
+"penalty_num": "1",
+"team": "away",
+"player": "A. Fernandez",
+"player_id": "3405001",
+"type": "miss",
+"result": ""
+},
+{
+"id": "66707337",
+"penalty_num": "2",
+"team": "home",
+"player": "J. Herrera",
+"player_id": "3300123",
+"type": "goal",
+"result": "[1 - 0]"
+},
+{
+"id": "66707338",
+"penalty_num": "3",
+"team": "away",
+"player": "L. Rodriguez",
+"player_id": "3408754",
+"type": "goal",
+"result": "[1 - 1]"
+},
+{
+"id": "66707339",
+"penalty_num": "4",
+"team": "home",
+"player": "S. Mendez",
+"player_id": "3305678",
+"type": "goal",
+"result": "[2 - 1]"
+},
+{
+"id": "66707340",
+"penalty_num": "5",
+"team": "away",
+"player": "P. Lopez",
+"player_id": "3421234",
+"type": "goal",
+"result": "[2 - 2]"
+},
+{
+"id": "66707341",
+"penalty_num": "6",
+"team": "home",
+"player": "M. Diaz",
+"player_id": "3312345",
+"type": "miss",
+"result": ""
+},
+{
+"id": "66707342",
+"penalty_num": "7",
+"team": "away",
+"player": "F. Gomez",
+"player_id": "3408765",
+"type": "goal",
+"result": "[2 - 3]"
+}
+]
+},
+"has_live_stats": "False",
+"inplay_odds_running": "True"
+}
+]
+}
+]
+}
+}
+Get Matches Recent / Upcoming
+get
+https://statpal.io/api/v2/soccer/matches/daily
+import http.client
+conn = http.client.HTTPSConnection("statpal.io")
+headers = { 'Accept': "application/json" }
+conn.request("GET", "/api/v2/soccer/matches/daily?offset=-1&access_key=b5b07a3f-b019-4a18-8969-6045169feda9", headers=headers)
+res = conn.getresponse()
+data = res.read()
+print(data.decode("utf-8"))
+{
+"matches_15_12_2025": {
+"updated": "26.11.2025 16:54:37",
+"updated_ts": 1764176077,
+"league": [
+{
+"id": "2905",
+"name": "Andorra: Primera Divisió",
+"country": "andorra",
+"cup": "False",
+"match": [
+{
+"main_id": "2025112611667",
+"fallback_id_1": "6099244",
+"fallback_id_2": "6606657",
+"fallback_id_3": "8708898",
+"status": "FT",
+"date": "15.12.2025",
+"time": "13:30",
+"inj_time": "",
+"inj_minute": "",
+"venue": "Centre d'Entrenament de la FAF 1",
+"home": {
+"id": "2337666",
+"name": "FC Santa Coloma",
+"goals": "1",
+"win_on_agg": "false"
+},
+"away": {
+"id": "2337667",
+"name": "Inter Escaldes",
+"goals": "3",
+"win_on_agg": "true"
+},
+"events": {
+"event": [
+{
+"id": "66102484",
+"type": "goal",
+"team": "away",
+"minute": "2",
+"extra_min": "",
+"player": "J. Martinez",
+"player_id": "3400123",
+"assist_player": "L. Gomez",
+"assist_id": "3312345",
+"result": "[0 - 1]"
+},
+{
+"id": "66102485",
+"type": "yellowcard",
+"team": "away",
+"minute": "21",
+"extra_min": "",
+"player": "C. Lopez",
+"player_id": "3398765",
+"assist_player": "",
+"assist_id": "",
+"result": ""
+},
+{
+"id": "66102486",
+"type": "goal",
+"team": "home",
+"minute": "45",
+"extra_min": "2",
+"player": "M. Sanchez",
+"player_id": "3309987",
+"assist_player": "D. Ruiz",
+"assist_id": "3322999",
+"result": "[1 - 1]"
+}
+]
+},
+"ht": {
+"home_goals": 1,
+"away_goals": 1
+},
+"ft": {
+"home_goals": 1,
+"away_goals": 3
+},
+"et": null,
+"penalties": {
+"home_pen": 3,
+"away_pen": 4,
+"penalty_events": [
+{
+"id": "66707336",
+"penalty_num": "1",
+"team": "away",
+"player": "A. Fernandez",
+"player_id": "3405001",
+"type": "miss",
+"result": ""
+},
+{
+"id": "66707337",
+"penalty_num": "2",
+"team": "home",
+"player": "J. Herrera",
+"player_id": "3300123",
+"type": "goal",
+"result": "[1 - 0]"
+},
+{
+"id": "66707338",
+"penalty_num": "3",
+"team": "away",
+"player": "L. Rodriguez",
+"player_id": "3408754",
+"type": "goal",
+"result": "[1 - 1]"
+},
+{
+"id": "66707339",
+"penalty_num": "4",
+"team": "home",
+"player": "S. Mendez",
+"player_id": "3305678",
+"type": "goal",
+"result": "[2 - 1]"
+},
+{
+"id": "66707340",
+"penalty_num": "5",
+"team": "away",
+"player": "P. Lopez",
+"player_id": "3421234",
+"type": "goal",
+"result": "[2 - 2]"
+},
+{
+"id": "66707341",
+"penalty_num": "6",
+"team": "home",
+"player": "M. Diaz",
+"player_id": "3312345",
+"type": "miss",
+"result": ""
+},
+{
+"id": "66707342",
+"penalty_num": "7",
+"team": "away",
+"player": "F. Gomez",
+"player_id": "3408765",
+"type": "goal",
+"result": "[2 - 3]"
+}
+]
+},
+"has_live_stats": "False",
+"inplay_odds_running": "True"
+}
+]
+}
+]
+}
+}
+Get Matches By League / Season
+get
+https://statpal.io/api/v2/soccer/leagues/{league-id}/matches
+import http.client
+conn = http.client.HTTPSConnection("statpal.io")
+headers = { 'Accept': "application/json" }
+conn.request("GET", "/api/v2/soccer/leagues/20835/matches?access_key=b5b07a3f-b019-4a18-8969-6045169feda9", headers=headers)
+res = conn.getresponse()
+data = res.read()
+print(data.decode("utf-8"))
+{
+"matches": {
+"updated": "06.12.2025 15:03:51",
+"updated_ts": 1765033431,
+"country": "england",
+"tournament": {
+"id": "3037",
+"league": "Premier League",
+"season": "2025/2026",
+"stage_id": "14372914",
+"is_current": "True",
+"week": [
+{
+"number": "1",
+"match": [
+{
+"main_id": "2025081518302",
+"fallback_id_1": "6024103",
+"fallback_id_2": "6531486",
+"date": "15.08.2025",
+"time": "19:00",
+"status": "FT",
+"venue": "Anfield",
+"venue_id": "",
+"venue_city": "Liverpool",
+"attendance": "60 315",
+"home": {
+"id": "2341082",
+"name": "Liverpool",
+"score": "4"
+},
+"away": {
+"id": "2340886",
+"name": "Bournemouth",
+"score": "2"
+},
+"coaches": {
+"home": {
+"coach": {
+"id": "2334186",
+"name": "Arend Martijn Slot"
+}
+},
+"away": {
+"coach": {
+"id": "2887252",
+"name": "Andoni Iraola Sagarna"
+}
+}
+},
+"referee": {
+"id": "",
+"name": ""
+},
+"lineups": {
+"home": {
+"formation": "4-2-3-1",
+"player": [
+{
+"number": "1",
+"id": "2434476",
+"name": "Alisson",
+"booking": ""
+}
+]
+},
+"away": {
+"formation": "4-2-3-1",
+"player": [
+{
+"number": "1",
+"id": "2795235",
+"name": "D. Petrovic",
+"booking": ""
+}
+]
+}
+},
+"substitutions": {
+"home": {
+"substitution": [
+{
+"player_in_number": "25",
+"player_in_name": "G. Mamardashvili",
+"player_in_booking": "",
+"player_in_id": "2794974",
+"player_out_name": "",
+"player_out_id": "",
+"minute": ""
+}
+]
+},
+"away": {
+"substitution": [
+{
+"player_in_number": "40",
+"player_in_name": "W. Dennis",
+"player_in_booking": "",
+"player_in_id": "2861662",
+"player_out_name": "",
+"player_out_id": "",
+"minute": ""
+}
+]
+}
+},
+"goals": {
+"goal": [
+{
+"team": "home",
+"minute": "37",
+"player": "H. Ekitike",
+"score": "[1 - 0]",
+"playerid": "2956415",
+"assist": "A. Mac Allister",
+"assistid": "2799893"
+}
+]
+},
+"ht": {
+"home_goals": 1,
+"away_goals": 0
+},
+"ft": {
+"home_goals": 4,
+"away_goals": 2
+},
+"et": null,
+"penalties": null
+}
+]
+}
+]
+}
+}
+}
+Get Match Details By League
+get
+https://statpal.io/api/v2/soccer/leagues/{league-id}/matches/stats
+import http.client
+conn = http.client.HTTPSConnection("statpal.io")
+headers = { 'Accept': "application/json" }
+conn.request("GET", "/api/v2/soccer/leagues/20835/matches/stats?access_key=b5b07a3f-b019-4a18-8969-6045169feda9", headers=headers)
+res = conn.getresponse()
+data = res.read()
+print(data.decode("utf-8"))
+{
+"match-stats": {
+"updated": "09.12.2025 04:22:31",
+"updated_ts": 1765254151,
+"tournament": {
+"id": "3037",
+"name": "England - Premier League",
+"matches": {
+"main_id": "2025120818706",
+"fallback_id_1": "6023967",
+"fallback_id_2": "6531349",
+"date": "08.12.2025",
+"time": "20:00",
+"status": "Full-time",
+"match_info": {
+"stadium": {
+"name": "Molineux Stadium, Wolverhampton"
+},
+"time": {
+"name": "20:00",
+"added_time_period_1": "2",
+"added_time_period_2": "9"
+},
+"referee": {
+"name": "Michael Salisbury, England"
+}
+},
+"home": {
+"id": "2341279",
+"name": "Wolverhampton",
+"goals": "1"
+},
+"away": {
+"id": "2341093",
+"name": "Manchester United",
+"goals": "4"
+},
+"ht": {
+"home_goals": "1",
+"away_goals": "1"
+},
+"ft": {
+"home_goals": "1",
+"away_goals": "4"
+},
+"et": null,
+"penalties": null,
+"lineups": {
+"home": {
+"player": [
+{
+"id": "2528099",
+"name": "Sam Johnstone",
+"number": "31",
+"pos": "G",
+"formation_pos": "1"
+}
+],
+"formation": "3-4-2-1"
+},
+"away": {
+"player": [
+{
+"id": "2903698",
+"name": "Senne Lammens",
+"number": "31",
+"pos": "G",
+"formation_pos": "1"
+}
+],
+"formation": "3-4-2-1"
+}
+},
+"bench": {
+"home": {
+"player": [
+{
+"id": "3204556",
+"name": "Fer López",
+"number": "28",
+"pos": "F"
+}
+]
+},
+"away": {
+"player": [
+{
+"id": "2803504",
+"name": "Lisandro Martínez",
+"number": "6",
+"pos": "D"
+}
+]
+}
+},
+"substitutions": {
+"home": {
+"substitution": [
+{
+"minute": "86",
+"player_on": "Jackson Tchatchoua",
+"player_on_id": "3018150",
+"player_off": "Ki-Jana Hoever",
+"player_off_id": "2857755",
+"injury": "False"
+}
+]
+},
+"away": {
+"substitution": [
+{
+"minute": "85",
+"player_on": "Joshua Zirkzee",
+"player_on_id": "2848210",
+"player_off": "Mason Mount",
+"player_off_id": "2708530",
+"injury": "False"
+}
+]
+}
+},
+"team_colors": {
+"home": {
+"player": {
+"primary": {
+"color": "fbbd37"
+},
+"number": {
+"color": "000000"
+},
+"border": {
+"color": "fbbd37"
+}
+},
+"goalkeeper": {
+"primary": {
+"color": "01010e"
+},
+"number": {
+"color": "ffffff"
+},
+"border": {
+"color": "01010e"
+}
+}
+},
+"away": {
+"player": {
+"primary": {
+"color": "1b1b1d"
+},
+"number": {
+"color": "f6d750"
+},
+"border": {
+"color": "1b1b1d"
+}
+},
+"goalkeeper": {
+"primary": {
+"color": "1c68a1"
+},
+"number": {
+"color": "ffffff"
+},
+"border": {
+"color": "1c68a1"
+}
+}
+}
+},
+"team_stats": {
+"home": {
+"corners": {
+"total": "1",
+"total_h1": "1",
+"total_h2": "0"
+},
+"expected_goals": {
+"total": "0.41",
+"total_h1": "0.29",
+"total_h2": "0.12"
+},
+"fouls": {
+"total": "17"
+}
+},
+"away": {
+"corners": {
+"total": "9",
+"total_h1": "6",
+"total_h2": "3"
+},
+"expected_goals": {
+"total": "4.24",
+"total_h1": "1.01",
+"total_h2": "3.23"
+},
+"fouls": {
+"total": "12"
+}
+}
+},
+"player_stats": {
+"home": {
+"player": [
+{
+"id": "2528099",
+"name": "Sam Johnstone",
+"num": "31",
+"pos": "G",
+"acc_crosses": "",
+"aerials_won": "",
+"assists": "0"
+}
+]
+},
+"away": {
+"player": [
+{
+"id": "2903698",
+"name": "Senne Lammens",
+"num": "31",
+"pos": "G"
+}
+]
+}
+},
+"event_summary": {
+"home": {
+"goals": {
+"event": {
+"minute": "45",
+"extra_min": "2",
+"player_id": "2752619",
+"player_name": "Jean-Ricner Bellegarde",
+"assist_player_id": "2935127",
+"assist_player_name": "David Möller Wolfe",
+"own_goal": "False",
+"penalty": "False",
+"penalty_missed": "False",
+"var_cancelled": "False"
+}
+},
+"yellowcards": {
+"event": [
+{
+"minute": "81",
+"extra_min": "",
+"comment": "Handball",
+"player_id": "2980333",
+"player_name": "Yerson Mosquera"
+}
+]
+},
+"redcards": "",
+"var": ""
+},
+"away": {
+"goals": {
+"event": [
+{
+"minute": "82",
+"extra_min": "",
+"player_id": "2608204",
+"player_name": "Bruno Fernandes",
+"assist_player_id": "",
+"assist_player_name": "",
+"own_goal": "False",
+"penalty": "True",
+"penalty_missed": "False",
+"var_cancelled": "False"
+}
+]
+},
+"yellowcards": {
+"event": [
+{
+"minute": "90",
+"extra_min": "6",
+"comment": "Argument",
+"player_id": "2848210",
+"player_name": "Joshua Zirkzee"
+}
+]
+},
+"redcards": "",
+"var": {
+"event": {
+"minute": "80",
+"extra_min": "",
+"player_id": "2964802",
+"player_name": "Amad Diallo",
+"event_type": "Penalty confirmed",
+"ref_decision": "Penalty cancelled",
+"var_decision": "False"
+}
+}
+}
+}
+}
+}
+}
+}
+Get Standings By League / Season
+get
+https://statpal.io/api/v2/soccer/leagues/{league-id}/standings
+import http.client
+conn = http.client.HTTPSConnection("statpal.io")
+headers = { 'Accept': "application/json" }
+conn.request("GET", "/api/v2/soccer/leagues/20835/standings?access_key=b5b07a3f-b019-4a18-8969-6045169feda9", headers=headers)
+res = conn.getresponse()
+data = res.read()
+print(data.decode("utf-8"))
+{
+"standings": {
+"updated": "09.12.2025 07:14:52",
+"updated_ts": 1765264492,
+"country": "england",
+"tournament": {
+"id": "3038",
+"league": "Championship",
+"season": "2025/2026",
+"stage_id": "14382914",
+"is_current": "True",
+"team": [
+{
+"position": "1",
+"name": "Coventry",
+"id": "2340949",
+"status": "same",
+"recent_form": "LWWWW",
+"overall": {
+"games_played": "19",
+"wins": "13",
+"draws": "4",
+"losses": "2",
+"goals_scored": "50",
+"goals_allowed": "21"
+},
+"home": {
+"games_played": "9",
+"wins": "7",
+"draws": "2",
+"losses": "0",
+"goals_scored": "25",
+"goals_allowed": "7"
+},
+"away": {
+"games_played": "10",
+"wins": "6",
+"draws": "2",
+"losses": "2",
+"goals_scored": "25",
+"goals_allowed": "14"
+},
+"total": {
+"goal_difference": "29",
+"points": "43"
+},
+"description": {
+"value": "Promotion - Premier League"
+}
+}
+]
+}
+}
+}
+Get League Stats
+get
+https://statpal.io/api/v2/soccer/leagues/{league-id}/stats
+import http.client
+conn = http.client.HTTPSConnection("statpal.io")
+headers = { 'Accept': "application/json" }
+conn.request("GET", "/api/v2/soccer/leagues/20835/stats?access_key=b5b07a3f-b019-4a18-8969-6045169feda9", headers=headers)
+res = conn.getresponse()
+data = res.read()
+print(data.decode("utf-8"))
+{
+"league_stats": {
+"updated": "09.12.2025 17:40:59",
+"updated_ts": "1765302059",
+"league": {
+"id": "3037",
+"name": "Premier League",
+"country": "england",
+"team": [
+{
+"id": "2340835",
+"name": "Arsenal",
+"venue": {
+"id": "2419812",
+"name": "Emirates Stadium"
+},
+"squad": {
+"player": [
+{
+"id": "2662112",
+"name": "David Raya",
+"number": "1",
+"age": "30",
+"position": "G",
+"injured": "False",
+"appearences": "15",
+"assists": "0",
+"blocks": "",
+"clearances": "11",
+"crosses_accurate": "",
+"crosses_total": "",
+"dispossesed": "",
+"dribble_attempts": "",
+"dribble_success": "",
+"duels_total": "7",
+"duels_won": "7",
+"fouls_committed": "",
+"fouls_drawn": "4",
+"goals": "",
+"goals_conceded": "9",
+"inside_box_saves": "19",
+"interceptions": "",
+"is_captain": "False",
+"key_passes": "1",
+"lineups": "15",
+"minutes_played": "1350",
+"pass_attempts": "458",
+"pass_success": "301",
+"penalties_committed": "",
+"penalties_missed": "0",
+"penalties_saved": "0",
+"penalties_scored": "0",
+"penalties_won": "",
+"rating": "6.960000",
+"redcards": "0",
+"saves": "25",
+"shots_on": "",
+"shots_total": "",
+"shots_woodwork": "",
+"substitute_in": "0",
+"substitute_out": "",
+"substitutes_on_bench": "",
+"tackles": "",
+"yellowcards": "1",
+"yellowred": ""
+}
+]
+},
+"coach": {
+"id": "2334709",
+"name": "Mikel Arteta"
+}
+}
+]
+}
+}
+}
+Get Team
+get
+https://statpal.io/api/v2/soccer/teams/{team_id}
+import http.client
+conn = http.client.HTTPSConnection("statpal.io")
+headers = { 'Accept': "application/json" }
+conn.request("GET", "/api/v2/soccer/teams/%7Bteam_id%7D?access_key=b5b07a3f-b019-4a18-8969-6045169feda9", headers=headers)
+res = conn.getresponse()
+data = res.read()
+print(data.decode("utf-8"))
+{
+"updated": "09.12.2025 19:11:41",
+"updated_ts": 1765307501,
+"team": {
+"id": "2340899",
+"name": "Bristol City",
+"country": "England",
+"founded": "1894",
+"is_national_team": "False",
+"is_women": "False",
+"leagues": {
+"league_id": [
+"3038",
+"3367"
+]
+},
+"venue_name": "Ashton Gate Stadium",
+"venue_id": "2419838",
+"venue_surface": "Grass",
+"venue_capacity": "27000",
+"venue_address": "Ashton Road",
+"venue_city": "Bristol",
+"coach": {
+"name": "Gerhard Struber",
+"id": "2820329"
+},
+"squad": {
+"player": [
+{
+"id": "3446137",
+"name": "Josey Casa-Grande",
+"number": "",
+"age": "20",
+"position": "G",
+"is_captain": "",
+"injured": "False",
+"minutes_played": "",
+"starting_lineups": "",
+"substitute_in": "",
+"substitute_out": "",
+"on_bench": "",
+"appearences": "",
+"assists": "",
+"blocks": "",
+"clearances": "",
+"crosses_accurate": "",
+"crosses_total": "",
+"dispossesed": "",
+"dribble_attempts": "",
+"dribble_success": "",
+"duels_total": "",
+"duels_won": "",
+"fouls_committed": "",
+"fouls_drawn": "",
+"goals": "",
+"goals_conceded": "",
+"inside_box_saves": "",
+"interceptions": "",
+"key_passes": "",
+"pass_attempts": "",
+"pass_success": "",
+"pen_committed": "",
+"pen_missed": "",
+"pen_saved": "",
+"pen_scored": "",
+"pen_won": "",
+"redcards": "",
+"saves": "",
+"shots_on_target": "",
+"shots_total": "",
+"shots_woodwork": "",
+"tackles": "",
+"yellowcards": "",
+"yellowred": "",
+"rating": ""
+}
+]
+},
+"transfers": {
+"in": {
+"player": [
+{
+"id": "2664686",
+"name": "Joe Lumley",
+"date": "27.10.2025",
+"age": "",
+"position": "",
+"from": "Sheffield Wed",
+"team_id": "2341182",
+"type": "Return from loan",
+"price": ""
+}
+]
+},
+"out": {
+"player": [
+{
+"id": "2664686",
+"name": "Joe Lumley",
+"date": "20.10.2025",
+"age": "",
+"position": "",
+"to": "Sheffield Wed",
+"team_id": "2341182",
+"type": "Loan",
+"price": ""
+}
+]
+}
+},
+"trophies": {
+"trophy": [
+{
+"country": "England",
+"league": "Championship",
+"status": "Winner",
+"count": "1",
+"seasons": "1905/1906,"
+}
+]
+},
+"league_stats": {
+"league": [
+{
+"name": "Championship",
+"id": "3038",
+"season": "2025/2026",
+"fulltime": {
+"win": {
+"total": "8",
+"home": "4",
+"away": "4"
+},
+"lost": {
+"total": "6",
+"home": "4",
+"away": "2"
+},
+"draw": {
+"total": "5",
+"home": "2",
+"away": "3"
+}
+},
+"firsthalf": {
+"win": {
+"total": "9",
+"home": "5",
+"away": "4"
+},
+"lost": {
+"total": "4",
+"home": "2",
+"away": "2"
+},
+"draw": {
+"total": "6",
+"home": "3",
+"away": "3"
+}
+},
+"secondhalf": {
+"win": {
+"total": "4",
+"home": "2",
+"away": "2"
+},
+"lost": {
+"total": "6",
+"home": "3",
+"away": "2"
+},
+"draw": {
+"total": "9",
+"home": "5",
+"away": "4"
+}
+},
+"scoring_minutes": {
+"period": [
+{
+"min": "0-15",
+"pct": "11%",
+"count": "3"
+},
+{
+"min": "15-30",
+"pct": "23%",
+"count": "6"
+}
+]
+},
+"goals_conceded_minutes": {
+"period": [
+{
+"min": "0-15",
+"pct": "19%",
+"count": "4"
+}
+]
+},
+"yellowcard_minutes": {
+"period": [
+{
+"min": "15-30",
+"pct": "7%",
+"count": "2"
+}
+]
+},
+"redcard_minutes": {
+"period": [
+{
+"min": "0-15",
+"pct": "%",
+"count": "0"
+}
+]
+}
+}
+]
+}
+}
+}
+Get Player
+get
+https://statpal.io/api/v2/soccer/players/{player_id}
+import http.client
+conn = http.client.HTTPSConnection("statpal.io")
+headers = { 'Accept': "application/json" }
+conn.request("GET", "/api/v2/soccer/players/%7Bplayer_id%7D?access_key=b5b07a3f-b019-4a18-8969-6045169feda9", headers=headers)
+res = conn.getresponse()
+data = res.read()
+print(data.decode("utf-8"))
+{
+"updated": "09.12.2025 21:45:23",
+"updated_ts": 1765316723,
+"player": {
+"id": "2773317",
+"name": "Erling Haaland",
+"firstname": "Erling",
+"lastname": "Haaland",
+"age": "25",
+"birthdate": "21.07.2000",
+"nationality": "Norway",
+"birthplace": "Leeds",
+"birthcountry": "Norway",
+"position": "Forward",
+"height": "195",
+"weight": "88",
+"preferred_foot": "Left",
+"team": "Manchester City",
+"team_id": "2341092",
+"national_team_id": "2345515",
+"market_value_eur": "196000000",
+"club_league_statistics": {
+"club": [
+{
+"team_id": "2341092",
+"team_name": "Manchester City",
+"league_id": "3037",
+"league": "Premier League",
+"season": "2025/2026",
+"is_captain": "0",
+"minutes_played": "1287",
+"appearances": "15",
+"starting_lineups": "15",
+"substitute_in": "0",
+"substitute_out": "",
+"on_bench": "",
+"assists": "3",
+"blocks": "1",
+"clearances": "25",
+"crosses_accurate": "",
+"crosses_total": "",
+"dispossesed": "7",
+"dribble_attempts": "15",
+"dribble_success": "6",
+"duels_total": "109",
+"duels_won": "58",
+"fouls_committed": "12",
+"fouls_drawn": "10",
+"goals": "15",
+"goals_conceded": "0",
+"inside_box_saves": "",
+"interceptions": "2",
+"key_passes": "8",
+"pass_attempts": "172",
+"pass_success": "7",
+"pen_committed": "",
+"pen_missed": "1",
+"pen_saved": "",
+"pen_scored": "0",
+"pen_won": "",
+"rating": "7.640000",
+"redcards": "0",
+"saves": "",
+"shots_on_target": "32",
+"shots_total": "52",
+"shots_woodwork": "",
+"tackles": "4",
+"yellowcards": "0",
+"yellowred": ""
+}
+]
+},
+"club_domestic_cup_statistics": {
+"club": []
+},
+"club_intl_cup_statistics": {
+"club": []
+},
+"overall_club_statistics": {
+"minutes_played": "24910",
+"appearances": "336",
+"starting_lineups": "294",
+"substitute_in": "42",
+"assists": "51",
+"blocks": "22",
+"clearances": "183",
+"crosses_accurate": "15",
+"crosses_total": "92",
+"dispossesed": "173",
+"dribble_attempts": "421",
+"dribble_success": "205",
+"duels_total": "1898",
+"duels_won": "836",
+"fouls_committed": "286",
+"fouls_drawn": "205",
+"goals_conceded": "0",
+"inside_box_saves": "",
+"interceptions": "39",
+"key_passes": "264",
+"pass_attempts": "4122",
+"pass_success": "21",
+"pen_committed": "",
+"pen_missed": "7",
+"pen_saved": "",
+"pen_scored": "44",
+"pen_won": "4",
+"rating": "7.345846",
+"saves": "",
+"shots_on_target": "565",
+"shots_total": "938",
+"shots_woodwork": "5",
+"tackles": "61"
+},
+"national_team_statistics": {
+"leagues": []
+},
+"transfers": [],
+"trophies": {},
+"sidelined_history": []
+}
+}
+Get Coach
+get
+https://statpal.io/api/v2/soccer/coaches/{coach_id}
+import http.client
+conn = http.client.HTTPSConnection("statpal.io")
+headers = { 'Accept': "application/json" }
+conn.request("GET", "/api/v2/soccer/coaches/%7Bcoach_id%7D?access_key=b5b07a3f-b019-4a18-8969-6045169feda9", headers=headers)
+res = conn.getresponse()
+data = res.read()
+print(data.decode("utf-8"))
+{
+"updated": "09.12.2025 20:48:58",
+"updated_ts": 1765313338,
+"coach": {
+"id": "2436485",
+"name": "Pep Guardiola",
+"firstname": "Josep",
+"lastname": "Guardiola i Sala",
+"team": "Manchester City",
+"team_id": "2341092",
+"nationality": "Spain",
+"birthdate": "18/01/1971",
+"age": "54",
+"birthcountry": "Spain",
+"birthplace": "Santpedor",
+"height": "180 cm",
+"weight": "70 kg",
+"trophies": {
+"trophy": [
+{
+"country": "Spain",
+"league": "La Liga",
+"status": "Winner",
+"count": "3",
+"seasons": "2010/2011, 2009/2010, 2008/2009"
+},
+{
+"country": "England",
+"league": "Premier League",
+"status": "Winner",
+"count": "6",
+"seasons": "2023/2024, 2022/2023, 2021/2022, 2020/2021, 2018/2019, 2017/2018"
+}
+]
+},
+"career_stats": {
+"team": [
+{
+"name": "Manchester City",
+"id": "2341092",
+"from": "July 2016",
+"to": ""
+},
+{
+"name": "Bayern Munich",
+"id": "2342118",
+"from": "June 2013",
+"to": "June 2016"
+}
+]
+}
+}
+}
+Get Image
+get
+https://statpal.io/api/v2/soccer/images
+import http.client
+conn = http.client.HTTPSConnection("statpal.io")
+headers = { 'Accept': "image/png, application/json" }
+conn.request("GET", "/api/v2/soccer/images?type=team&access_key=b5b07a3f-b019-4a18-8969-6045169feda9", headers=headers)
+res = conn.getresponse()
+data = res.read()
+print(data.decode("utf-8"))
+iVBORw0KGgoAAAANSUhEUgAAAAUA... (binary PNG data truncated for brevity)
+
+Get Live Scores
+get
+https://statpal.io/api/v1/nba/livescores
+import http.client
+conn = http.client.HTTPSConnection("statpal.io")
+headers = { 'Accept': "application/json" }
+conn.request("GET", "/api/v1/nba/livescores?access_key=b5b07a3f-b019-4a18-8969-6045169feda9", headers=headers)
+res = conn.getresponse()
+data = res.read()
+print(data.decode("utf-8"))
+{
+"livescores": {
+"sport": "basketball",
+"tournament": {
+"country": "usa",
+"gid": "2545",
+"id": "2545",
+"league": "Usa: Nba",
+"match": [
+{
+"date": "12.12.2025",
+"id": "1012269",
+"stats_id": "322112",
+"status": "Finished",
+"time": "01:00",
+"timer": "",
+"home": {
+"id": "2692",
+"name": "Houston Rockets",
+"ot": "",
+"q1": "29",
+"q2": "22",
+"q3": "27",
+"q4": "37",
+"totalscore": "115"
+},
+"away": {
+"id": "2670",
+"name": "Los Angeles Clippers",
+"ot": "",
+"q1": "29",
+"q2": "25",
+"q3": "28",
+"q4": "31",
+"totalscore": "113"
+}
+}
+]
+}
+}
+}
+Get Games Recent / Upcoming
+get
+https://statpal.io/api/v1/nba/daily/{day_offset_token}
+import http.client
+conn = http.client.HTTPSConnection("statpal.io")
+headers = { 'Accept': "application/json" }
+conn.request("GET", "/api/v1/nba/daily/d-1?access_key=b5b07a3f-b019-4a18-8969-6045169feda9", headers=headers)
+res = conn.getresponse()
+data = res.read()
+print(data.decode("utf-8"))
+{
+"scores": {
+"sport": "basketball",
+"tournament": {
+"country": "usa",
+"id": "2545",
+"league": "Usa: Nba",
+"match": [
+{
+"date": "09.12.2025",
+"id": "987036",
+"status": "Finished",
+"time": "00:00",
+"home": {
+"id": "2718",
+"name": "Indiana Pacers",
+"ot": "",
+"q1": "35",
+"q2": "31",
+"q3": "26",
+"q4": "24",
+"totalscore": "116"
+},
+"away": {
+"id": "2724",
+"name": "Sacramento Kings",
+"ot": "",
+"q1": "23",
+"q2": "28",
+"q3": "37",
+"q4": "17",
+"totalscore": "105"
+}
+},
+{
+"date": "09.12.2025",
+"id": "987037",
+"status": "Finished",
+"time": "00:30",
+"home": {
+"id": "2701",
+"name": "Minnesota Timberwolves",
+"ot": "",
+"q1": "23",
+"q2": "34",
+"q3": "27",
+"q4": "21",
+"totalscore": "105"
+},
+"away": {
+"id": "2620",
+"name": "Phoenix Suns",
+"ot": "",
+"q1": "29",
+"q2": "32",
+"q3": "23",
+"q4": "24",
+"totalscore": "108"
+}
+},
+{
+"date": "09.12.2025",
+"id": "987038",
+"status": "Finished",
+"time": "01:00",
+"home": {
+"id": "2693",
+"name": "New Orleans Pelicans",
+"ot": "",
+"q1": "25",
+"q2": "32",
+"q3": "45",
+"q4": "30",
+"totalscore": "132"
+},
+"away": {
+"id": "2689",
+"name": "San Antonio Spurs",
+"ot": "",
+"q1": "35",
+"q2": "42",
+"q3": "23",
+"q4": "35",
+"totalscore": "135"
+}
+}
+]
+}
+}
+}
+Get Full Schedule / Results
+get
+https://statpal.io/api/v1/nba/season-schedule
+import http.client
+conn = http.client.HTTPSConnection("statpal.io")
+headers = { 'Accept': "application/json" }
+conn.request("GET", "/api/v1/nba/season-schedule?access_key=b5b07a3f-b019-4a18-8969-6045169feda9", headers=headers)
+res = conn.getresponse()
+data = res.read()
+print(data.decode("utf-8"))
+{
+"scores": {
+"sport": "basketball",
+"tournament": {
+"country": "usa",
+"id": "2545",
+"league": "NBA",
+"season": "2025/2026",
+"match": [
+{
+"date": "11.10.2025",
+"id": "988739",
+"stats_id": "311748",
+"status": "After Over Time",
+"time": "00:00",
+"venue": "Frost Bank Center",
+"home": {
+"id": "2689",
+"name": "San Antonio Spurs",
+"ot": "12",
+"q1": "34",
+"q2": "38",
+"q3": "23",
+"q4": "27",
+"totalscore": "134"
+},
+"away": {
+"id": "2679",
+"name": "Utah Jazz",
+"ot": "8",
+"q1": "30",
+"q2": "25",
+"q3": "35",
+"q4": "32",
+"totalscore": "130"
+}
+}
+]
+}
+}
+}
+Get Standings
+get
+https://statpal.io/api/v1/nba/standings
+import http.client
+conn = http.client.HTTPSConnection("statpal.io")
+headers = { 'Accept': "application/json" }
+conn.request("GET", "/api/v1/nba/standings?access_key=b5b07a3f-b019-4a18-8969-6045169feda9", headers=headers)
+res = conn.getresponse()
+data = res.read()
+print(data.decode("utf-8"))
+{
+"standings": {
+"sport": "basketball",
+"tournament": {
+"country": "usa",
+"id": "2545",
+"name": "USA: NBA",
+"season": "2025/2026",
+"league": [
+{
+"name": "Eastern Conference",
+"division": [
+{
+"name": "Atlantic",
+"team": [
+{
+"average_points_agains": "111.9",
+"average_points_for": "120.5",
+"difference": "+8.6",
+"gb": "-",
+"home_record": "13-1",
+"id": "2712",
+"last_10": "8-2",
+"lost": "7",
+"name": "New York Knicks",
+"percentage": ".708",
+"position": "1",
+"road_record": "4-6",
+"streak": "W4",
+"won": "17"
+}
+]
+}
+]
+}
+]
+}
+}
+}
+Get Team Roster
+get
+https://statpal.io/api/v1/nba/rosters/{team_abbreviation}
+import http.client
+conn = http.client.HTTPSConnection("statpal.io")
+headers = { 'Accept': "application/json" }
+conn.request("GET", "/api/v1/nba/rosters/mem?access_key=b5b07a3f-b019-4a18-8969-6045169feda9", headers=headers)
+res = conn.getresponse()
+data = res.read()
+print(data.decode("utf-8"))
+{
+"team": {
+"abbreviation": "CHI",
+"id": "2685",
+"name": "Chicago Bulls",
+"season": "2025/2026",
+"player": [
+{
+"age": "21",
+"college": "--",
+"heigth": "6' 8"",
+"id": "4712793",
+"name": "Matas Buzelis",
+"number": "14",
+"position": "F",
+"salary": "
+6,809,524",
+"weigth": "200 lbs"
+}
+],
+"image": "iVBORw0KGgoAAAANSUhEUgAAAJYAAACWCAYAAAA8AXHiAAAAAXN..."
+}
+}
+Get Team Stats
+get
+https://statpal.io/api/v1/nba/team-stats/{team_abbreviation}
+import http.client
+conn = http.client.HTTPSConnection("statpal.io")
+headers = { 'Accept': "application/json" }
+conn.request("GET", "/api/v1/nba/team-stats/mem?access_key=b5b07a3f-b019-4a18-8969-6045169feda9", headers=headers)
+res = conn.getresponse()
+data = res.read()
+print(data.decode("utf-8"))
+{
+"statistics": {
+"id": "2685",
+"team": "Chicago Bulls",
+"category": [
+{
+"name": "Game",
+"player": [
+{
+"id": "4397150",
+"name": "Coby White",
+"assists_per_game": "5.4",
+"blocks_per_game": "0.0",
+"defensive_rebounds_per_game": "2.4",
+"efficiency_rating": "",
+"fouls_per_game": "2.1",
+"games_played": "7",
+"games_started": "5",
+"minutes": "29.3",
+"offensive_rebounds_per_game": "0.3",
+"points_per_game": "22.1",
+"rank": "1",
+"rebounds_per_game": "2.7",
+"steals_per_game": "0.6",
+"turnovers_per_game": "3.0"
+}
+]
+},
+{
+"name": "Shooting",
+"player": [
+{
+"id": "4397150",
+"name": "Coby White",
+"fg_attempts_per_game": "0.156",
+"fg_made_per_game": "6.7",
+"fg_pct": "0.431",
+"field_goal_pct_avg": "",
+"free_throws_attempts_per_game": "8.0",
+"free_throws_made_per_game": "6.4",
+"free_throws_pct": "0.804",
+"points_per_shot": "1.422",
+"rank": "1",
+"three_point_attempts_per_game": "7.6",
+"three_point_made_per_game": "2.3",
+"three_point_pct": "0.302",
+"two_point_attemps_per_game": "1.1",
+"two_point_made_per_game": "0.6",
+"two_point_pct": "0.554"
+}
+]
+}
+]
+}
+}
+Get Live Scores
+get
+https://statpal.io/api/v1/cricket/livescores
+import http.client
+conn = http.client.HTTPSConnection("statpal.io")
+headers = { 'Accept': "application/json" }
+conn.request("GET", "/api/v1/cricket/livescores?access_key=b5b07a3f-b019-4a18-8969-6045169feda9", headers=headers)
+res = conn.getresponse()
+data = res.read()
+print(data.decode("utf-8"))
+{
+"scores": {
+"sport": "cricket",
+"updated": "12.12.2025 08:40:18",
+"category": [
+{
+"id": "6855",
+"name": "CSA 4-Day Series Division 1 - Test",
+"match": {
+"date": "09.12.2025",
+"date_range": "09.12.2025-12.12.2025",
+"formatted_date": "09.12.2025-12.12.2025",
+"id": "13072005739",
+"status": "Finished",
+"time": "07:00",
+"type": "TEST",
+"venue": "City Oval, Pietermaritzburg",
+"home": {
+"id": "4066",
+"name": "Western Province",
+"stat": "201/6d",
+"totalscore": "290",
+"winner": "True"
+},
+"away": {
+"id": "4165",
+"name": "KwaZulu-Natal Inland",
+"stat": "204",
+"totalscore": "148",
+"winner": "False"
+},
+"comment": {
+"first_batting_teamid": "2567",
+"post": "W Province won by 139 runs",
+"toss_winner_teamid": "2567"
+},
+"inning": [
+{
+"inningnum": "1",
+"name": "Western Province 1 INN",
+"team": "localteam",
+"batsmanstats": {
+"player": [
+{
+"id": "6749",
+"batsman": "JA Bird",
+"b": "66",
+"r": "28",
+"s4": "4",
+"s6": "0",
+"sr": "42.42",
+"bat": "False",
+"dismissal_type": "caught",
+"dismissal_bowler": "",
+"status": "c du Plessis b Whitehead",
+"dismissal_fielders": {
+"dismissal_fielder": {
+"name": "J du Plessis",
+"profileid": "595786"
+}
+}
+}
+]
+},
+"total": {
+"b": "5",
+"ext": "12",
+"lb": "2",
+"nb": "3",
+"p": "2",
+"rr": "",
+"tot": "290 ( 77 )",
+"wd": "2",
+"wickets": "10"
+},
+"bowlers": {
+"player": [
+{
+"id": "9491",
+"bowler": "Daryn Dupavillon",
+"ball": "False",
+"dots": "",
+"er": "3.52",
+"m": "4",
+"nb": "3",
+"o": "17",
+"profileid": "501907",
+"r": "60",
+"w": "0",
+"wd": "0"
+}
+]
+}
+}
+],
+"commentaries": {
+"commentary": [
+{
+"id": "51092033",
+"balls": "7",
+"batsman_id": "51088",
+"bowler_id": "84139",
+"runs": "4",
+"post": "Phillip to Williamson",
+"isfour": "True",
+"issix": "False",
+"iswicket": "False"
+}
+]
+},
+"lineups": {
+"home": {
+"player": [
+{
+"id": "696587",
+"name": "JA Bird",
+"c": "0",
+"is_impact": "False",
+"ro": "0",
+"st": "0",
+"wickets": "",
+"wides": ""
+}
+]
+},
+"away": {
+"player": [
+{
+"id": "333879",
+"name": "MN Erlank",
+"c": "0",
+"is_impact": "False",
+"ro": "0",
+"st": "0",
+"wickets": "",
+"wides": ""
+}
+]
+}
+},
+"matchinfo": {
+"info": [
+{
+"name": "Toss",
+"value": "Western Province, elected to bat first"
+},
+{
+"id": "",
+"name": "Man Of Match",
+"value": ""
+},
+{
+"name": "Referee",
+"value": ""
+}
+]
+},
+"replacements": {
+"home": null,
+"away": null
+}
+}
+}
+]
+}
+}
+Get Upcoming Schedule
+get
+https://statpal.io/api/v1/cricket/upcoming-schedule
+import http.client
+conn = http.client.HTTPSConnection("statpal.io")
+headers = { 'Accept': "application/json" }
+conn.request("GET", "/api/v1/cricket/upcoming-schedule?access_key=b5b07a3f-b019-4a18-8969-6045169feda9", headers=headers)
+res = conn.getresponse()
+data = res.read()
+print(data.decode("utf-8"))
+{
+"fixtures": {
+"sport": "cricket",
+"category": [
+{
+"id": "1022",
+"name": "Plunket Shield",
+"series_file": "/intl/1022",
+"squads_file": "/intl/1022_squads",
+"match": {
+"date": "12.12.2025",
+"id": "13072006686",
+"match_num": "10th Match",
+"time": "21:30",
+"type": "Test",
+"home": {
+"id": "3978",
+"name": "Northern Districts"
+},
+"away": {
+"id": "3977",
+"name": "Wellington"
+},
+"matchinfo": {
+"info": [
+{
+"name": "Toss",
+"value": ""
+},
+{
+"id": "",
+"name": "Man Of Match",
+"value": ""
+},
+{
+"name": "Referee",
+"value": ""
+},
+{
+"name": "Venue",
+"value": "Cobham Oval, Whangarei"
+},
+{
+"name": "City",
+"value": "Whangarei"
+},
+{
+"name": "Country",
+"value": "New Zealand"
+}
+]
+}
+}
+}
+]
+}
+}
+Get Tournament List
+get
+https://statpal.io/api/v1/cricket/tour-list
+import http.client
+conn = http.client.HTTPSConnection("statpal.io")
+headers = { 'Accept': "application/json" }
+conn.request("GET", "/api/v1/cricket/tour-list?access_key=b5b07a3f-b019-4a18-8969-6045169feda9", headers=headers)
+res = conn.getresponse()
+data = res.read()
+print(data.decode("utf-8"))
+{
+"tours": {
+"sport": "cricket",
+"category": [
+{
+"id": "1004",
+"name": "Sheffield Shield",
+"schedule_uri": "/intl/1004",
+"season": "2025-26",
+"squad_uri": "/intl/1004_squads",
+"standings_uri": "/intl/1004_table"
+},
+{
+"id": "1022",
+"name": "Plunket Shield",
+"schedule_uri": "/intl/1022",
+"season": "2025-26",
+"squad_uri": "/intl/1022_squads",
+"standings_uri": "/intl/1022_table"
+}
+]
+}
+}
+Get Matches By Tournament
+get
+https://statpal.io/api/v1/cricket/season-schedule/{tournament_type}/{tournament_id}
+import http.client
+conn = http.client.HTTPSConnection("statpal.io")
+headers = { 'Accept': "application/json" }
+conn.request("GET", "/api/v1/cricket/season-schedule/%7Btournament_type%7D/%7Btournament_id%7D?access_key=b5b07a3f-b019-4a18-8969-6045169feda9", headers=headers)
+res = conn.getresponse()
+data = res.read()
+print(data.decode("utf-8"))
+{
+"scores": {
+"sport": "cricket",
+"category": {
+"id": "1022",
+"name": "Plunket Shield",
+"season": "2025-26",
+"match": [
+{
+"date": "17.11.2025",
+"date_range": "17.11.2025-21.11.2025",
+"id": "13072006679",
+"local_date": "",
+"local_time": "",
+"match_num": "3rd Match",
+"status": "Finished",
+"time": "21:30",
+"type": "Test",
+"home": {
+"id": "3978",
+"name": "Northern Districts",
+"stat": "",
+"totalscore": "237 & 380/8d",
+"winner": "False"
+},
+"away": {
+"id": "3976",
+"name": "Canterbury",
+"stat": "T:370",
+"totalscore": "248 & 371/5",
+"winner": "True"
+},
+"comment": {
+"post": "Canterbury won by 5 wickets"
+},
+"inning": null,
+"commentaries": {
+"commentary": [
+{
+"balls": "1",
+"byes": "0",
+"id": "50509774",
+"inning": "4",
+"legbyes": "0",
+"over": "93.1",
+"over_ended": "False",
+"post": "Raval to Boyle",
+"runs": "4"
+}
+]
+},
+"partnerships": null
+}
+]
+}
+}
+}

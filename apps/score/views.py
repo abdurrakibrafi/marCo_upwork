@@ -7,6 +7,43 @@ from .models import LiveScore
 from .serializers import LiveScoreSerializer
 from apps.core.utils.mixins import BaseResponseMixin
 
+# @api_view(['GET'])
+# @permission_classes([IsAuthenticated])
+# def live_scores(request):
+#     """
+#     Get all live scores across all sports
+#     Frontend polls this every 15 seconds
+#     """
+#     mixin = BaseResponseMixin()
+#     try:
+#         # Get from cache first
+#         cached_nba = cache.get('live_scores_nba')
+#         cached_nfl = cache.get('live_scores_nfl')
+#         cached_soccer = cache.get('live_scores_soccer')
+#         cached_cricket = cache.get('live_scores_cricket')
+        
+#         # If cache exists, use it (faster)
+#         if any([cached_nba, cached_nfl, cached_soccer, cached_cricket]):
+#             # Get live games from database (last 30 seconds)
+#             live_games = LiveScore.objects.filter(status='live').order_by('-updated_at')[:20]
+#             serializer = LiveScoreSerializer(live_games, many=True)
+            
+#             data = {
+#                 'count': live_games.count(),
+#                 'games': serializer.data
+#             }
+#             return mixin.success_response(data=data, message='Live scores retrieved successfully')
+#         else:
+#             # Cache miss - return empty and celery will update soon
+#             return mixin.success_response(
+#                 data={'games': []},
+#                 message='Live scores are being updated...'
+#             )
+#     except Exception as exc:
+#         return mixin.handle_exception(exc)
+
+# apps/score/views.py
+
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def live_scores(request):
@@ -16,29 +53,66 @@ def live_scores(request):
     """
     mixin = BaseResponseMixin()
     try:
-        # Get from cache first
-        cached_nba = cache.get('live_scores_nba')
-        cached_nfl = cache.get('live_scores_nfl')
-        cached_soccer = cache.get('live_scores_soccer')
-        cached_cricket = cache.get('live_scores_cricket')
-        
-        # If cache exists, use it (faster)
-        if any([cached_nba, cached_nfl, cached_soccer, cached_cricket]):
-            # Get live games from database (last 30 seconds)
-            live_games = LiveScore.objects.filter(status='live').order_by('-updated_at')[:20]
-            serializer = LiveScoreSerializer(live_games, many=True)
-            
-            data = {
-                'count': live_games.count(),
-                'games': serializer.data
-            }
-            return mixin.success_response(data=data, message='Live scores retrieved successfully')
-        else:
-            # Cache miss - return empty and celery will update soon
+        live_games = LiveScore.objects.filter(status='live').order_by('-updated_at')[:20]
+        serializer = LiveScoreSerializer(live_games, many=True)
+
+        data = {
+            'count': live_games.count(),
+            'games': serializer.data
+        }
+        return mixin.success_response(data=data, message='Live scores retrieved successfully')
+    except Exception as exc:
+        return mixin.handle_exception(exc)
+# তোমার existing imports-এর নিচে এই function টা add করো:
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def nest_live_scores(request):
+
+    mixin = BaseResponseMixin()
+    try:
+        from apps.nest.models import UserNest
+        from django.db.models import Q
+
+        nest_entity_ids = list(
+            UserNest.objects.filter(user=request.user)
+            .values_list("entity_id", flat=True)
+        )
+        if not nest_entity_ids:
             return mixin.success_response(
-                data={'games': []},
-                message='Live scores are being updated...'
+                data={"count": 0, "games": []},
+                message="No entities in your nest.",
             )
+
+        # LiveScore-এ সরাসরি team entity FK নেই,
+        # তাই Event → LiveScore join করতে হবে
+        from apps.event.models import Event
+        live_event_ids = (
+            Event.objects.filter(
+                api_source="statpal",
+                status="live",
+            )
+            .filter(
+                Q(home_entity_id__in=nest_entity_ids)
+                | Q(away_entity_id__in=nest_entity_ids)
+            )
+            .values_list("external_id", flat=True)
+        )
+
+        qs = LiveScore.objects.filter(
+            status="live",
+            external_id__in=list(live_event_ids),
+        ).order_by("-updated_at")
+
+        sport = request.query_params.get("sport")
+        if sport:
+            qs = qs.filter(sport=sport.lower())
+
+        serializer = LiveScoreSerializer(list(qs), many=True)
+        return mixin.success_response(
+            data={"count": qs.count(), "games": serializer.data}
+        )
+
     except Exception as exc:
         return mixin.handle_exception(exc)
     

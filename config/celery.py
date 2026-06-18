@@ -97,6 +97,20 @@ app.conf.beat_schedule = {
         'task': 'apps.sports_apis.tasks.fetch_highlights_for_recently_completed_events',
         'schedule': 1800.0,  # every 30 minutes
     },
+
+    # new
+    'sync-statpal-calendar-daily': {
+        'task': 'apps.sports_apis.tasks.trigger_all_statpal_sync',
+        'schedule': crontab(hour=6, minute=0), # Run every day at 6:00 AM
+    },
+    'update-statpal-live-scores-every-minute': {
+        'task': 'apps.sports_apis.tasks.trigger_all_statpal_live_updates',
+        'schedule': 60.0, # প্রতি ৬০ সেকেন্ড (১ মিনিট) পর পর চলবে
+    },
+    'sync-everything-from-statpal-every-minute': {
+        'task': 'apps.event.tasks.sync_statpal_orchestrator_task',
+        'schedule': 60.0, # Every 60 seconds
+    },
 }
 
 @app.task(bind=True)

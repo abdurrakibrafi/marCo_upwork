@@ -1,5 +1,6 @@
 from django.db import models
 
+
 class LiveScore(models.Model):
     """Cached live score data"""
     
@@ -32,7 +33,7 @@ class LiveScore(models.Model):
     status = models.CharField(max_length=20, choices=STATUS_CHOICES)
     status_detail = models.CharField(max_length=50, blank=True)  # "2nd Quarter", "Half Time", etc.
     
-    start_time = models.DateTimeField()
+    start_time = models.DateTimeField(null=True, blank=True)
     
     raw_data = models.JSONField(default=dict)  # Store full API response
     metadata = models.JSONField(default=dict, blank=True)  # Sport-specific metadata (cricket: toss, stadium, etc.)
