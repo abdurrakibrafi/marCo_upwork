@@ -148,44 +148,6 @@ def update_nfl_live_scores():
         return f"NFL update failed"
 
 
-@shared_task
-def update_soccer_live_scores():
-    """Update Soccer live scores - runs every 2 minutes"""
-    logger.info("Updating Soccer live scores...")
-
-    result = api_sports_service.get_live_fixtures()
-
-    if result['success']:
-        data = result['data']
-        cache.set('live_scores_soccer', data,
-                  timeout=settings.CACHE_TTLS['live_scores'])
-
-        fixtures = data.get('response', [])
-        for fixture in fixtures:
-            live_score, _ = LiveScore.objects.update_or_create(
-                sport='soccer',
-                external_id=str(fixture.get('fixture', {}).get('id')),
-                defaults={
-                    'home_team': fixture.get('teams', {}).get('home', {}).get('name', ''),
-                    'away_team': fixture.get('teams', {}).get('away', {}).get('name', ''),
-                    'home_logo': fixture.get('teams', {}).get('home', {}).get('logo', ''),
-                    'away_logo': fixture.get('teams', {}).get('away', {}).get('logo', ''),
-                    'home_score': fixture.get('goals', {}).get('home'),
-                    'away_score': fixture.get('goals', {}).get('away'),
-                    'status': 'live',
-                    'status_detail': fixture.get('fixture', {}).get('status', {}).get('short', ''),
-                    'start_time': fixture.get('fixture', {}).get('date'),
-                    'raw_data': fixture,
-                }
-            )
-            _publish(live_score)  # push to WebSocket
-
-        logger.info(f"Soccer: Updated {len(fixtures)} live games")
-        return f"Soccer: {len(fixtures)} games updated"
-    else:
-        logger.error(f"Soccer update failed: {result.get('error')}")
-        return f"Soccer update failed"
-
 
 @shared_task
 def update_cricket_live_scores():
@@ -288,158 +250,6 @@ def update_cricket_live_scores():
     logger.info(f"Cricket: saved {saved} live matches")
     return f"Cricket: {saved} matches updated"
 
-
-@shared_task
-def update_soccer_live_scores():
-    """
-    Update soccer live scores — runs every 2 minutes.
-    Writes to LiveScore table AND pushes to WebSocket.
-    Also updates the Event model status via the existing task.
-    """
-    logger.info("Updating Soccer live scores...")
-
-    result = api_sports_service.get_live_fixtures()
-
-    if not result['success']:
-        logger.error(f"Soccer update failed: {result.get('error')}")
-        return f"Soccer update failed: {result.get('error')}"
-
-    data = result['data']
-    cache.set(
-        'live_scores_soccer',
-        data,
-        timeout=settings.CACHE_TTLS.get('live_scores', 120)
-    )
-
-    fixtures = data.get('response', [])
-
-    if not fixtures:
-        # No live games right now — mark all soccer LiveScore rows as completed
-        stale = LiveScore.objects.filter(sport='soccer', status='live').count()
-        if stale:
-            LiveScore.objects.filter(
-                sport='soccer', status='live').update(status='completed')
-            logger.info(f"Soccer: no live games, marked {stale} as completed")
-        return "Soccer: 0 live fixtures"
-
-    saved = 0
-    for fixture in fixtures:
-        fix_data = fixture.get('fixture', {})
-        teams_data = fixture.get('teams', {})
-        goals_data = fixture.get('goals', {})
-        league_data = fixture.get('league', {})
-
-        external_id = str(fix_data.get('id', ''))
-        if not external_id:
-            continue
-
-        status_short = fix_data.get('status', {}).get('short', '')
-        status_long = fix_data.get('status', {}).get('long', '')
-        elapsed = fix_data.get('status', {}).get('elapsed')
-
-        # Map API-Sports status codes to our status
-        if status_short in ('FT', 'AET', 'PEN', 'AWD', 'WO'):
-            status = 'completed'
-        elif status_short in ('PST', 'CANC', 'ABD', 'SUSP', 'INT'):
-            status = 'completed'
-        elif status_short in ('NS', 'TBD'):
-            status = 'upcoming'
-        else:
-            # 1H, HT, 2H, ET, BT, P, LIVE, BREAK
-            status = 'live'
-
-        # Status detail shown on score card e.g. "45'" or "HT" or "FT"
-        if elapsed and status == 'live':
-            status_detail = f"{elapsed}'"
-        else:
-            status_detail = status_short
-
-        live_score, _ = LiveScore.objects.update_or_create(
-            sport='soccer',
-            external_id=external_id,
-            defaults={
-                'home_team':     teams_data.get('home', {}).get('name', ''),
-                'away_team':     teams_data.get('away', {}).get('name', ''),
-                'home_logo':     teams_data.get('home', {}).get('logo', ''),
-                'away_logo':     teams_data.get('away', {}).get('logo', ''),
-                'home_score':    goals_data.get('home'),
-                'away_score':    goals_data.get('away'),
-                'status':        status,
-                'status_detail': status_detail,
-                'start_time':    fix_data.get('date'),
-                'raw_data':      fixture,
-                'metadata': {
-                    'league_name': league_data.get('name', ''),
-                    'league_logo': league_data.get('logo', ''),
-                    'league_country': league_data.get('country', ''),
-                    'venue': fix_data.get('venue', {}).get('name', ''),
-                    'referee': fix_data.get('referee', ''),
-                }
-            }
-        )
-
-        if status == 'live':
-            _publish(live_score)
-
-        saved += 1
-
-    # Clean up any soccer LiveScore rows that were live before but aren't anymore
-    live_ext_ids = [
-        str(f.get('fixture', {}).get('id', ''))
-        for f in fixtures
-        if f.get('fixture', {}).get('status', {}).get('short', '') not in
-           ('FT', 'AET', 'PEN', 'NS', 'TBD', 'PST', 'CANC', 'ABD')
-    ]
-    stale = LiveScore.objects.filter(
-        sport='soccer',
-        status='live',
-    ).exclude(external_id__in=live_ext_ids)
-    stale_count = stale.count()
-    if stale_count:
-        stale.update(status='completed')
-        logger.info(f"Soccer: cleaned up {stale_count} stale live scores")
-
-    logger.info(f"Soccer: {saved} fixtures saved, {len(live_ext_ids)} live")
-
-    # ── Sync LiveScore status → Event model ──────────────────
-    try:
-        from apps.event.models import Event as _Event
-
-        # 1. Mark Events as live if their LiveScore is live
-        live_ext_ids_for_sync = list(
-            LiveScore.objects.filter(sport='soccer', status='live')
-            .values_list('external_id', flat=True)
-        )
-        if live_ext_ids_for_sync:
-            synced_live = _Event.objects.filter(
-                api_source='api_sports',
-                external_id__in=live_ext_ids_for_sync,
-                status='upcoming',
-            ).update(status='live')
-            if synced_live:
-                logger.info(f"Soccer sync: {synced_live} Events → live")
-
-        # 2. Mark Events as completed if their LiveScore is completed
-        completed_ext_ids = list(
-            LiveScore.objects.filter(sport='soccer', status='completed')
-            .values_list('external_id', flat=True)
-        )
-        if completed_ext_ids:
-            synced_done = _Event.objects.filter(
-                api_source='api_sports',
-                external_id__in=completed_ext_ids,
-                status__in=['live', 'upcoming'],
-            ).update(status='completed')
-            if synced_done:
-                logger.info(f"Soccer sync: {synced_done} Events → completed")
-                # Trigger stats fetch for newly completed events
-                from apps.event.tasks import fetch_event_details, check_completed_events
-                check_completed_events.delay()
-
-    except Exception as e:
-        logger.error(f"LiveScore→Event sync failed: {e}")
-
-    return f"Soccer: {saved} fixtures ({len(live_ext_ids)} live)"
 
 
 logger = logging.getLogger(__name__)
@@ -876,6 +686,27 @@ logger = logging.getLogger(__name__)
 # ========================================================
 
 
+
+def _parse_statpal_datetime(date_str, time_str=None):
+    """
+    Convert StatPal date/time strings (DD.MM.YYYY [HH:MM]) into a
+    timezone-aware datetime object (UTC) or None.
+    StatPal times are assumed to be UTC.
+    """
+    if not date_str:
+        return None
+    try:
+        from datetime import datetime
+        import pytz
+        if time_str:
+            dt = datetime.strptime(f"{date_str} {time_str}", "%d.%m.%Y %H:%M")
+        else:
+            dt = datetime.strptime(date_str, "%d.%m.%Y")
+        return pytz.UTC.localize(dt)
+    except (ValueError, TypeError):
+        return None
+
+
 def parse_soccer_live(payload):
     """Soccer live matches parser - শুধু numeric status (live) গুলো নিবে"""
     matches = []
@@ -916,7 +747,7 @@ def parse_cricket_live(payload):
     if isinstance(categories, dict):
         categories = [categories]
 
-    LIVE_KEYWORDS = ['stumps', 'innings',
+    LIVE_KEYWORDS = ['stumps', 'innings', 'in progress',
                      'session', 'drinks', 'tea', 'rain', 'lunch']
 
     for cat in categories:
@@ -985,13 +816,7 @@ def update_statpal_live_scores(sport):
             away_goals = away.get('goals', '0')
             
             # Get start time
-            start_time = None
-            if match.get('date') and match.get('time'):
-                try:
-                    from datetime import datetime
-                    start_time = f"{match.get('date')} {match.get('time')}"
-                except:
-                    start_time = match.get('date', '')
+            start_time = _parse_statpal_datetime(match.get('date'), match.get('time'))
             
             # Save
             try:
@@ -1001,6 +826,8 @@ def update_statpal_live_scores(sport):
                     defaults={
                         'home_team': home.get('name', ''),
                         'away_team': away.get('name', ''),
+                        'home_logo': statpal_service.download_team_logo(home.get('id', ''), sport='soccer'),
+                        'away_logo': statpal_service.download_team_logo(away.get('id', ''), sport='soccer'),
                         'home_score': int(home_goals) if str(home_goals).isdigit() else 0,
                         'away_score': int(away_goals) if str(away_goals).isdigit() else 0,
                         'status': 'live',
@@ -1010,6 +837,7 @@ def update_statpal_live_scores(sport):
                     }
                 )
                 saved_count += 1
+                _publish(live_score)
                 logger.info(f"✅ Soccer: {home.get('name')} vs {away.get('name')} ({item['status_minute']}')")
             except Exception as e:
                 logger.error(f"❌ Error saving soccer match {external_id}: {e}")
@@ -1034,7 +862,7 @@ def update_statpal_live_scores(sport):
             away_score = match.get('away_score', 0)
             
             # Get start time
-            start_time = match.get('start_time', match.get('date', ''))
+            start_time = _parse_statpal_datetime(match.get('date'))
             
             # Save
             try:
@@ -1053,6 +881,7 @@ def update_statpal_live_scores(sport):
                     }
                 )
                 saved_count += 1
+                _publish(live_score)
                 logger.info(f"✅ Cricket: {home.get('name')} vs {away.get('name')} ({item['status_detail']})")
             except Exception as e:
                 logger.error(f"❌ Error saving cricket match {external_id}: {e}")

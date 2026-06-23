@@ -19,14 +19,6 @@ app.conf.beat_schedule = {
         'task': 'apps.sports_apis.tasks.update_nfl_live_scores',
         'schedule': 120.0,
     },
-    'live-scores-soccer': {
-        'task': 'apps.sports_apis.tasks.update_soccer_live_scores',
-        'schedule': 120.0,
-    },
-    'live-scores-cricket': {
-        'task': 'apps.sports_apis.tasks.update_cricket_live_scores',
-        'schedule': 120.0,
-    },
 
     # ── Fixtures ─────────────────────────────────────────────────────────
     'fixtures-daily': {

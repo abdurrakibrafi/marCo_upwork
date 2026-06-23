@@ -131,4 +131,44 @@ class StatPalService:
         return {"success": False, "error": f"Unknown sport: {sport}"}
 
 
+    def download_team_logo(self, team_id: str, sport: str = "soccer") -> str:
+        # Download a team logo from StatPal and cache it under MEDIA_ROOT/team_logos/.
+        # Returns the relative media URL, or empty string on failure.
+        import os
+        from django.conf import settings
+
+        if not team_id:
+            return ""
+
+        filename = f"{sport}_{team_id}.png"
+        logo_dir = os.path.join(settings.MEDIA_ROOT, "team_logos")
+        filepath = os.path.join(logo_dir, filename)
+        media_url = f"{settings.MEDIA_URL}team_logos/{filename}"
+
+        if os.path.exists(filepath) and os.path.getsize(filepath) > 0:
+            return media_url
+
+        try:
+            os.makedirs(logo_dir, exist_ok=True)
+            resp = requests.get(
+                f"{self.base_v2}/{sport}/images",
+                params={"type": "team", "id": team_id, "access_key": self.access_key},
+                headers={"Accept": "image/png, application/json"},
+                timeout=self.timeout,
+            )
+            content_type = resp.headers.get("Content-Type", "")
+            if resp.status_code == 200 and "image" in content_type:
+                with open(filepath, "wb") as f2:
+                    f2.write(resp.content)
+                return media_url
+            logger.warning(
+                "StatPal logo fetch failed for team_id=%s sport=%s -> HTTP %s (%s)",
+                team_id, sport, resp.status_code, content_type
+            )
+            return ""
+        except Exception as exc:
+            logger.warning("StatPal logo download error for team_id=%s: %s", team_id, exc)
+            return ""
+
+
 statpal_service = StatPalService()
