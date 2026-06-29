@@ -7,7 +7,7 @@ from django.conf import settings
 
 logger = logging.getLogger(__name__)
 
-_DEFAULT_KEY = getattr(settings, "STATPAL_ACCESS_KEY", "bc343795-df19-407b-8fb2-301dd5cdb844")
+_DEFAULT_KEY = settings.STATPAL_ACCESS_KEY
 
 
 class StatPalService:
