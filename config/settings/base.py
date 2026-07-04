@@ -1,3 +1,4 @@
+# pyrefly: ignore [missing-import]
 import environ
 from pathlib import Path
 import os
@@ -243,8 +244,10 @@ BALLDONTLIE_KEY = env('BALLDONTLIE_KEY', default='')
 API_SPORTS_KEY = env('API_SPORTS_KEY', default='')
 API_CRICKET_KEY = env('API_CRICKET_KEY', default='')
 BRAVESEARCH_KEY = env('BRAVESEARCH_KEY', default='')
+NEWSAPI_KEY = env('NEWSAPI_KEY', default='')
 OPENAI_API_KEY = env('OPENAI_API_KEY', default='')
 THESPORTSDB_KEY = env('THESPORTSDB_KEY', default='')
+
 
 
 STATPAL_ACCESS_KEY = os.environ.get("STATPAL_API_KEY")

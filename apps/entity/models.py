@@ -1,5 +1,6 @@
 from django.db import models
 from django.utils.text import slugify
+from apps.entity.utils.normalizers import normalize_entity_name
 
 class Entity(models.Model):
     """Base model for all sports entities"""
@@ -92,6 +93,7 @@ class Entity(models.Model):
                 slug = f"{base_slug}-{counter}"
                 counter += 1
             self.slug = slug
+        self.normalized_name = normalize_entity_name(self.name)
         super().save(*args, **kwargs)
     
     def __str__(self):

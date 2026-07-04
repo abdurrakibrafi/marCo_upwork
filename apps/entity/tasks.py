@@ -354,7 +354,27 @@ def bootstrap_all_entities():
     Also used for one-time backfill on deployments.
     """
     from apps.feed.tasks import fetch_brave_news_for_entity
+    from django.core.management import call_command
+    from apps.entity.models import Entity, Athlete
     
+    # ── Auto-seed if VPS database is empty/unpopulated ──
+    team_count = Entity.objects.filter(type='team').count()
+    athlete_count = Athlete.objects.count()
+    
+    if team_count < 50:
+        logger.info(f"Database has only {team_count} teams. Running populate_major_entities command...")
+        try:
+            call_command('populate_major_entities')
+        except Exception as e:
+            logger.exception(f"Auto-population of major entities failed: {e}")
+            
+    if athlete_count < 100:
+        logger.info(f"Database has only {athlete_count} athletes. Running populate_athletes command...")
+        try:
+            call_command('populate_athletes')
+        except Exception as e:
+            logger.exception(f"Auto-population of athletes failed: {e}")
+
     entities = Entity.objects.filter(is_active=True)
     total = entities.count()
     

@@ -74,12 +74,48 @@ def search_entities(request):
         return Response(result)
     
     # Fuzzy match (similar names)
-    all_entities = Entity.objects.filter(filters).order_by('-follower_count')[:100]
+    # First, find entities whose name or normalized name contains the query words (excluding common noise words)
+    words = [w.lower() for w in query.split() if len(w) > 2]
+    NOISE = {'fc', 'united', 'city', 'real', 'club', 'town', 'athletic', 'rovers', 'wanderers', 'county', 'saint', 'st', 'de', 'la', 'sports', 'league', 'team'}
+    search_words = [w for w in words if w not in NOISE]
+    
+    # Fallback to all words if query consists only of noise words
+    if not search_words:
+        search_words = words
+
+    word_filter = Q()
+    if search_words:
+        for w in search_words:
+            word_filter |= Q(name__icontains=w) | Q(normalized_name__icontains=w)
+    else:
+        word_filter = Q(name__icontains=query) | Q(normalized_name__icontains=normalized_query)
+
+    matched_qs = Entity.objects.filter(
+        filters
+    ).filter(
+        word_filter
+    ).order_by('-follower_count')[:50]
+
+    if matched_qs.exists():
+        # Mix in some top followed entities to support typo/spelling correction too
+        top_entities = Entity.objects.filter(filters).order_by('-follower_count')[:50]
+        all_entities = list(matched_qs) + [e for e in top_entities if e not in matched_qs]
+    else:
+        # No contains match, fallback to top followed entities for spelling correction
+        all_entities = Entity.objects.filter(filters).order_by('-follower_count')[:100]
     
     matches = []
     for entity in all_entities:
         similar, score = find_similar_entity(query, [entity], threshold=0.70)
         if similar:
+            entity_norm = entity.normalized_name
+            # Add bonuses to score to prioritize better matches
+            if normalized_query == entity_norm:
+                score += 2.0
+            elif normalized_query in entity_norm.split():
+                score += 1.0
+            elif entity_norm.startswith(normalized_query):
+                score += 0.5
             matches.append((entity, score))
     
     # Sort by score

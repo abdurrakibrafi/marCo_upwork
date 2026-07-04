@@ -90,8 +90,10 @@ class FeedItemSerializer(serializers.ModelSerializer):
 
 
 class FeedItemCompactSerializer(serializers.ModelSerializer):
-    source_name = serializers.CharField(source='source.name')
+    source_name = serializers.SerializerMethodField()
     source_logo = serializers.SerializerMethodField()
+    publisher_name = serializers.SerializerMethodField()
+    publisher_logo = serializers.SerializerMethodField()
     entity_names = serializers.SerializerMethodField()
     entities = EntitySerializer(many=True, read_only=True)
     is_bookmarked = serializers.SerializerMethodField()
@@ -100,8 +102,8 @@ class FeedItemCompactSerializer(serializers.ModelSerializer):
     class Meta:
         model = FeedItem
         fields = [
-            'id', 'source_name', 'source_logo', 'entity_names', 'entities',
-            'title', 'summary', 'thumbnail_url', 'url',
+            'id', 'source_name', 'source_logo', 'publisher_name', 'publisher_logo',
+            'entity_names', 'entities', 'title', 'summary', 'thumbnail_url', 'url',
             'published_at', 'is_breaking', 'is_trending', 'views', 'is_bookmarked', 'is_liked'
         ]
 
@@ -115,6 +117,17 @@ class FeedItemCompactSerializer(serializers.ModelSerializer):
         return getattr(obj.source, 'name', '')
 
     def get_source_logo(self, obj):
+        entity = obj.entities.first()
+        if entity and entity.logo_url:
+            return entity.logo_url
+        return self.get_publisher_logo(obj)
+
+    def get_publisher_name(self, obj):
+        if obj.publisher_name:
+            return obj.publisher_name
+        return getattr(obj.source, 'name', '')
+
+    def get_publisher_logo(self, obj):
         # ── 1. Per-item publisher logo (e.g. ESPN, Reuters from Google News) ──
         publisher = getattr(obj, 'publisher_name', '').strip().lower()
         if publisher:
@@ -136,11 +149,6 @@ class FeedItemCompactSerializer(serializers.ModelSerializer):
         if domain and domain != 'news.google.com':
             clean = domain.replace('https://', '').replace('http://', '').rstrip('/')
             return f'https://www.google.com/s2/favicons?domain={clean}&sz=64'
-
-        # ── 4. Entity logo fallback ──
-        entity = obj.entities.first()
-        if entity and entity.logo_url:
-            return entity.logo_url
 
         return ''
 

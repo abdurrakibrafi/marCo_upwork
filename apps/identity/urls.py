@@ -1,6 +1,7 @@
 from django.urls import path, include
 from rest_framework import views
 from rest_framework.routers import DefaultRouter
+# pyrefly: ignore [missing-import]
 from rest_framework_simplejwt.views import TokenRefreshView
 from .views import (
     CancelEmailChangeView,
@@ -56,8 +57,8 @@ urlpatterns = [
 
     path("password/change/", ChangePasswordView.as_view(), name="password-change"),
 
-    # path("google/login/", GoogleLogin.as_view(), name="google_login"),
-    # path("apple/login/", AppleLogin.as_view(), name="apple_login"),
+    path("google/login/", GoogleLogin.as_view(), name="google_login"),
+    path("apple/login/", AppleLogin.as_view(), name="apple_login"),
 
     # path("account/delete/", AccountSoftDeleteView.as_view(), name="account-delete"),
     path("account/parmanent/delete/", ParmanentAccountDeleteView.as_view(), name="parmanent-delete"),

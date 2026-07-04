@@ -53,10 +53,10 @@ def get_nest_feed(request):
             'results': []
         })
     
-    # Get hidden sources
-    hidden_sources = HiddenSource.objects.filter(
-        user=request.user
-    ).values_list('source_id', flat=True)
+    # Get hidden sources and publishers
+    hidden_sources_qs = HiddenSource.objects.filter(user=request.user)
+    hidden_source_ids = hidden_sources_qs.filter(source__isnull=False).values_list('source_id', flat=True)
+    hidden_publishers = hidden_sources_qs.exclude(publisher_name='').values_list('publisher_name', flat=True)
  
     # Get user's manually added custom sources
     from apps.source.models import UserCustomSource
@@ -70,7 +70,9 @@ def get_nest_feed(request):
         Q(entities__in=nest_entities) |
         Q(source_id__in=user_custom_source_ids)
     ).exclude(
-        source_id__in=hidden_sources
+        source_id__in=hidden_source_ids
+    ).exclude(
+        publisher_name__in=hidden_publishers
     ).select_related('source').prefetch_related('entities')
     
     # Apply filters
@@ -148,17 +150,20 @@ def get_entity_feed(request, entity_id):
     """
     entity = get_object_or_404(Entity, id=entity_id)
     
-    # Get hidden sources if user is authenticated
-    hidden_sources = []
+    # Get hidden sources and publishers if user is authenticated
+    hidden_source_ids = []
+    hidden_publishers = []
     if request.user.is_authenticated:
-        hidden_sources = HiddenSource.objects.filter(
-            user=request.user
-        ).values_list('source_id', flat=True)
+        hidden_sources_qs = HiddenSource.objects.filter(user=request.user)
+        hidden_source_ids = hidden_sources_qs.filter(source__isnull=False).values_list('source_id', flat=True)
+        hidden_publishers = hidden_sources_qs.exclude(publisher_name='').values_list('publisher_name', flat=True)
     
     feed = FeedItem.objects.filter(
         entities=entity
     ).exclude(
-        source_id__in=hidden_sources
+        source_id__in=hidden_source_ids
+    ).exclude(
+        publisher_name__in=hidden_publishers
     ).select_related('source').prefetch_related('entities').order_by('-published_at')
     
     # Paginate
@@ -199,67 +204,95 @@ def get_feed_item(request, item_id):
 @permission_classes([IsAuthenticated])
 def hide_source(request):
     """
-    Hide a source from user's feeds
+    Hide a source or publisher from user's feeds
     POST /api/feed/source/hide
-    Body: {"source_id": 123}
+    Body: {"feed_item_id": 123} OR {"publisher_name": "BBC"} OR {"source_id": 123}
     """
+    feed_item_id = request.data.get('feed_item_id')
+    publisher_name = request.data.get('publisher_name', '').strip()
     source_id = request.data.get('source_id')
     
-    if not source_id:
+    if not feed_item_id and not publisher_name and not source_id:
         return Response(
-            {'error': 'source_id is required'},
+            {'error': 'At least one of feed_item_id, publisher_name, or source_id is required'},
             status=status.HTTP_400_BAD_REQUEST
         )
-    
-    source = get_object_or_404(Source, id=source_id)
-    
-    hidden, created = HiddenSource.objects.get_or_create(
-        user=request.user,
-        source=source
-    )
-    
-    if created:
-        return Response({
-            'success': True,
-            'message': f'{source.name} has been hidden from your feeds'
-        }, status=status.HTTP_201_CREATED)
+        
+    # If feed_item_id is provided, resolve to publisher_name or source_id
+    if feed_item_id:
+        feed_item = get_object_or_404(FeedItem, id=feed_item_id)
+        if feed_item.publisher_name:
+            publisher_name = feed_item.publisher_name
+        else:
+            source_id = feed_item.source_id
+            
+    if publisher_name:
+        hidden, created = HiddenSource.objects.get_or_create(
+            user=request.user,
+            publisher_name=publisher_name
+        )
+        message = f'{publisher_name} has been hidden from your feeds' if created else f'{publisher_name} was already hidden'
     else:
-        return Response({
-            'success': True,
-            'message': f'{source.name} was already hidden'
-        })
+        source = get_object_or_404(Source, id=source_id)
+        hidden, created = HiddenSource.objects.get_or_create(
+            user=request.user,
+            source=source
+        )
+        message = f'{source.name} has been hidden from your feeds' if created else f'{source.name} was already hidden'
+        
+    return Response({
+        'success': True,
+        'message': message
+    }, status=status.HTTP_201_CREATED if created else status.HTTP_200_OK)
 
 
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 def unhide_source(request):
     """
-    Unhide a source
+    Unhide a source or publisher
     POST /api/feed/source/unhide
-    Body: {"source_id": 123}
+    Body: {"feed_item_id": 123} OR {"publisher_name": "BBC"} OR {"source_id": 123}
     """
+    feed_item_id = request.data.get('feed_item_id')
+    publisher_name = request.data.get('publisher_name', '').strip()
     source_id = request.data.get('source_id')
     
-    if not source_id:
+    if not feed_item_id and not publisher_name and not source_id:
         return Response(
-            {'error': 'source_id is required'},
+            {'error': 'At least one of feed_item_id, publisher_name, or source_id is required'},
             status=status.HTTP_400_BAD_REQUEST
         )
-    
-    deleted_count = HiddenSource.objects.filter(
-        user=request.user,
-        source_id=source_id
-    ).delete()[0]
-    
+        
+    if feed_item_id:
+        feed_item = get_object_or_404(FeedItem, id=feed_item_id)
+        if feed_item.publisher_name:
+            publisher_name = feed_item.publisher_name
+        else:
+            source_id = feed_item.source_id
+
+    if publisher_name:
+        deleted_count = HiddenSource.objects.filter(
+            user=request.user,
+            publisher_name=publisher_name
+        ).delete()[0]
+        name_str = publisher_name
+    else:
+        deleted_count = HiddenSource.objects.filter(
+            user=request.user,
+            source_id=source_id
+        ).delete()[0]
+        name_str = f"Source {source_id}"
+        
     if deleted_count > 0:
         return Response({
             'success': True,
-            'message': 'Source has been unhidden'
+            'message': f'{name_str} has been unhidden'
         })
     else:
         return Response({
             'success': False,
-            'message': 'Source was not hidden'
+            'message': f'{name_str} was not hidden'
         }, status=status.HTTP_404_NOT_FOUND)
 
 
@@ -267,19 +300,23 @@ def unhide_source(request):
 @permission_classes([IsAuthenticated])
 def get_hidden_sources(request):
     """
-    Get list of user's hidden sources
+    Get list of user's hidden sources and publishers
     GET /api/feed/sources/hidden
     """
     hidden = HiddenSource.objects.filter(
         user=request.user
     ).select_related('source')
     
-    sources = [h.source for h in hidden]
+    sources = [h.source for h in hidden if h.source]
+    publishers = [h.publisher_name for h in hidden if h.publisher_name]
+    
     serializer = SourceSerializer(sources, many=True)
     
     return Response({
-        'count': len(sources),
-        'sources': serializer.data
+        'count_sources': len(sources),
+        'sources': serializer.data,
+        'count_publishers': len(publishers),
+        'publishers': publishers
     })
 
 

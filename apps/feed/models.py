@@ -116,13 +116,16 @@ class UserSource(models.Model):
 
 
 class HiddenSource(models.Model):
-    """User has hidden a source from their feed"""
+    """User has hidden a source or publisher from their feed"""
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='hidden_sources')
-    source = models.ForeignKey(Source, on_delete=models.CASCADE)
+    source = models.ForeignKey(Source, on_delete=models.CASCADE, null=True, blank=True)
+    publisher_name = models.CharField(max_length=255, blank=True, default='')
     created_at = models.DateTimeField(auto_now_add=True, null=True)
 
-    class Meta:
-        unique_together = ('user', 'source')
+    def __str__(self):
+        if self.publisher_name:
+            return f"{self.user.email} hidden publisher: {self.publisher_name}"
+        return f"{self.user.email} hidden source: {self.source}"
 
 
 class Bookmark(models.Model):

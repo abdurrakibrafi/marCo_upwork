@@ -183,30 +183,92 @@ def poll_all_active_sources():
 
 def _entity_matches_text(entity: Entity, text: str) -> bool:
     """
-    BUG FIX: The original check `entity.name.lower() in text` was too strict.
-    "Manchester United" never matched "Man United beat Arsenal".
-    Now we check the full name AND common short forms (first word, last word).
-    Still conservative enough to avoid false positives.
+    Check if a feed article text (title/summary) matches a specific Entity.
+    
+    Logic:
+    1. Exact phrase/name match (with word boundaries).
+    2. Common variations/aliases (e.g. "Man Utd" matches "Manchester United", "PSG" matches "Paris Saint-Germain").
+    3. Individual word matching for non-generic words (e.g. "Saka" matches "Bukayo Saka", but "Miami" alone does NOT match "Inter Miami" to avoid Dolphins matches).
     """
-    name = entity.name.lower()
-    text = text.lower()
+    from apps.entity.utils.normalizers import normalize_entity_name
 
-    # Full name match
-    if name in text:
+    name = normalize_entity_name(entity.name)
+    text_norm = normalize_entity_name(text)
+
+    # 1. Exact phrase/name match (with word boundaries)
+    escaped_name = re.escape(name)
+    if re.search(r'\b' + escaped_name + r'\b', text_norm):
         return True
 
-    # For multi-word names, also try first word if it's ≥5 chars
-    # (avoids "FC" or "AC" matching everything)
-    parts = name.split()
-    if len(parts) >= 2:
-        first_word = parts[0]
-        last_word = parts[-1]
-        if len(first_word) >= 5 and first_word in text:
-            return True
-        if len(last_word) >= 5 and last_word in text:
+    # 2. Known Aliases / short forms (with word boundaries)
+    aliases_map = {
+        'manchester united': {'man united', 'man utd', 'mufc'},
+        'manchester city': {'man city', 'mancity', 'mcfc'},
+        'real madrid': {'real madrid', 'los blancos'},
+        'barcelona': {'barca', 'fc barcelona'},
+        'paris saint-germain (psg)': {'psg', 'paris sg', 'paris saint-germain'},
+        'paris saint-germain': {'psg', 'paris sg', 'paris saint-germain'},
+        'psg': {'psg', 'paris sg', 'paris saint-germain'},
+        'inter milan': {'inter', 'internazionale', 'inter milan'},
+    }
+    
+    aliases = aliases_map.get(name, set())
+    for alias in aliases:
+        if re.search(r'\b' + re.escape(alias) + r'\b', text_norm):
             return True
 
+    # 3. Individual word matching (only for words NOT in generic/ambiguous list)
+    GENERIC_WORDS = {
+        'fc', 'ac', 'sc', 'cf', 'utd', 'united', 'city', 'town', 'county', 'club', 'sports',
+        'miami', 'manchester', 'madrid', 'milan', 'london', 'york', 'los', 'angeles', 'boston',
+        'chicago', 'houston', 'dallas', 'san', 'diego', 'francisco', 'jose', 'la', 'de', 'deportivo',
+        'real', 'atletico', 'athletic', 'sporting', 'racing', 'union', 'saint', 'st', 'germain',
+        'inter', 'sheffield', 'west', 'north', 'south', 'east', 'port', 'rovers', 'wanderers',
+        'rangers', 'celtic', 'hearts', 'hibernian', 'albion', 'forest', 'villa', 'palace', 'team',
+        'division', 'championship', 'cup', 'state', 'green', 'white', 'red', 'blue', 'black'
+    }
+
+    words = [w for w in name.split() if len(w) >= 4]
+    for word in words:
+        if word not in GENERIC_WORDS:
+            if re.search(r'\b' + re.escape(word) + r'\b', text_norm):
+                return True
+
     return False
+
+
+def _resolve_thumbnail_for_article(title: str, entities: list) -> str:
+    """
+    Finds a thumbnail for an article using:
+    Brave Search API (if BRAVESEARCH_KEY is configured and not rate-limited).
+    Returns empty string if not found.
+    """
+    from django.conf import settings
+    import requests
+
+    # ── Brave Search News API Lookup ──
+    brave_key = getattr(settings, 'BRAVESEARCH_KEY', '')
+    if brave_key:
+        try:
+            query_clean = re.sub(r'[^\w\s]', ' ', title).strip()
+            url = "https://api.search.brave.com/res/v1/news/search"
+            headers = {
+                "X-Subscription-Token": brave_key,
+                "Accept": "application/json"
+            }
+            resp = requests.get(url, headers=headers, params={"q": query_clean, "count": 1}, timeout=5)
+            if resp.status_code == 200:
+                results = resp.json().get('results', [])
+                if results:
+                    thumb = results[0].get('thumbnail')
+                    if isinstance(thumb, dict) and (thumb.get('src') or thumb.get('original')):
+                        return thumb.get('src') or thumb.get('original')
+                    elif isinstance(thumb, str) and thumb:
+                        return thumb
+        except Exception as e:
+            logger.warning(f"Brave Search thumbnail search failed: {e}")
+
+    return ''
 
 
 @shared_task(bind=True, max_retries=2)
@@ -253,6 +315,14 @@ def poll_single_source(self, source_id: int):
 
         url_hash = hashlib.md5(url.encode()).hexdigest()
 
+        # Resolve thumbnail
+        thumbnail_url = entry.get('thumbnail_url', '')
+        if not thumbnail_url:
+            thumbnail_url = _resolve_thumbnail_for_article(
+                title=entry.get('title', ''),
+                entities=matched_entities
+            )
+
         obj, created = FeedItem.objects.get_or_create(
             url_hash=url_hash,
             defaults={
@@ -261,7 +331,7 @@ def poll_single_source(self, source_id: int):
                 'url': url,
                 'summary': _strip_html(entry.get('summary', '')),
                 'publisher_name': _extract_publisher(entry.get('summary', '')),
-                'thumbnail_url': entry.get('thumbnail_url', ''),
+                'thumbnail_url': thumbnail_url,
                 'published_at': entry.get('published_at') or timezone.now(),
             }
         )

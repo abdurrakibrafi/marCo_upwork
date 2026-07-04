@@ -19,6 +19,10 @@ from apps.sports_apis.services.rss import rss_discovery_service
 
 logger = logging.getLogger(__name__)
 
+from bs4 import BeautifulSoup
+from django.db.models import Q
+
+
 
 class SourceAIService:
     """
@@ -37,25 +41,71 @@ class SourceAIService:
     # PUBLIC: main entry point
     # ─────────────────────────────────────────────────────────────────────
 
+    POPULAR_SOURCES = [
+        {"name": "ESPN", "domain": "https://www.espn.com", "rss_url": "https://www.espn.com/espn/rss/news", "description": "Global sports news coverage, stats, and live scores."},
+        {"name": "BBC Sport", "domain": "https://www.bbc.com/sport", "rss_url": "https://push.api.bbci.co.uk/feed/news/friendly/sport", "description": "Sports news, scores, results, and analysis from the BBC."},
+        {"name": "Sky Sports", "domain": "https://www.skysports.com", "rss_url": "https://www.skysports.com/rss/12040", "description": "Latest sports news, transfers, live scores, and video highlights."},
+        {"name": "The Guardian Sport", "domain": "https://www.theguardian.com/sport", "rss_url": "https://www.theguardian.com/sport/rss", "description": "Sports news, match reviews, comments, and podcasts from The Guardian."},
+        {"name": "Yahoo Sports", "domain": "https://sports.yahoo.com", "rss_url": "https://sports.yahoo.com/rss/", "description": "Comprehensive sports news, scores, fantasy games, and video."},
+        {"name": "Reuters Sports", "domain": "https://www.reuters.com/sports", "rss_url": "https://www.reutersagency.com/feed/", "description": "Global sports reporting, breaking news, and photos."},
+        {"name": "The Athletic", "domain": "https://theathletic.com", "rss_url": "", "description": "In-depth sports coverage, analysis, and exclusive reporting."},
+    ]
+
     def suggest_sources(self, query: str) -> list[dict]:
         """
         Given a user search query, return a list of suggested sources.
         Each result: {name, domain, description, favicon_url, rss_url, has_rss, tags}
         """
-        # Step 1: Ask GPT-4o for source suggestions
-        ai_suggestions = self._ask_openai(query)
-        if not ai_suggestions:
-            # Fallback: use Brave to find sources directly
+        ai_suggestions = []
+        
+        # 1. Try OpenAI if key is set
+        if self.openai_key:
+            ai_suggestions = self._ask_openai(query)
+            
+        # 2. Try Brave Search fallback if key is set
+        if not ai_suggestions and self.brave_key:
             ai_suggestions = self._brave_fallback(query)
 
+        # 3. Try DB matching fallback
         if not ai_suggestions:
-            return []
+            try:
+                from apps.feed.models import Source
+                db_sources = Source.objects.filter(
+                    Q(name__icontains=query) | Q(domain__icontains=query)
+                )[:6]
+                for src in db_sources:
+                    ai_suggestions.append({
+                        "name": src.name,
+                        "domain": src.domain,
+                        "description": f"News articles covering sports from {src.name}.",
+                        "tags": [],
+                        "rss_url": src.rss_url,
+                    })
+            except Exception as e:
+                logger.warning(f"DB sources search failed: {e}")
 
-        # Step 2: Enrich each suggestion with favicon (skip RSS discovery to reduce API calls)
+        # 4. Try Popular Sources matching fallback
+        if not ai_suggestions:
+            query_lower = query.lower()
+            for pop in self.POPULAR_SOURCES:
+                if query_lower in pop["name"].lower() or query_lower in pop["domain"].lower():
+                    ai_suggestions.append({
+                        "name": pop["name"],
+                        "domain": pop["domain"],
+                        "description": pop["description"],
+                        "tags": [],
+                        "rss_url": pop["rss_url"],
+                    })
+
+        # Step 2: Enrich each suggestion with favicon
         enriched = []
-        for suggestion in ai_suggestions[:6]:  # reduced to 6 to be more conservative
-            enriched_item = self._enrich_lightweight(suggestion)  # lighter version without RSS discovery
+        for suggestion in ai_suggestions[:6]:
+            enriched_item = self._enrich_lightweight(suggestion)
             if enriched_item:
+                # If suggestion has a custom rss_url, use it
+                if suggestion.get("rss_url"):
+                    enriched_item["rss_url"] = suggestion["rss_url"]
+                    enriched_item["has_rss"] = True
                 enriched.append(enriched_item)
 
         return enriched
@@ -281,12 +331,44 @@ Rules:
 
         else:
             # It's a name like "ESPN" or "Sky Sports"
-            # Ask OpenAI to find the official domain
-            suggestions = self._ask_openai(
-                f'find official website for sports source: {raw}'
-            )
-            if suggestions:
-                return self._enrich(suggestions[0])
+            # 1. Try OpenAI if key is set
+            suggestions = []
+            if self.openai_key:
+                suggestions = self._ask_openai(f'find official website for sports source: {raw}')
+                if suggestions:
+                    return self._enrich(suggestions[0])
+            
+            # 2. Try DB match fallback
+            try:
+                from apps.feed.models import Source
+                existing = Source.objects.filter(name__icontains=raw).first()
+                if existing:
+                    return {
+                        'name': existing.name,
+                        'domain': existing.domain,
+                        'description': f"News articles covering sports from {existing.name}.",
+                        'tags': [],
+                        'rss_url': existing.rss_url,
+                        'favicon_url': existing.favicon_url,
+                        'has_rss': bool(existing.rss_url),
+                    }
+            except Exception as e:
+                logger.warning(f"DB search in preview_source failed: {e}")
+
+            # 3. Try Popular Sources match fallback
+            raw_lower = raw.lower()
+            for pop in self.POPULAR_SOURCES:
+                if raw_lower in pop['name'].lower():
+                    return {
+                        'name': pop['name'],
+                        'domain': pop['domain'],
+                        'description': pop['description'],
+                        'tags': [],
+                        'rss_url': pop['rss_url'],
+                        'favicon_url': f"https://www.google.com/s2/favicons?domain={urlparse(pop['domain']).netloc}&sz=64",
+                        'has_rss': bool(pop['rss_url']),
+                    }
+
             return None
 
 
