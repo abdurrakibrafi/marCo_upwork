@@ -99,13 +99,10 @@ from apps.nest.models import UserNest   # UserNest.entity → FK to Entity
 @permission_classes([IsAuthenticated])
 def get_nest_calendar(request):
     """
-    ইউজারের নেস্টে থাকা team/league-এর শুধু live + upcoming ম্যাচ।
-    Grouped by date।
-
     Query params (optional):
       sport  — 'soccer' | 'nba' | 'cricket'
       status — 'live' | 'upcoming'
-      days   — upcoming কত দিন পর্যন্ত দেখাবে (default 7)
+      days   — upcoming (default 7)
 
     Response:
     {
@@ -123,12 +120,11 @@ def get_nest_calendar(request):
     """
     mixin = BaseResponseMixin()
     try:
-        # 1. ইউজারের নেস্ট থেকে entity ids
-        nest_entity_ids = list(
+        base_entity_ids = list(
             UserNest.objects.filter(user=request.user)
             .values_list("entity_id", flat=True)
         )
-        if not nest_entity_ids:
+        if not base_entity_ids:
             return mixin.success_response(
                 data={
                     "start_date": timezone.now().date().isoformat(),
@@ -138,6 +134,34 @@ def get_nest_calendar(request):
                 },
                 message="No entities in your nest.",
             )
+
+        # Include duplicate / canonical entities to handle cross-source data variations robustly
+        from apps.entity.models import Entity
+        nest_entities = Entity.objects.filter(id__in=base_entity_ids)
+        nest_entity_ids = set(base_entity_ids)
+        for ent in nest_entities:
+            # Match by name, sport, type (fuzzy/exact fallback)
+            duplicates = Entity.objects.filter(
+                name__iexact=ent.name,
+                sport=ent.sport,
+                type=ent.type
+            ).values_list("id", flat=True)
+            nest_entity_ids.update(duplicates)
+            
+            # Match by explicit canonical mapping
+            if ent.canonical_entity_id:
+                nest_entity_ids.add(ent.canonical_entity_id)
+                other_dups = Entity.objects.filter(
+                    canonical_entity_id=ent.canonical_entity_id
+                ).values_list("id", flat=True)
+                nest_entity_ids.update(other_dups)
+            
+            child_dups = Entity.objects.filter(
+                canonical_entity_id=ent.id
+            ).values_list("id", flat=True)
+            nest_entity_ids.update(child_dups)
+            
+        nest_entity_ids = list(nest_entity_ids)
 
         # 2. Status filter
         status_param = request.query_params.get("status")
@@ -156,7 +180,6 @@ def get_nest_calendar(request):
         # 4. Queryset
         qs = (
             Event.objects.filter(
-                api_source="statpal",
                 status__in=allowed_statuses,
             )
             .filter(
@@ -165,7 +188,7 @@ def get_nest_calendar(request):
             )
             .filter(
                 Q(status="live")
-                | Q(status="upcoming", start_time__lte=cutoff)
+                | Q(status="upcoming", start_time__gte=timezone.now(), start_time__lte=cutoff)
             )
             .select_related("home_entity", "away_entity", "league")
             .order_by("start_time")
@@ -201,24 +224,6 @@ def get_nest_calendar(request):
 
 
 @api_view(["GET"])
-@permission_classes([IsAuthenticated])
-def get_event_detail(request, event_id: int):
-    """Single event detail including metadata (lineups, goals, etc.)"""
-    mixin = BaseResponseMixin()
-    try:
-        event = (
-            Event.objects.select_related("home_entity", "away_entity", "league")
-            .get(pk=event_id)
-        )
-        return mixin.success_response(data=EventSerializer(event).data)
-    except Event.DoesNotExist:
-        return mixin.error_response(message="Event not found.", status_code=404)
-    except Exception as exc:
-        return mixin.handle_exception(exc)
-
-
-@api_view(["GET"])
-@permission_classes([IsAuthenticated])
 def get_event_detail(request, event_id: int):
     """
     Full detail for a single event including metadata (lineups, etc.)
@@ -234,10 +239,10 @@ def get_event_detail(request, event_id: int):
         event = (
             Event.objects.select_related("home_entity", "away_entity", "league")
             .get(pk=event_id)
-        )
-        return mixin.success_response(data=EventSerializer(event).data)
+        ) # Changed to EventDetailSerializer
+        return mixin.success_response(data=EventDetailSerializer(event).data)
     except Event.DoesNotExist:
-        return mixin.error_response("Event not found.", status=404)
+        return mixin.error_response(message="Event not found.", status_code=404)
     except Exception as exc:
         return mixin.handle_exception(exc)
 
@@ -324,11 +329,38 @@ def get_entity_calendar(request, entity_id):
                 status_code=status.HTTP_400_BAD_REQUEST
             )
 
+        # Expand entity_id to include duplicate / canonical entity IDs
+        from apps.entity.models import Entity
+        try:
+            ent = Entity.objects.get(id=entity_id)
+            related_ids = set([entity_id])
+            
+            # Exact name/sport/type match
+            duplicates = Entity.objects.filter(
+                name__iexact=ent.name,
+                sport=ent.sport,
+                type=ent.type
+            ).values_list("id", flat=True)
+            related_ids.update(duplicates)
+            
+            # Canonical entity matching
+            if ent.canonical_entity_id:
+                related_ids.add(ent.canonical_entity_id)
+                related_ids.update(
+                    Entity.objects.filter(canonical_entity_id=ent.canonical_entity_id).values_list("id", flat=True)
+                )
+            related_ids.update(
+                Entity.objects.filter(canonical_entity_id=ent.id).values_list("id", flat=True)
+            )
+            related_ids = list(related_ids)
+        except Entity.DoesNotExist:
+            related_ids = [entity_id]
+
         events = Event.objects.filter(
             start_time__date__gte=start_date,
             start_time__date__lte=end_date,
         ).filter(
-            Q(home_entity_id=entity_id) | Q(away_entity_id=entity_id)
+            Q(home_entity_id__in=related_ids) | Q(away_entity_id__in=related_ids)
         ).select_related(
             'home_entity', 'away_entity', 'league'
         ).order_by('start_time')

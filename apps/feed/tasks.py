@@ -20,6 +20,43 @@ from urllib.parse import urlparse
 logger = logging.getLogger(__name__)
 
 
+import re
+
+def _strip_html(text: str) -> str:
+    """Remove HTML tags and decode common HTML entities from a string."""
+    if not text:
+        return ''
+    # Remove HTML tags
+    text = re.sub(r'<[^>]+>', ' ', text)
+    # Decode common HTML entities
+    text = text.replace('&amp;', '&').replace('&lt;', '<').replace('&gt;', '>').replace('&nbsp;', ' ').replace('&quot;', '"').replace('&#39;', "'")
+    # Collapse multiple whitespace
+    text = re.sub(r'\s+', ' ', text).strip()
+    return text
+
+
+def _extract_publisher(html: str) -> str:
+    """Extract the actual publisher name from Google News RSS HTML.
+
+    Google News encodes the publisher like:
+        <font color="#6f6f6f">ESPN</font>
+    Returns the publisher name, e.g. 'ESPN', or '' if not found.
+    """
+    if not html:
+        return ''
+    # Try <font color="#6f6f6f">Publisher</font> pattern (Google News RSS)
+    match = re.search(r'<font[^>]*color=["\']#6f6f6f["\'][^>]*>([^<]+)</font>', html, re.IGNORECASE)
+    if match:
+        return match.group(1).strip()
+    # Fallback: last <li> or trailing text after last </a>
+    match = re.search(r'</a>\s*(?:&nbsp;)*\s*([A-Za-z0-9 .\-]+)\s*$', html)
+    if match:
+        candidate = match.group(1).strip()
+        if 2 < len(candidate) < 80:
+            return candidate
+    return ''
+
+
 def _extract_domain(url: str) -> str | None:
     try:
         parsed = urlparse(url)
@@ -222,7 +259,8 @@ def poll_single_source(self, source_id: int):
                 'source': source,
                 'title': entry.get('title', '')[:500],
                 'url': url,
-                'summary': entry.get('summary', ''),
+                'summary': _strip_html(entry.get('summary', '')),
+                'publisher_name': _extract_publisher(entry.get('summary', '')),
                 'thumbnail_url': entry.get('thumbnail_url', ''),
                 'published_at': entry.get('published_at') or timezone.now(),
             }
@@ -316,7 +354,8 @@ def fetch_brave_news_for_entity(entity_id: int):
                 'source': source,
                 'title': article['title'],
                 'url': article['url'],
-                'summary': article['summary'],
+                'summary': _strip_html(article['summary']),
+                'publisher_name': _extract_publisher(article.get('raw_summary', article['summary'])),
                 'thumbnail_url': article['thumbnail_url'],
                 'published_at': article['published_at'],
             }

@@ -5,6 +5,8 @@ from apps.entity.models import Entity
 from apps.feed.models import FeedItem
 from apps.event.models import Event
 from apps.score.models import LiveScore
+from django.utils import timezone
+from datetime import timedelta
 
 
 def health_check(request):
@@ -54,9 +56,6 @@ def api_status(request):
     API status and statistics
     GET /api/status
     """
-    from django.utils import timezone
-    from datetime import timedelta
-    
     now = timezone.now()
     last_24h = now - timedelta(hours=24)
     

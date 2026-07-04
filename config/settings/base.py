@@ -247,7 +247,7 @@ OPENAI_API_KEY = env('OPENAI_API_KEY', default='')
 THESPORTSDB_KEY = env('THESPORTSDB_KEY', default='')
 
 
-
+STATPAL_ACCESS_KEY = os.environ.get("STATPAL_API_KEY")
 
 CACHE_TTLS = {
     'live_scores': env('LIVE_SCORES_TTL', default=60),  # 1 minute

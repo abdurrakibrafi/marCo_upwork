@@ -80,6 +80,7 @@ class FeedItem(models.Model):
     url = models.URLField(max_length=5000)
     url_hash = models.CharField(max_length=500, unique=True, db_index=True)  # MD5 of URL
     summary = models.TextField(blank=True)
+    publisher_name = models.CharField(max_length=200, blank=True)  # Actual publisher, e.g. "ESPN", "Reuters"
     thumbnail_url = models.URLField(blank=True, max_length=5000)
     published_at = models.DateTimeField(db_index=True)
 

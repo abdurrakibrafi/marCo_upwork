@@ -18,9 +18,12 @@ class Event(models.Model):
         ('soccer', 'Soccer'),
         ('baseball', 'Baseball'),
         ('hockey', 'Hockey'),
+        ('handball', 'Handball'),
+        ('volleyball', 'Volleyball'),
         ('cricket', 'Cricket'),
         ('tennis', 'Tennis'),
-        ('f1', 'Formula 1'),
+        ('horse_racing', 'Horse Racing'),
+        ('formula1', 'Formula 1'),
         ('mma', 'MMA'),
         ('golf', 'Golf'),
     ]
@@ -165,7 +168,7 @@ class EventLineup(models.Model):
     )
     
     position_type = models.CharField(max_length=20, choices=POSITION_TYPES)
-    position = models.CharField(max_length=50, blank=True)  # "Forward", "Midfielder"
+    position = models.CharField(max_length=50, blank=True, null=True)  # "Forward", "Midfielder"
     jersey_number = models.IntegerField(null=True, blank=True)
     
     # Formation

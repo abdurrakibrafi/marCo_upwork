@@ -25,9 +25,12 @@ class LiveScoreSerializer(serializers.ModelSerializer):
         # No request in context (e.g. called from a Celery task / WebSocket
         # publish) -- fall back to BASE_URL from settings/.env, which is
         # environment-specific (local vs VPS).
-        from django.conf import settings
-        base = getattr(settings, 'BASE_URL', '').rstrip('/')
-        return f'{base}{relative_url}'
+        try:
+            from django.conf import settings
+            base = getattr(settings, 'BASE_URL', 'http://localhost:8005').rstrip('/')
+            return f'{base}{relative_url}'
+        except ImportError:
+            return relative_url
 
     def get_home_logo(self, obj):
         return self._absolute(obj.home_logo)

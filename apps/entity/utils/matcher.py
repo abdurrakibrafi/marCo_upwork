@@ -7,18 +7,16 @@ Entity.api_source    : CharField (blank=True)
 Entity.external_id   : CharField (blank=True)
 Entity.logo_url      : URLField  (blank=True)
 
-StatPal দেয় না image URL — আমরাই construct করি।
 """
 import logging
 from django.conf import settings
 from apps.entity.models import Entity, Team
 
-
 logger = logging.getLogger(__name__)
 
 _ACCESS_KEY = getattr(settings, "STATPAL_ACCESS_KEY", "bc343795-df19-407b-8fb2-301dd5cdb844")
-_IMAGE_BASE  = "https://statpal.io/api/v2/soccer/images"
-
+_IMAGE_BASE = "https://statpal.io/api/v2/{sport}/images"
+_LOGO_SUPPORTED_SPORTS = {"soccer"}
 # StatPal sport name → Entity.sport choice
 _SPORT_MAP = {
     "nba":     "basketball",   # Entity.sport = 'basketball' for NBA
@@ -27,8 +25,11 @@ _SPORT_MAP = {
 }
 
 
-def _logo_url(entity_type: str, statpal_id: str) -> str:
-    return f"{_IMAGE_BASE}?type={entity_type}&id={statpal_id}&access_key={_ACCESS_KEY}"
+def _logo_url(entity_type: str, statpal_id: str, sport: str) -> str:
+    if sport not in _LOGO_SUPPORTED_SPORTS:
+        return ""
+    base = _IMAGE_BASE.format(sport=sport)
+    return f"{base}?type={entity_type}&id={statpal_id}&access_key={_ACCESS_KEY}"
 
 
 def _needs_logo(entity) -> bool:
@@ -38,7 +39,7 @@ def _needs_logo(entity) -> bool:
 def get_or_create_precise_entity(
     statpal_id,
     name: str,
-    sport: str,           # 'soccer' | 'nba' | 'cricket'  (StatPal slug)
+    sport: str,       
     entity_type: str = "team",
 ):
     """
@@ -46,14 +47,14 @@ def get_or_create_precise_entity(
 
     Lookup order:
       1. api_source='statpal' + external_id  (fastest)
-      2. name__iexact + sport + type          (prevents cross-sport collision)
+      2. name__iexact + sport + type         (prevents cross-sport collision)
       3. Create new
 
     Returns an Entity instance — never None.
     """
     statpal_id  = str(statpal_id)
     entity_sport = _SPORT_MAP.get(sport, sport)   # 'nba' → 'basketball'
-    logo         = _logo_url(entity_type, statpal_id)
+    logo         = _logo_url(entity_type, statpal_id, sport) 
 
     # 1 — exact StatPal ID match
     entity = Entity.objects.filter(api_source="statpal", external_id=statpal_id).first()

@@ -109,7 +109,7 @@ USE_I18N = True
 
 USE_TZ = True
 
-STATPAL_ACCESS_KEY = os.environ.get("STATPAL_ACCESS_KEY")
+STATPAL_ACCESS_KEY = os.environ.get("STATPAL_API_KEY")
 # Static files (CSS, JavaScript, Images)
 # https://docs.djangoproject.com/en/6.0/howto/static-files/
 

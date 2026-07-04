@@ -44,14 +44,14 @@ class LiveScoreConsumer(AsyncWebsocketConsumer):
         }))
 
     async def score_update(self, event):
-        await self.send(text_data=json.dumps({
-            'type': 'update',
-            'game': event['game']
-        }))
+        await self.send(text_data=json.dumps(event))
 
     @database_sync_to_async
     def get_live_games(self):
         qs = LiveScore.objects.filter(status='live').order_by('-updated_at')
         if self.sport_filter:
             qs = qs.filter(sport=self.sport_filter)
-        return list(LiveScoreSerializer(qs[:20], many=True).data)
+        serializer = LiveScoreSerializer(qs, many=True, context={'request': None})
+        return serializer.data
+    
+    

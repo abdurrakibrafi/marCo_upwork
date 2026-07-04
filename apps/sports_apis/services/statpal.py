@@ -71,9 +71,13 @@ class StatPalService:
         """Response root: livescores → tournament → match[]"""
         return self._get(f"{self.base_v1}/nba/livescores")
 
-    def get_nba_fixtures(self, day_offset: int = 0) -> dict:
-        """Response root: scores → tournament → match[]"""
-        token = f"d{day_offset}" if day_offset <= 0 else f"d+{day_offset}"
+    def get_nba_fixtures(self, offset: int = 0) -> dict:
+        if offset == 0:
+            token = "d1"  # "today" not supported; need to confirm with StatPal what to use for today
+        elif offset > 0:
+            token = f"d{offset}"       # d1, d2 ... NOT d+1
+        else:
+            token = f"d{offset}"       # d-1, d-2 (negative sign auto-included)
         return self._get(f"{self.base_v1}/nba/daily/{token}")
 
     def get_nba_standings(self) -> dict:
@@ -87,6 +91,87 @@ class StatPalService:
     def get_nba_team_stats(self, team_abbreviation: str) -> dict:
         """Response root: statistics → category[] → player[]"""
         return self._get(f"{self.base_v1}/nba/team-stats/{team_abbreviation.lower()}")
+
+    # ------------------------------------------------------------------ #
+    # Hockey (V1) - উদাহরণ
+    # ------------------------------------------------------------------ #
+
+    def get_hockey_live(self) -> dict:
+        """Response root: livescores → tournament → match[]"""
+        return self._get(f"{self.base_v1}/hockey/livescores")
+
+    def get_hockey_fixtures(self, offset: int = 0) -> dict:
+        """Response root: scores → tournament → match[]"""
+        token = f"d{offset}"  # StatPal only accepts d-7..d-1, d1..d7 (no d0, no d+ prefix)
+        return self._get(f"{self.base_v1}/hockey/daily/{token}")
+
+    # ------------------------------------------------------------------ #
+    # Tennis (V1)
+    # ------------------------------------------------------------------ #
+
+    def get_tennis_live(self) -> dict:
+        """Response root: livescores → tournament → match[]"""
+        return self._get(f"{self.base_v1}/tennis/livescores")
+
+    def get_tennis_fixtures(self, offset: int = 0) -> dict:
+        """Response root: scores → tournament → match[]"""
+        if offset == 0:
+            return {"success": True, "data": {}}  # d0 not supported
+        token = f"d{offset}"  # StatPal only accepts d-7..d-1, d1..d7 (no d0, no d+ prefix)
+        return self._get(f"{self.base_v1}/tennis/daily/{token}")
+
+    # ------------------------------------------------------------------ #
+    # MLB (V1) - Baseball
+    # ------------------------------------------------------------------ #
+
+    def get_mlb_live(self) -> dict:
+        """Response root: livescores → tournament → match[]"""
+        return self._get(f"{self.base_v1}/mlb/livescores")
+
+    def get_mlb_fixtures(self, offset: int = 0) -> dict:
+        """Response root: scores → tournament → match[]"""
+        if offset == 0:
+            return {"success": True, "data": {}}  # d0 not supported
+        token = f"d{offset}"  # StatPal only accepts d-7..d-1, d1..d7 (no d0, no d+ prefix)
+        return self._get(f"{self.base_v1}/mlb/daily/{token}")
+
+    # ------------------------------------------------------------------ #
+    # Handball (V1)
+    # ------------------------------------------------------------------ #
+
+    def get_handball_live(self) -> dict:
+        """Response root: livescores → tournament → match[]"""
+        return self._get(f"{self.base_v1}/handball/livescores")
+
+    def get_handball_fixtures(self, offset: int = 0) -> dict:
+        """Response root: scores → tournament → match[]"""
+        if offset == 0:
+            return {"success": True, "data": {}}  # d0 not supported
+        token = f"d{offset}"  # StatPal only accepts d-7..d-1, d1..d7 (no d0, no d+ prefix)
+        return self._get(f"{self.base_v1}/handball/daily/{token}")
+
+    # ------------------------------------------------------------------ #
+    # Volleyball (V1)
+    # ------------------------------------------------------------------ #
+
+    def get_volleyball_live(self) -> dict:
+        """Response root: livescores → tournament → match[]"""
+        return self._get(f"{self.base_v1}/volleyball/livescores")
+
+    # ------------------------------------------------------------------ #
+    # Golf (V1)
+    # ------------------------------------------------------------------ #
+
+    def get_golf_live(self) -> dict:
+        """Response root: livescores → tournament[] → player[]"""
+        return self._get(f"{self.base_v1}/golf/livescores")
+
+    # ------------------------------------------------------------------ #
+    # Horse Racing (V1)
+    # ------------------------------------------------------------------ #
+
+    def get_horse_racing_live(self, country: str) -> dict:
+        return self._get(f"{self.base_v1}/horse-racing/live/{country}")
 
     # ------------------------------------------------------------------ #
     # Cricket (V1)

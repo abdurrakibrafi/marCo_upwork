@@ -132,13 +132,103 @@ def live_score_detail(request, score_id):
         sport = game.sport
 
         if sport == 'cricket':
-            comments = raw.get('comments', {})
-            if isinstance(comments, list):
-                ball_by_ball = comments[-10:]
-            elif isinstance(comments, dict):
-                ball_by_ball = comments.get('Live', [])[-10:]
-            else:
-                ball_by_ball = []
+            # Extract scorecard
+            innings_list = raw.get('inning', [])
+            if isinstance(innings_list, dict):
+                innings_list = [innings_list]
+            elif not isinstance(innings_list, list):
+                innings_list = []
+                
+            scorecard = {}
+            for inn in innings_list:
+                if not isinstance(inn, dict):
+                    continue
+                inning_name = inn.get('name', f"Innings {inn.get('inningnum', '')}").strip()
+                scorecard[inning_name] = []
+                
+                # Add Batsmen
+                batsmen = inn.get('batsmanstats', {}).get('player', [])
+                if isinstance(batsmen, dict):
+                    batsmen = [batsmen]
+                elif not isinstance(batsmen, list):
+                    batsmen = []
+                for b in batsmen:
+                    scorecard[inning_name].append({
+                        "type": "Batsman",
+                        "player": b.get("batsman", ""),
+                        "R": b.get("r", ""),
+                        "B": b.get("b", ""),
+                        "4s": b.get("s4", ""),
+                        "6s": b.get("s6", ""),
+                        "SR": b.get("sr", ""),
+                        "status": b.get("status", "not out"),
+                        "innings": inning_name
+                    })
+                    
+                # Add Bowlers
+                bowlers = inn.get('bowlers', {}).get('player', [])
+                if isinstance(bowlers, dict):
+                    bowlers = [bowlers]
+                elif not isinstance(bowlers, list):
+                    bowlers = []
+                for bowler in bowlers:
+                    scorecard[inning_name].append({
+                        "type": "Bowler",
+                        "player": bowler.get("bowler", ""),
+                        "O": bowler.get("o", ""),
+                        "R": bowler.get("r", ""),
+                        "W": bowler.get("w", ""),
+                        "ER": bowler.get("er", ""),
+                        "innings": inning_name
+                    })
+
+            # Extract ball_by_ball
+            commentary_list = raw.get('commentaries', {}).get('commentary', [])
+            if isinstance(commentary_list, dict):
+                commentary_list = [commentary_list]
+            elif not isinstance(commentary_list, list):
+                commentary_list = []
+                
+            ball_by_ball = []
+            for item in commentary_list[:10]:
+                if not isinstance(item, dict):
+                    continue
+                ball_by_ball.append({
+                    "post": item.get("post", ""),
+                    "runs": item.get("runs", ""),
+                    "overs": item.get("over", ""),
+                    "ended": str(item.get("over_ended", item.get("ended", "false"))).lower()
+                })
+
+            # Extract Toss
+            toss_str = ""
+            info_list = raw.get('matchinfo', {}).get('info', [])
+            if isinstance(info_list, dict):
+                info_list = [info_list]
+            elif not isinstance(info_list, list):
+                info_list = []
+            for info in info_list:
+                if isinstance(info, dict) and info.get('name') == 'Toss':
+                    toss_str = info.get('value', '')
+                    break
+
+            # Fetch run rates
+            home_rr = None
+            away_rr = None
+            for inn in innings_list:
+                if not isinstance(inn, dict):
+                    continue
+                if inn.get('team') == 'localteam':
+                    home_rr = inn.get('total', {}).get('rr')
+                elif inn.get('team') == 'visitorteam':
+                    away_rr = inn.get('total', {}).get('rr')
+
+            # Fetch League from Event mapping
+            from apps.event.models import Event
+            event = Event.objects.filter(sport=sport, external_id=game.external_id).first()
+            league_name = event.league.name if (event and event.league) else raw.get('league_name', '')
+
+            status_info = raw.get('comment', {}).get('post', '') or raw.get('event_status_info', '')
 
             data = {
                 'id': game.id,
@@ -149,18 +239,15 @@ def live_score_detail(request, score_id):
                 'away_logo': game.away_logo,
                 'status': game.status,
                 'status_detail': game.status_detail,
-                'start_time': game.start_time,
-                'match_type': raw.get('event_type', ''),
-                'toss': raw.get('event_toss', ''),
-                'status_info': raw.get('event_status_info', ''),
-                'stadium': raw.get('event_stadium', ''),
-                'league': raw.get('league_name', ''),
-                'home_rr': raw.get('event_home_rr'),
-                'away_rr': raw.get('event_away_rr'),
-                'scorecard': raw.get('scorecard', {}),
+                'status_info': status_info,
+                'match_type': raw.get('type', ''),
+                'toss': toss_str,
+                'stadium': raw.get('venue', ''),
+                'league': league_name,
+                'home_rr': home_rr,
+                'away_rr': away_rr,
+                'scorecard': scorecard,
                 'ball_by_ball': ball_by_ball,
-                'wickets': raw.get('wickets', {}),
-                'lineups': raw.get('lineups', {}),
             }
 
         elif sport == 'soccer':
@@ -175,13 +262,21 @@ def live_score_detail(request, score_id):
 
             fix_data    = detail_raw.get('fixture', raw.get('fixture', {}))
             league_data = detail_raw.get('league', raw.get('league', {}))
-            events      = detail_raw.get('events', raw.get('events', []))
-            lineups     = detail_raw.get('lineups', [])
+
+            events_raw = detail_raw.get('events', raw.get('events', []))
+            if isinstance(events_raw, dict):
+                events = events_raw.get('event', [])
+            else:
+                events = events_raw
+            if isinstance(events, dict):
+                events = [events]
+            elif not isinstance(events, list):
+                events = []
+        
             statistics  = detail_raw.get('statistics', [])
-            players     = detail_raw.get('players', [])
             goals       = detail_raw.get('goals', raw.get('goals', {}))
             score       = detail_raw.get('score', raw.get('score', {}))
-
+        
             data = {
                 'id': game.id,
                 'sport': sport,
@@ -191,32 +286,101 @@ def live_score_detail(request, score_id):
                 'away_logo': game.away_logo,
                 'status': game.status,
                 'status_detail': game.status_detail,
-                'start_time': game.start_time,
-                'match_type': '',
-                'toss': '',
                 'status_info': fix_data.get('status', {}).get('long', ''),
                 'stadium': fix_data.get('venue', {}).get('name', ''),
                 'league': league_data.get('name', ''),
                 'league_logo': league_data.get('logo', ''),
-                'league_country': league_data.get('country', ''),
                 'home_rr': None,
                 'away_rr': None,
                 'home_score': goals.get('home'),
                 'away_score': goals.get('away'),
                 'halftime_score': score.get('halftime', {}),
-                'fulltime_score': score.get('fulltime', {}),
-                'referee': fix_data.get('referee', ''),
-                'scorecard': {},
-                'ball_by_ball': [],
-                'wickets': {},
                 'events': events,
-                'lineups': lineups,
                 'statistics': statistics,
-                'players': players,
             }
-
         else:
-            # NBA / NFL — just return raw for now
+            # Generic fallback for NBA, MLB, Tennis, Golf, Horse Racing, Volleyball, Handball, Hockey, etc.
+            from apps.event.models import Event
+            event = Event.objects.filter(sport=sport, external_id=game.external_id).first()
+            league_name = event.league.name if (event and event.league) else raw.get('league_name', '')
+
+            status_info = game.status_detail or game.status
+
+            scorecard = {}
+            events = []
+
+            if sport == 'tennis':
+                players = raw.get('player', [])
+                if isinstance(players, list) and len(players) >= 2:
+                    p1, p2 = players[0], players[1]
+                    scorecard = {
+                        "Set 1": {"home": p1.get("s1"), "away": p2.get("s1")},
+                        "Set 2": {"home": p1.get("s2"), "away": p2.get("s2")},
+                        "Set 3": {"home": p1.get("s3"), "away": p2.get("s3")},
+                        "Set 4": {"home": p1.get("s4"), "away": p2.get("s4")},
+                        "Set 5": {"home": p1.get("s5"), "away": p2.get("s5")},
+                    }
+            elif sport == 'baseball':
+                events_raw = raw.get('events', {}).get('event', [])
+                if isinstance(events_raw, dict):
+                    events_raw = [events_raw]
+                elif not isinstance(events_raw, list):
+                    events_raw = []
+                for ev in events_raw:
+                    events.append({
+                        "inning": ev.get("inn"),
+                        "description": ev.get("desc"),
+                        "team": ev.get("team"),
+                        "score": f"{ev.get('chw', '0')} - {ev.get('cle', '0')}"
+                    })
+            elif sport == 'golf':
+                players = raw.get('player', [])
+                if isinstance(players, dict):
+                    players = [players]
+                elif not isinstance(players, list):
+                    players = []
+                leaderboard = []
+                for p in sorted(players, key=lambda x: str(x.get('pos', '999'))[:3])[:10]:
+                    leaderboard.append({
+                        "position": p.get("pos"),
+                        "player": p.get("name"),
+                        "score": p.get("par"),
+                        "today": p.get("today"),
+                        "total": p.get("total")
+                    })
+                scorecard = {"Leaderboard": leaderboard}
+            elif sport == 'horse_racing':
+                runners = raw.get('runners', {}).get('horse', [])
+                if isinstance(runners, dict):
+                    runners = [runners]
+                elif not isinstance(runners, list):
+                    runners = []
+                
+                runner_list = []
+                for h in runners:
+                    runner_list.append({
+                        "number": h.get("number"),
+                        "horse": h.get("name"),
+                        "jockey": h.get("jockey"),
+                        "trainer": h.get("trainer"),
+                        "weight": h.get("wgt"),
+                        "odds": h.get("odds", {}).get("bookmaker", {}).get("odd")
+                    })
+                scorecard = {"Runners": runner_list}
+            else:
+                # NBA, Volleyball, Handball, Hockey, etc. (periods/sets)
+                home_raw = raw.get('home', {})
+                away_raw = raw.get('away', {})
+                if home_raw and away_raw:
+                    for key in ['s1', 's2', 's3', 's4', 's5', 's6', 's7', 's8', 's9']:
+                        h_val = home_raw.get(key)
+                        a_val = away_raw.get(key)
+                        if h_val or a_val:
+                            scorecard[f"Period {key[1]}"] = {
+                                "home": h_val,
+                                "away": a_val
+                            }
+
             data = {
                 'id': game.id,
                 'sport': sport,
@@ -226,10 +390,18 @@ def live_score_detail(request, score_id):
                 'away_logo': game.away_logo,
                 'status': game.status,
                 'status_detail': game.status_detail,
-                'start_time': game.start_time,
+                'status_info': status_info,
+                'stadium': raw.get('venue', ''),
+                'league': league_name,
+                'home_rr': None,
+                'away_rr': None,
                 'home_score': game.home_score,
                 'away_score': game.away_score,
-                'raw': raw,
+                'halftime_score': {},
+                'events': events,
+                'statistics': [],
+                'scorecard': scorecard,
+                'ball_by_ball': [],
             }
 
         return mixin.success_response(data=data)
@@ -247,29 +419,35 @@ def live_scores_by_sport(request, sport):
     """
     mixin = BaseResponseMixin()
     try:
-        if sport not in ['nba', 'nfl', 'mlb', 'nhl', 'soccer', 'cricket']:
+        sport_lower = sport.lower()
+        supported_sports = {
+            'nba', 'nfl', 'mlb', 'nhl', 'soccer', 'cricket', 'tennis',
+            'baseball', 'handball', 'volleyball', 'golf', 'horse_racing',
+            'basketball', 'football', 'hockey', 'formula1', 'mma'
+        }
+        if sport_lower not in supported_sports:
             return mixin.error_response(
                 message=f'Sport {sport} not supported',
                 status_code=status.HTTP_400_BAD_REQUEST
             )
         
-        cache_key = f'live_scores_{sport}'
+        cache_key = f'live_scores_{sport_lower}'
         cached_data = cache.get(cache_key)
         
         if cached_data:
             # Get from database
-            live_games = LiveScore.objects.filter(sport=sport, status='live')
+            live_games = LiveScore.objects.filter(sport=sport_lower, status='live')
             serializer = LiveScoreSerializer(live_games, many=True)
             
             data = {
-                'sport': sport,
+                'sport': sport_lower,
                 'count': live_games.count(),
                 'games': serializer.data
             }
             return mixin.success_response(data=data)
         else:
             return mixin.success_response(
-                data={'sport': sport, 'games': []},
+                data={'sport': sport_lower, 'games': []},
                 message='Live scores are being updated...'
             )
     except Exception as exc:

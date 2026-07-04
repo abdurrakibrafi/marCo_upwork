@@ -3,6 +3,61 @@ from .models import FeedItem, Source, UserSource, HiddenSource, Bookmark, Like
 from apps.entity.serializers import EntitySerializer
 
 
+# Known publisher name → domain mapping for favicon resolution.
+# Keys are lowercase publisher names as they appear in Google News RSS.
+_PUBLISHER_DOMAIN = {
+    'espn': 'espn.com',
+    'reuters': 'reuters.com',
+    'the guardian': 'theguardian.com',
+    'guardian': 'theguardian.com',
+    'ap news': 'apnews.com',
+    'associated press': 'apnews.com',
+    'yahoo sports': 'sports.yahoo.com',
+    'yahoo': 'yahoo.com',
+    'new york times': 'nytimes.com',
+    'the new york times': 'nytimes.com',
+    'nyt': 'nytimes.com',
+    'bbc': 'bbc.com',
+    'bbc sport': 'bbc.com',
+    'bbc news': 'bbc.com',
+    'sky sports': 'skysports.com',
+    'goal': 'goal.com',
+    'marca': 'marca.com',
+    'cnn': 'cnn.com',
+    'fox sports': 'foxsports.com',
+    'bleacher report': 'bleacherreport.com',
+    'nbc sports': 'nbcsports.com',
+    'cbs sports': 'cbssports.com',
+    'cbs news': 'cbsnews.com',
+    'the athletic': 'theathletic.com',
+    'bloomberg': 'bloomberg.com',
+    'bloomberg.com': 'bloomberg.com',
+    'ndtv': 'ndtv.com',
+    'rfi': 'rfi.fr',
+    'heavy.com': 'heavy.com',
+    'heavy': 'heavy.com',
+    'toffeeweb': 'toffeeweb.com',
+    'athlon sports': 'athlonsports.com',
+    'the times': 'thetimes.co.uk',
+    'daily mail': 'dailymail.co.uk',
+    'mirror': 'mirror.co.uk',
+    'the sun': 'thesun.co.uk',
+    'talksport': 'talksport.com',
+    'skysports.com': 'skysports.com',
+    'india today': 'indiatoday.in',
+    'cricinfo': 'espncricinfo.com',
+    'espncricinfo': 'espncricinfo.com',
+    'cricbuzz': 'cricbuzz.com',
+    'the telegraph': 'telegraph.co.uk',
+    'telegraph': 'telegraph.co.uk',
+    'forbes': 'forbes.com',
+    'sportstar': 'sportstar.thehindu.com',
+    'tmx newsfile': 'tmxnewsfile.com',
+    'new haven register': 'nhregister.com',
+    'the lufkin daily news': 'lufkindailynews.com',
+}
+
+
 class SourceSerializer(serializers.ModelSerializer):
     entity_ids = serializers.SerializerMethodField()
 
@@ -60,15 +115,29 @@ class FeedItemCompactSerializer(serializers.ModelSerializer):
         return getattr(obj.source, 'name', '')
 
     def get_source_logo(self, obj):
+        # ── 1. Per-item publisher logo (e.g. ESPN, Reuters from Google News) ──
+        publisher = getattr(obj, 'publisher_name', '').strip().lower()
+        if publisher:
+            domain = _PUBLISHER_DOMAIN.get(publisher)
+            if domain:
+                return f'https://www.google.com/s2/favicons?domain={domain}&sz=64'
+            # Generic fallback: try publisher name as domain guess
+            # (covers obscure publishers not in our map)
+            guessed = publisher.replace(' ', '').replace('.', '') + '.com'
+            return f'https://www.google.com/s2/favicons?domain={guessed}&sz=64'
+
+        # ── 2. Source favicon_url stored explicitly ──
         source_favicon = getattr(obj.source, 'favicon_url', None)
         if source_favicon:
             return source_favicon
 
+        # ── 3. Source domain favicon ──
         domain = getattr(obj.source, 'domain', None)
-        if domain:
+        if domain and domain != 'news.google.com':
             clean = domain.replace('https://', '').replace('http://', '').rstrip('/')
             return f'https://www.google.com/s2/favicons?domain={clean}&sz=64'
 
+        # ── 4. Entity logo fallback ──
         entity = obj.entities.first()
         if entity and entity.logo_url:
             return entity.logo_url
