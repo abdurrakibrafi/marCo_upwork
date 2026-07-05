@@ -36,15 +36,9 @@ class SourceFeedPagination(PageNumberPagination):
 def search_sources(request):
     """
     GET /api/source/search/?q=ESPN football
-    
-    Uses OpenAI to suggest sources, then validates each with RSS discovery.
+
+    Synchronously calls AI to suggest sources and returns results immediately.
     Results are cached for 6 hours per query to save API costs.
-    
-    Returns list of source suggestions with:
-    - name, domain, description, favicon_url
-    - rss_url (if found), has_rss
-    - source_id (if already in DB), is_added (if user already added it)
-    - tags
     """
     query = request.GET.get('q', '').strip()
     if not query:
@@ -71,56 +65,39 @@ def search_sources(request):
 
     # Cache key per query (lowercase, normalized)
     cache_key = f"source_search:{query.lower().replace(' ', '_')}"
-    cached = cache.get(cache_key)
+    suggestions = cache.get(cache_key)
 
-    # If we have cached results, return immediately — NO rate limit check needed
-    # Cache hit means no API calls will be made, so no reason to throttle
-    if cached is not None:
-        suggestions = cached
+    # Cache miss — call AI synchronously right now (wait for result)
+    if suggestions is None:
+        from apps.sports_apis.services.ai_service import source_ai_service
+        suggestions = source_ai_service.suggest_sources(query)
+        timeout = 6 * 3600 if suggestions else 1800
+        cache.set(cache_key, suggestions or [], timeout=timeout)
 
-        user_custom_domains = set(
-            UserCustomSource.objects.filter(
-                user=request.user, is_active=True
-            ).values_list('source__domain', flat=True)
-        )
+    # Enrich with DB info (source_id, is_added)
+    user_custom_domains = set(
+        UserCustomSource.objects.filter(
+            user=request.user, is_active=True
+        ).values_list('source__domain', flat=True)
+    )
 
-        enriched = []
-        for s in suggestions:
-            domain = s.get('domain', '')
-            existing_source = Source.objects.filter(domain=domain).first()
-            s['source_id'] = existing_source.id if existing_source else None
-            s['is_added'] = domain in user_custom_domains
-            enriched.append(s)
+    enriched = []
+    for s in (suggestions or []):
+        domain = s.get('domain', '')
+        existing_source = Source.objects.filter(domain=domain).first()
+        s['source_id'] = existing_source.id if existing_source else None
+        s['is_added'] = domain in user_custom_domains
+        enriched.append(s)
 
-        serializer = SourceSuggestionSerializer(enriched, many=True)
-        return Response({
-            'query': query,
-            'count': len(enriched),
-            'results': serializer.data,
-            'status': 'cached',
-        })
-
-    # Only apply rate limit when cache MISSES — meaning we'll actually hit OpenAI
-    rate_key = f"source_search_rate:{request.user.id}"
-    search_count = cache.get(rate_key, 0)
-    if search_count >= 10:  # raised from 5 to 10 per minute
-        return Response(
-            {'error': 'Too many searches. Please wait a minute before trying again.'},
-            status=status.HTTP_429_TOO_MANY_REQUESTS
-        )
-    cache.set(rate_key, search_count + 1, timeout=60)
-
-    # Cache miss — trigger async generation
-    from .tasks import generate_source_suggestions
-    generate_source_suggestions.delay(query, cache_key)
-
+    serializer = SourceSuggestionSerializer(enriched, many=True)
     return Response({
         'query': query,
-        'count': 0,
-        'results': [],
-        'message': 'Generating suggestions... Please try again in a few seconds.',
-        'status': 'processing',
+        'count': len(enriched),
+        'results': serializer.data,
+        'status': 'ok',
     })
+
+
 
 # ─────────────────────────────────────────────────────────────────────────────
 # ADD SOURCE
