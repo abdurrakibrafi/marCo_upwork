@@ -16,7 +16,10 @@ logger = logging.getLogger(__name__)
 
 _ACCESS_KEY = getattr(settings, "STATPAL_ACCESS_KEY", "bc343795-df19-407b-8fb2-301dd5cdb844")
 _IMAGE_BASE = "https://statpal.io/api/v2/{sport}/images"
-_LOGO_SUPPORTED_SPORTS = {"soccer"}
+_LOGO_SUPPORTED_SPORTS = {
+    "soccer", "cricket", "nba", "nfl", "basketball", "football",
+    "baseball", "hockey", "handball", "volleyball", "tennis"
+}
 # StatPal sport name → Entity.sport choice
 _SPORT_MAP = {
     "nba":     "basketball",   # Entity.sport = 'basketball' for NBA
