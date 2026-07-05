@@ -40,12 +40,18 @@ class LiveScoreSerializer(serializers.ModelSerializer):
 
     def to_representation(self, instance):
         data = super().to_representation(instance)
-        data['home_team'] = get_team_abbreviation(instance.home_team)
-        data['away_team'] = get_team_abbreviation(instance.away_team)
+        home_abbr = get_team_abbreviation(instance.home_team)
+        away_abbr = get_team_abbreviation(instance.away_team)
+        # Collision — use 4 chars to distinguish
+        if home_abbr == away_abbr:
+            home_abbr = get_team_abbreviation(instance.home_team, length=4)
+            away_abbr = get_team_abbreviation(instance.away_team, length=4)
+        data['home_team'] = home_abbr
+        data['away_team'] = away_abbr
         return data
 
 
-def get_team_abbreviation(name: str) -> str:
+def get_team_abbreviation(name: str, length: int = 3) -> str:
     if not name:
         return ""
     name_clean = name.strip().lower()
@@ -87,18 +93,30 @@ def get_team_abbreviation(name: str) -> str:
         'finland': 'FIN',
     }
     
-    if name_clean in custom_map:
+    if name_clean in custom_map and length <= 3:
         return custom_map[name_clean]
-        
+
     parts = name.split()
     if len(parts) > 1:
+        # Handle "Bangladesh A", "Sri Lanka B" → append suffix letter
+        last = parts[-1]
+        if len(last) == 1 and last.isalpha():
+            base = get_team_abbreviation(' '.join(parts[:-1]), length=length)
+            return (base + last.upper())[:length + 1]
+
         first_word = parts[0].lower()
         if first_word in ('fc', 'ac', 'real', '1.', 'de'):
-            abbr = "".join([p[0] for p in parts if p]).upper()
-            return abbr[:3]
+            # e.g. "Real Madrid" → take letters from each part
+            abbr = "".join([p[:2] for p in parts[1:] if p]).upper()
+            return abbr[:length]
         else:
-            abbr = "".join([p[0] for p in parts if p]).upper()
-            if len(abbr) >= 2:
-                return abbr[:3]
-                
-    return name[:3].upper()
+            # e.g. "Band-e-Amir Dragons" length=3 → "BAD", length=4 → "BAND"
+            # Take more chars from first word when length > initials count
+            initials = "".join([p[0] for p in parts if p]).upper()
+            if len(initials) >= length:
+                return initials[:length]
+            # Not enough words — pad from first word
+            first = parts[0].upper()
+            return (first + initials[1:])[:length]
+
+    return name[:length].upper()
