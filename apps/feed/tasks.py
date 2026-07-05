@@ -549,6 +549,7 @@ def fetch_article_content(self, feed_item_id: int):
     target_url = item.url
     if "news.google.com" in item.url:
         try:
+            # pyrefly: ignore [missing-import]
             from googlenewsdecoder import new_decoderv1
             decoded = new_decoderv1(item.url)
             if decoded.get("status") and decoded.get("decoded_url"):
@@ -694,4 +695,4 @@ def _clean_fallback_summary(content: str, title: str) -> str:
         if last_dot > 100:
             return short[:last_dot + 1].strip()
         return short + '...'
-    return plain
+    return plain

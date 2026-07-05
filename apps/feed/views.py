@@ -1,4 +1,4 @@
-from rest_framework.decorators import api_view, permission_classes
+from rest_framework.decorators import api_view, permission_classes, throttle_classes
 from rest_framework.permissions import IsAuthenticated, AllowAny
 from rest_framework.response import Response
 from rest_framework import status
@@ -13,6 +13,17 @@ from apps.feed.serializers import (
 from apps.nest.models import UserNest
 from apps.entity.models import Entity
 from apps.core.utils.mixins import BaseResponseMixin
+from rest_framework.throttling import UserRateThrottle, AnonRateThrottle
+from django.core.cache import cache
+import time
+
+
+class DetailedFeedItemUserThrottle(UserRateThrottle):
+    rate = '15/minute'
+
+
+class DetailedFeedItemAnonThrottle(AnonRateThrottle):
+    rate = '5/minute'
 
 
 class FeedPagination(PageNumberPagination):
@@ -177,6 +188,7 @@ def get_entity_feed(request, entity_id):
 
 @api_view(['GET'])
 @permission_classes([AllowAny])
+@throttle_classes([DetailedFeedItemUserThrottle, DetailedFeedItemAnonThrottle])
 def get_feed_item(request, item_id):
     """
     Get detailed feed item
@@ -189,15 +201,27 @@ def get_feed_item(request, item_id):
 
     # Lazily fetch full content and summary if not already fetched
     if not feed_item.content_fetched:
-        from .tasks import fetch_article_content
-        try:
-            fetch_article_content(feed_item.id)
-            feed_item.refresh_from_db()
-        except Exception as exc:
-            import logging
-            logging.getLogger(__name__).warning(
-                f"Sync article fetch failed for item {feed_item.id}: {exc}"
-            )
+        lock_key = f"fetching_article:{feed_item.id}"
+        # Acquire lock to prevent duplicate concurrent scrapes for this article
+        if cache.add(lock_key, True, timeout=20):
+            try:
+                from .tasks import fetch_article_content
+                fetch_article_content(feed_item.id)
+                feed_item.refresh_from_db()
+            except Exception as exc:
+                import logging
+                logging.getLogger(__name__).warning(
+                    f"Sync article fetch failed for item {feed_item.id}: {exc}"
+                )
+            finally:
+                cache.delete(lock_key)
+        else:
+            # Another request is fetching. Wait up to 5 seconds.
+            for _ in range(10):
+                time.sleep(0.5)
+                feed_item.refresh_from_db()
+                if feed_item.content_fetched:
+                    break
     
     # Track view
     if request.user.is_authenticated:

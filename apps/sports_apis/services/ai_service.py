@@ -71,9 +71,40 @@ class SourceAIService:
         if not ai_suggestions:
             try:
                 from apps.feed.models import Source
-                db_sources = Source.objects.filter(
-                    Q(name__icontains=query) | Q(domain__icontains=query)
-                )[:6]
+                from apps.entity.models import Entity
+                
+                words = [w.strip() for w in query.split() if len(w.strip()) > 1]
+                db_sources = []
+                
+                if words:
+                    # 3a. Try matching ALL words in name/domain (AND search)
+                    q_and = Q()
+                    for w in words:
+                        q_and &= (Q(name__icontains=w) | Q(domain__icontains=w))
+                    db_sources = list(Source.objects.filter(q_and)[:6])
+                    
+                    # 3b. Try matching ANY words if no results (OR search)
+                    if not db_sources:
+                        q_or = Q()
+                        for w in words:
+                            q_or |= (Q(name__icontains=w) | Q(domain__icontains=w))
+                        db_sources = list(Source.objects.filter(q_or)[:6])
+                        
+                    # 3c. Try matching entities (teams/leagues) and get their linked sources
+                    if not db_sources:
+                        q_entity = Q()
+                        for w in words:
+                            q_entity |= Q(name__icontains=w)
+                        entities = Entity.objects.filter(q_entity)
+                        if entities.exists():
+                            db_sources = list(Source.objects.filter(entities__in=entities).distinct()[:6])
+                
+                # Direct fallback if still no sources
+                if not db_sources:
+                    db_sources = list(Source.objects.filter(
+                        Q(name__icontains=query) | Q(domain__icontains=query)
+                    )[:6])
+                    
                 for src in db_sources:
                     ai_suggestions.append({
                         "name": src.name,

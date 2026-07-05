@@ -173,10 +173,8 @@ def search_entities_ai(request):
     
     embedding_service = get_embedding_service()
     if not embedding_service:
-        return Response({
-            'error': 'AI search unavailable',
-            'fallback': 'Use /api/search/entities/ instead'
-        }, status=503)
+        # Transparent fallback to robust spelling-based search if OpenAI is disabled
+        return search_entities(request)
     
     try:
         # Generate query embedding
