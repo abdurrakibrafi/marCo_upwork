@@ -186,6 +186,18 @@ def get_feed_item(request, item_id):
         FeedItem.objects.select_related('source').prefetch_related('entities'),
         id=item_id
     )
+
+    # Lazily fetch full content and summary if not already fetched
+    if not feed_item.content_fetched:
+        from .tasks import fetch_article_content
+        try:
+            fetch_article_content(feed_item.id)
+            feed_item.refresh_from_db()
+        except Exception as exc:
+            import logging
+            logging.getLogger(__name__).warning(
+                f"Sync article fetch failed for item {feed_item.id}: {exc}"
+            )
     
     # Track view
     if request.user.is_authenticated:

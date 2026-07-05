@@ -82,7 +82,7 @@ class FeedItemSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'title', 'url', 'summary', 'thumbnail_url',
             'published_at', 'entity_names', 'entities', 'is_trending', 'is_breaking',
-            'views', 'source',
+            'views', 'source', 'content', 'ai_summary', 'content_fetched',
         ]
 
     def get_entity_names(self, obj):

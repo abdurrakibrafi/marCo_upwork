@@ -84,6 +84,11 @@ class FeedItem(models.Model):
     thumbnail_url = models.URLField(blank=True, max_length=5000)
     published_at = models.DateTimeField(db_index=True)
 
+    # Full article content (fetched lazily via Jina AI Reader on demand)
+    content = models.TextField(blank=True)
+    ai_summary = models.TextField(blank=True)     # OpenAI-generated 2-3 sentence summary
+    content_fetched = models.BooleanField(default=False, db_index=True)  # True once Jina+AI done
+
     # Feed metadata
     is_trending = models.BooleanField(default=False, db_index=True)
     is_breaking = models.BooleanField(default=False)
@@ -99,10 +104,12 @@ class FeedItem(models.Model):
         indexes = [
             models.Index(fields=['-published_at']),
             models.Index(fields=['url_hash']),
+            models.Index(fields=['content_fetched']),
         ]
 
     def __str__(self):
         return self.title[:80]
+
 
 
 class UserSource(models.Model):

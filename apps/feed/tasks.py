@@ -519,3 +519,179 @@ def ensure_entity_has_rss_source(entity_id: int):
 
     logger.info(f"ensure_entity_has_rss_source: {entity.name}, source={'created' if created else 'linked'}, backfilled={linked}")
     return f"Google News RSS {'created' if created else 'linked'} for {entity.name}, {linked} orphan items backfilled"
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# ARTICLE CONTENT FETCH — Jina AI Reader + OpenAI Summary (Lazy, on-demand)
+# ─────────────────────────────────────────────────────────────────────────────
+
+@shared_task(bind=True, max_retries=2, default_retry_delay=10)
+def fetch_article_content(self, feed_item_id: int):
+    """
+    Lazily fetches full article content for a FeedItem using Jina AI Reader,
+    then generates a 2-3 sentence summary using the project's OpenAI service.
+
+    Called on-demand when a user requests full article details.
+    Result is cached in the DB — subsequent calls return instantly.
+    """
+    try:
+        item = FeedItem.objects.get(id=feed_item_id)
+    except FeedItem.DoesNotExist:
+        return f"FeedItem {feed_item_id} not found"
+
+    if item.content_fetched:
+        return f"Already fetched for item {feed_item_id}"
+
+    import requests
+    from django.conf import settings
+
+    # ── Step 1: Decode Google redirect using googlenewsdecoder ──────────────
+    target_url = item.url
+    if "news.google.com" in item.url:
+        try:
+            from googlenewsdecoder import new_decoderv1
+            decoded = new_decoderv1(item.url)
+            if decoded.get("status") and decoded.get("decoded_url"):
+                target_url = decoded["decoded_url"]
+                logger.info(f"[Decoder] Successfully resolved redirect for item {feed_item_id} to: {target_url}")
+        except Exception as exc:
+            logger.warning(f"[Decoder] Failed decoding redirect for item {feed_item_id}: {exc}")
+
+    # ── Step 2: Extract content via Jina Reader ──────────────────────────────
+    jina_url = f"https://r.jina.ai/{target_url}"
+    try:
+        resp = requests.get(
+            jina_url,
+            headers={"Accept": "text/plain", "X-Timeout": "15"},
+            timeout=20,
+        )
+        resp.raise_for_status()
+        content = resp.text.strip()
+    except Exception as exc:
+        logger.warning(f"[Jina] Failed to fetch content for item {feed_item_id}: {exc}")
+        # Mark as attempted so we don't retry forever
+        item.content_fetched = True
+        item.save(update_fields=["content_fetched"])
+        return f"Jina fetch failed: {exc}"
+
+    if not content or len(content) < 100:
+        item.content_fetched = True
+        item.save(update_fields=["content_fetched"])
+        return "Content too short or empty"
+
+    # Trim to first 4000 chars for OpenAI (cost control)
+    content_for_ai = content[:4000]
+
+    # ── Step 2: Generate AI summary via OpenAI ────────────────────────────────
+    ai_summary = ""
+    openai_key = getattr(settings, "OPENAI_API_KEY", "")
+    if openai_key:
+        try:
+            resp_ai = requests.post(
+                "https://api.openai.com/v1/chat/completions",
+                headers={
+                    "Authorization": f"Bearer {openai_key}",
+                    "Content-Type": "application/json",
+                },
+                json={
+                    "model": "gpt-4o-mini",
+                    "messages": [
+                        {
+                            "role": "system",
+                            "content": (
+                                "You are a sports journalist. Given an article, "
+                                "write a 2-3 sentence summary in clear English. "
+                                "Be factual and concise. No filler phrases."
+                            ),
+                        },
+                        {
+                            "role": "user",
+                            "content": f"Summarize this sports article:\n\n{content_for_ai}",
+                        },
+                    ],
+                    "max_tokens": 120,
+                    "temperature": 0.3,
+                },
+                timeout=20,
+            )
+            resp_ai.raise_for_status()
+            ai_summary = resp_ai.json()["choices"][0]["message"]["content"].strip()
+        except Exception as exc:
+            logger.warning(f"[OpenAI] Summary failed for item {feed_item_id}: {exc}")
+            ai_summary = _clean_fallback_summary(content, item.title)
+    else:
+        # No OpenAI key — use clean fallback
+        ai_summary = _clean_fallback_summary(content, item.title)
+
+    # ── Step 3: Save to DB ───────────────────────────────────────────────────
+    item.content = content
+    item.ai_summary = ai_summary
+    item.content_fetched = True
+    item.save(update_fields=["content", "ai_summary", "content_fetched"])
+
+    logger.info(f"[Article] Fetched content + summary for FeedItem {feed_item_id}")
+    return f"Done: item {feed_item_id}, content={len(content)} chars"
+
+
+def _clean_fallback_summary(content: str, title: str) -> str:
+    """Helper to generate a clean preview summary from raw/Jina markdown content."""
+    if not content:
+        return ""
+    # Strip Jina headers if present
+    if "Markdown Content:" in content:
+        content = content.split("Markdown Content:", 1)[1]
+    
+    paragraphs = [p.strip() for p in content.split('\n\n') if p.strip()]
+    
+    # 1. Generate title keywords
+    title_words = {w.lower() for w in re.findall(r'\w+', title) if len(w) > 3}
+    
+    # 2. Locate header matching title (start of actual body)
+    body_start_index = 0
+    for idx, p in enumerate(paragraphs):
+        if p.startswith('#'):
+            p_words = {w.lower() for w in re.findall(r'\w+', p) if len(w) > 3}
+            intersection = title_words.intersection(p_words)
+            if len(intersection) >= 2:
+                body_start_index = idx
+                break
+                
+    # 3. Find 1-2 paragraphs of actual content containing title keywords
+    found_paragraphs = []
+    for p in paragraphs[body_start_index:]:
+        if p.startswith('#') or p.startswith('*') or p.startswith('-') or p.startswith('|') or p.startswith('['):
+            continue
+            
+        # Clean markdown formatting and links
+        plain = re.sub(r'\[([^\]]+)\]\([^\)]+\)', r'\1', p)
+        plain = re.sub(r'\!\[[^\]]*\]\([^\)]+\)', '', plain)
+        plain = re.sub(r'\s+', ' ', plain).strip()
+        
+        lower_plain = plain.lower()
+        # Skip sharing, credits, author bios, social media links
+        if any(x in lower_plain for x in ('facebook', 'twitter', 'linkedin', 'share on', 'written by', 'editor for', 'read full bio', 'credit:')):
+            continue
+            
+        if len(plain) > 80:
+            plain_words = {w.lower() for w in re.findall(r'\w+', plain)}
+            intersection = title_words.intersection(plain_words)
+            # If paragraph contains title keywords, keep it
+            if len(intersection) >= 2:
+                found_paragraphs.append(plain)
+                if len(found_paragraphs) >= 2:
+                    break
+                    
+    # Combine found paragraphs
+    if found_paragraphs:
+        return " ".join(found_paragraphs)
+        
+    # Absolute fallback: simple text cleaning on first 300 chars
+    plain = re.sub(r'\[([^\]]+)\]\([^\)]+\)', r'\1', content)
+    plain = re.sub(r'\s+', ' ', plain).strip()
+    if len(plain) > 300:
+        short = plain[:300]
+        last_dot = short.rfind('.')
+        if last_dot > 100:
+            return short[:last_dot + 1].strip()
+        return short + '...'
+    return plain
