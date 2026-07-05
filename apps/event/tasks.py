@@ -25,154 +25,55 @@ logger = logging.getLogger(__name__)
 
 @shared_task
 def update_nfl_fixtures(dates: list[str] = None):
-    """Update NFL fixtures"""
+    """Update NFL fixtures using StatPal"""
     if not dates:
         dates = [timezone.now().date().isoformat()]
 
     total_updated = 0
     for date in dates:
-        logger.info(f"Updating NFL fixtures for {date}")
-    
-        result = balldontlie_service.get_games_by_date('nfl', date)
-    
-        if not result['success']:
-            logger.error(f"NFL fixtures update failed for {date}: {result.get('error')}")
-            continue
+        logger.info(f"Updating NFL fixtures for {date} using StatPal")
+        try:
+            target_date = datetime.strptime(date, "%Y-%m-%d").date()
+            offset = (target_date - timezone.now().date()).days
+        except Exception:
+            offset = 0
 
-        games = result['data'].get('data', [])
-        
-        for game in games:
-            home_team = _get_or_create_team_entity(
-                'balldontlie',
-                str(game['home_team']['id']),
-                game['home_team']['full_name'],
-                'football'
-            )
-            
-            away_team = _get_or_create_team_entity(
-                'balldontlie',
-                str(game['visitor_team']['id']),
-                game['visitor_team']['full_name'],
-                'football'
-            )
-            
-            game_status = game.get('status', '')
-            if game_status == 'Final':
-                status = 'completed'
-            elif game_status in ['Q1', 'Q2', 'Q3', 'Q4']:
-                status = 'live'
-            else:
-                status = 'upcoming'
-            
-            Event.objects.update_or_create(
-                api_source='balldontlie',
-                external_id=str(game['id']),
-                defaults={
-                    'sport': 'football',
-                    'home_entity': home_team,
-                    'away_entity': away_team,
-                    'start_time': make_aware(datetime.fromisoformat(game['date'])) if isinstance(game['date'], str) else game['date'],
-                    'status': status,
-                    'status_detail': game.get('quarter', ''),
-                    'home_score': game.get('home_team_score'),
-                    'away_score': game.get('visitor_team_score'),
-                    'metadata': game,
-                }
-            )
-        
-        cache_key = f'fixtures_nfl_{date}'
-        cache.set(cache_key, games, timeout=3600)
-        
-        updated_count = len(games)
-        total_updated += updated_count
-        logger.info(f"NFL: Updated {updated_count} fixtures for {date}")
-        time.sleep(2) # Respect API rate limit
-
-    return f"NFL: Total {total_updated} fixtures updated for {len(dates)} days."
+        result = statpal_service.get_nfl_fixtures(offset=offset)
+        if result['success']:
+            rows = _nfl_rows(result['data'])
+            for row in rows:
+                _save_event(row)
+            total_updated += len(rows)
+            logger.info(f"NFL: Updated {len(rows)} fixtures for {date} using StatPal")
+        time.sleep(1)
+    return f"NFL: {total_updated} fixtures updated"
 
 
 # ================================================================
-# SOCCER FIXTURES (API-Sports — needed for match details/stats)
+# SOCCER FIXTURES (StatPal V2)
 # ================================================================
 
 @shared_task
 def update_soccer_fixtures(date=None):
-    """Update soccer fixtures for a date"""
+    """Update soccer fixtures for a date using StatPal"""
     if not date:
         date = timezone.now().date().isoformat()
     
-    logger.info(f"Updating soccer fixtures for {date}")
+    logger.info(f"Updating soccer fixtures for {date} using StatPal")
     
-    result = api_sports_service.get_fixtures_by_date(date)
-    
+    try:
+        target_date = datetime.strptime(date, "%Y-%m-%d").date()
+        offset = (target_date - timezone.now().date()).days
+    except Exception:
+        offset = 0
+
+    result = statpal_service.get_soccer_fixtures(offset=offset)
     if result['success']:
-        fixtures = result['data'].get('response', [])
-        
-        for fixture in fixtures:
-            fixture_data = fixture.get('fixture', {})
-            teams_data = fixture.get('teams', {})
-            goals_data = fixture.get('goals', {})
-            league_data = fixture.get('league', {})
-            venue_data = fixture_data.get('venue', {})
-            
-            home_team = _get_or_create_team_entity(
-                'api_sports',
-                str(teams_data['home']['id']),
-                teams_data['home']['name'],
-                'soccer',
-                logo_url=teams_data['home'].get('logo')
-            )
-            
-            away_team = _get_or_create_team_entity(
-                'api_sports',
-                str(teams_data['away']['id']),
-                teams_data['away']['name'],
-                'soccer',
-                logo_url=teams_data['away'].get('logo')
-            )
-            
-            league = _get_or_create_league_entity(
-                'api_sports',
-                str(league_data['id']),
-                league_data['name'],
-                'soccer',
-                logo_url=league_data.get('logo')
-            )
-            
-            status_short = fixture_data.get('status', {}).get('short', '')
-            if status_short in ['FT', 'AET', 'PEN']:
-                status = 'completed'
-            elif status_short in ['1H', '2H', 'HT', 'ET', 'BT', 'P', 'LIVE']:
-                status = 'live'
-            elif status_short in ['PST', 'CANC', 'ABD']:
-                status = 'postponed'
-            else:
-                status = 'upcoming'
-            
-            Event.objects.update_or_create(
-                api_source='api_sports',
-                external_id=str(fixture_data['id']),
-                defaults={
-                    'sport': 'soccer',
-                    'home_entity': home_team,
-                    'away_entity': away_team,
-                    'league': league,
-                    'start_time': fixture_data['date'],
-                    'status': status,
-                    'status_detail': fixture_data.get('status', {}).get('long', ''),
-                    'home_score': goals_data.get('home'),
-                    'away_score': goals_data.get('away'),
-                    'venue_name': venue_data.get('name') or '',     
-                    'venue_city': venue_data.get('city') or '',     
-                    'metadata': fixture,
-                }
-            )
-        
-        cache_key = f'fixtures_soccer_{date}'
-        cache.set(cache_key, fixtures, timeout=3600)
-        
-        logger.info(f"Soccer: Updated {len(fixtures)} fixtures for {date}")
-        return f"Soccer: {len(fixtures)} fixtures updated"
+        rows = _soccer_rows(result['data'])
+        for row in rows:
+            _save_event(row)
+        logger.info(f"Soccer: Updated {len(rows)} fixtures for {date} using StatPal")
+        return f"Soccer: {len(rows)} fixtures updated"
     
     return "Soccer fixtures update failed"
 
@@ -186,7 +87,7 @@ def update_all_fixtures():
     """Update fixtures for all sports — today + next 7 days"""
     dates = [
         (timezone.now().date() + timedelta(days=i)).isoformat()
-        for i in range(8)
+        for i in range(-7, 8)
     ]
     
     for date in dates:
@@ -208,6 +109,7 @@ def _get_or_create_team_entity(api_source, external_id, name, sport, logo_url=''
     entity = Entity.objects.filter(
         api_source=api_source,
         external_id=external_id,
+        type='team',
     ).first()
 
     if entity:
@@ -231,8 +133,8 @@ def _get_or_create_league_entity(api_source, external_id, name, sport, logo_url=
     entity, created = Entity.objects.get_or_create(
         api_source=api_source,
         external_id=external_id,
+        type='league',
         defaults={
-            'type': 'league',
             'name': name,
             'sport': sport,
             'logo_url': logo_url or '',
@@ -255,61 +157,9 @@ def _get_or_create_league_entity(api_source, external_id, name, sport, logo_url=
 
 @shared_task
 def update_soccer_live_scores_only():
-    """
-    Lightweight task — only updates scores/status for api_sports fixtures
-    already in DB that are live or starting within 2 hours.
-    """
-    now = timezone.now()
-    soon = now + timedelta(hours=2)
-
-    active_fixture_ids = list(
-        Event.objects.filter(
-            sport='soccer',
-            status__in=['live', 'upcoming'],
-            start_time__lte=soon,
-            api_source='api_sports',
-        ).values_list('external_id', flat=True)[:20]
-    )
-
-    if not active_fixture_ids:
-        return "No active soccer fixtures to update"
-
-    result = api_sports_service.get_live_fixtures()
-
-    if not result['success']:
-        return f"Failed to fetch live fixtures: {result.get('error')}"
-
-    fixtures = result['data'].get('response', [])
-    updated = 0
-
-    for fixture in fixtures:
-        fixture_data = fixture.get('fixture', {})
-        goals_data = fixture.get('goals', {})
-        external_id = str(fixture_data.get('id', ''))
-
-        status_short = fixture_data.get('status', {}).get('short', '')
-        if status_short in ['FT', 'AET', 'PEN']:
-            status = 'completed'
-        elif status_short in ['1H', '2H', 'HT', 'ET', 'BT', 'P', 'LIVE']:
-            status = 'live'
-        elif status_short in ['PST', 'CANC', 'ABD']:
-            status = 'postponed'
-        else:
-            status = 'upcoming'
-
-        rows = Event.objects.filter(
-            api_source='api_sports',
-            external_id=external_id,
-        ).update(
-            status=status,
-            status_detail=fixture_data.get('status', {}).get('long', ''),
-            home_score=goals_data.get('home'),
-            away_score=goals_data.get('away'),
-        )
-        if rows:
-            updated += 1
-
-    return f"Live soccer: updated {updated} fixtures"
+    """Delegated to StatPal sync"""
+    sync_statpal_data.delay()
+    return "Delegated to sync_statpal_data"
 
 
 # ================================================================
@@ -711,7 +561,15 @@ def _generic_sport_rows(data: dict, sport_name: str) -> list:
         league_id   = str(tournament.get("id", ""))
         league_name = tournament.get("league", "")
 
-        for m in tournament.get("match", []):
+        matches = tournament.get("match", [])
+        if isinstance(matches, dict):
+            matches = [matches]
+        elif not isinstance(matches, list):
+            matches = []
+
+        for m in matches:
+            if not isinstance(m, dict):
+                continue
             home = m.get("home", {})
             away = m.get("away", {})
             rows.append({
@@ -736,6 +594,10 @@ def _generic_sport_rows(data: dict, sport_name: str) -> list:
 
 def _nba_rows(data: dict) -> list:
     return _generic_sport_rows(data, "nba")
+
+
+def _nfl_rows(data: dict) -> list:
+    return _generic_sport_rows(data, "football")
 
 
 def _hockey_rows(data: dict) -> list:
@@ -944,8 +806,6 @@ def _save_livescore(row: dict, event: Event):
         defaults={
             "home_team":     row["home_name"],
             "away_team":     row["away_name"],
-            "home_logo":     event.home_entity.logo_url,
-            "away_logo":     event.away_entity.logo_url,
             "home_logo":     event.home_entity.logo_url if event.home_entity else "",
             "away_logo":     event.away_entity.logo_url if event.away_entity else "",
             "home_score":    row["home_score"] or None,
@@ -977,6 +837,8 @@ def sync_statpal_data(self):
         ("soccer", statpal_service.get_soccer_fixtures, _soccer_rows, {'offset': 0}),
         ("nba", statpal_service.get_nba_live, _nba_rows, {}),
         ("nba", statpal_service.get_nba_fixtures, _nba_rows, {'offset': 0}),
+        ("football", statpal_service.get_nfl_live, _nfl_rows, {}),
+        ("football", statpal_service.get_nfl_fixtures, _nfl_rows, {'offset': 0}),
         ("cricket", statpal_service.get_cricket_live, _cricket_rows, {}),
         ("cricket", statpal_service.get_cricket_fixtures, _cricket_rows, {}),
         ("tennis", statpal_service.get_tennis_live, _tennis_rows, {}),

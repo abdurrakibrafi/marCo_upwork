@@ -57,7 +57,11 @@ def get_or_create_precise_entity(
     logo         = _logo_url(entity_type, statpal_id, sport) 
 
     # 1 — exact StatPal ID match
-    entity = Entity.objects.filter(api_source="statpal", external_id=statpal_id).first()
+    entity = Entity.objects.filter(
+        api_source="statpal", 
+        external_id=statpal_id,
+        type=entity_type
+    ).first()
     if entity:
         if _needs_logo(entity):
             entity.logo_url = logo

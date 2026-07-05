@@ -36,42 +36,10 @@ def _publish(live_score_obj):
 
 @shared_task
 def update_nfl_live_scores():
-    """Update NFL live scores - runs every 2 minutes"""
-    logger.info("Updating NFL live scores...")
-
-    result = balldontlie_service.get_live_games('nfl')
-
-    if result['success']:
-        data = result['data']
-        cache.set('live_scores_nfl', data,
-                  timeout=settings.CACHE_TTLS['live_scores'])
-
-        # For NFL, filter games that are currently live
-        all_games = data.get('data', [])
-        games = [game for game in all_games if game.get('status') == 'Live']
-
-        for game in games:
-            live_score, _ = LiveScore.objects.update_or_create(
-                sport='nfl',
-                external_id=str(game.get('id')),
-                defaults={
-                    'home_team': game.get('home_team', {}).get('name', ''),
-                    'away_team': game.get('visitor_team', {}).get('name', ''),
-                    'home_score': game.get('home_team_score'),
-                    'away_score': game.get('visitor_team_score'),
-                    'status': 'live' if game.get('status') == 'Live' else 'completed',
-                    'status_detail': game.get('quarter', ''),
-                    'start_time': game.get('date'),
-                    'raw_data': game,
-                }
-            )
-            _publish(live_score)  # push to WebSocket
-
-        logger.info(f"NFL: Updated {len(games)} live games")
-        return f"NFL: {len(games)} games updated"
-    else:
-        logger.error(f"NFL update failed: {result.get('error')}")
-        return f"NFL update failed"
+    """Delegated to StatPal sync"""
+    from apps.event.tasks import sync_statpal_data
+    sync_statpal_data.delay()
+    return "Delegated to sync_statpal_data"
 
 
 

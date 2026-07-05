@@ -92,7 +92,28 @@ from rest_framework.permissions import IsAuthenticated
 from apps.core.utils.mixins import BaseResponseMixin
 from apps.event.models import Event
 from apps.event.serializers import EventSerializer
-from apps.nest.models import UserNest   # UserNest.entity → FK to Entity
+def _deduplicate_events(events_list):
+    """
+    Deduplicate a list of Event objects by (home_team, away_team, start_time_date).
+    If duplicate found, prefer 'statpal' api source.
+    """
+    seen_matches = {}
+    unique_events = []
+    for event in events_list:
+        home_name = event.home_entity.name.lower() if event.home_entity else ''
+        away_name = event.away_entity.name.lower() if event.away_entity else ''
+        match_key = (home_name, away_name, event.start_time.date())
+        
+        existing = seen_matches.get(match_key)
+        if existing is None:
+            seen_matches[match_key] = event
+            unique_events.append(event)
+        else:
+            if event.api_source == 'statpal' and existing.api_source != 'statpal':
+                unique_events.remove(existing)
+                seen_matches[match_key] = event
+                unique_events.append(event)
+    return unique_events
 
 
 @api_view(["GET"])
@@ -163,36 +184,39 @@ def get_nest_calendar(request):
             
         nest_entity_ids = list(nest_entity_ids)
 
-        # 2. Status filter
-        status_param = request.query_params.get("status")
-        allowed_statuses = (
-            [status_param] if status_param in ("live", "upcoming")
-            else ["live", "upcoming"]
-        )
-
-        # 3. Days window (upcoming only; live always included)
+        # 2. Days window
         try:
             days = int(request.query_params.get("days", 7))
         except ValueError:
             days = 7
         cutoff = timezone.now() + timezone.timedelta(days=days)
+        past_cutoff = timezone.now() - timezone.timedelta(days=days)
 
-        # 4. Queryset
+        # 3. Queryset
         qs = (
             Event.objects.filter(
-                status__in=allowed_statuses,
-            )
-            .filter(
                 Q(home_entity_id__in=nest_entity_ids)
                 | Q(away_entity_id__in=nest_entity_ids)
             )
-            .filter(
-                Q(status="live")
-                | Q(status="upcoming", start_time__gte=timezone.now(), start_time__lte=cutoff)
-            )
-            .select_related("home_entity", "away_entity", "league")
-            .order_by("start_time")
         )
+
+        now = timezone.now()
+        status_param = request.query_params.get("status")
+        if status_param == "upcoming":
+            qs = qs.filter(start_time__gte=now, start_time__lte=cutoff)
+        elif status_param == "completed":
+            qs = qs.filter(start_time__lt=now, start_time__gte=past_cutoff)
+        elif status_param == "live":
+            qs = qs.filter(status="live")
+        else:
+            # Default: show live, upcoming (next 7 days), and past (last 7 days)
+            qs = qs.filter(
+                Q(status="live")
+                | Q(start_time__gte=now, start_time__lte=cutoff)
+                | Q(start_time__lt=now, start_time__gte=past_cutoff)
+            )
+
+        qs = qs.select_related("home_entity", "away_entity", "league").order_by("start_time")
 
         # 5. Optional sport filter
         sport = request.query_params.get("sport")
@@ -200,8 +224,8 @@ def get_nest_calendar(request):
             # Entity.sport 'basketball' কিন্তু Event.sport 'nba' — তাই raw slug দিয়ে filter
             qs = qs.filter(sport=sport.lower())
 
-        # 6. Serialize
-        events_list = list(qs)
+        # 6. Deduplicate and Serialize
+        events_list = _deduplicate_events(list(qs))
         serialized   = EventSerializer(events_list, many=True).data
 
         # 7. Group by date
@@ -289,7 +313,7 @@ def get_matches_of_day(request):
                 'home_entity', 'away_entity', 'league'
             ).order_by('start_time')[:10]
 
-        matches = list(matches_qs)
+        matches = _deduplicate_events(list(matches_qs))
 
         # Separate live vs upcoming vs completed
         live = [e for e in matches if e.status == 'live']
@@ -356,7 +380,7 @@ def get_entity_calendar(request, entity_id):
         except Entity.DoesNotExist:
             related_ids = [entity_id]
 
-        events = Event.objects.filter(
+        events_qs = Event.objects.filter(
             start_time__date__gte=start_date,
             start_time__date__lte=end_date,
         ).filter(
@@ -365,11 +389,17 @@ def get_entity_calendar(request, entity_id):
             'home_entity', 'away_entity', 'league'
         ).order_by('start_time')
 
+        events_list = _deduplicate_events(list(events_qs))
+        now = timezone.now()
+        upcoming = [e for e in events_list if e.status == 'upcoming' and e.start_time >= now]
+        live = [e for e in events_list if e.status == 'live']
+        recent = sorted([e for e in events_list if e.start_time < now], key=lambda x: x.start_time, reverse=True)[:10]
+
         data = {
             'entity_id': entity_id,
-            'upcoming': EventSerializer(events.filter(status='upcoming'), many=True).data,
-            'live': EventSerializer(events.filter(status='live'), many=True).data,
-            'recent': EventSerializer(events.filter(status='completed').order_by('-start_time')[:10], many=True).data,
+            'upcoming': EventSerializer(upcoming, many=True).data,
+            'live': EventSerializer(live, many=True).data,
+            'recent': EventSerializer(recent, many=True).data,
         }
         return mixin.success_response(data=data)
     except Exception as exc:

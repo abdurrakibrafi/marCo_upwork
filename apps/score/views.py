@@ -42,6 +42,178 @@ from apps.core.utils.mixins import BaseResponseMixin
 #     except Exception as exc:
 #         return mixin.handle_exception(exc)
 
+def _normalize_list(val):
+    if not val:
+        return []
+    if isinstance(val, dict):
+        return [val]
+    if isinstance(val, list):
+        return val
+    return []
+
+
+def _convert_statpal_stats_to_api_sports(team_stats, home_team_name, home_team_id, away_team_name, away_team_id):
+    if not team_stats or not isinstance(team_stats, dict):
+        return []
+    
+    metrics = [
+        ("Shots on Goal", lambda s: s.get("shots", {}).get("ongoal")),
+        ("Shots off Goal", lambda s: s.get("shots", {}).get("offgoal")),
+        ("Total Shots", lambda s: s.get("shots", {}).get("total")),
+        ("Blocked Shots", lambda s: s.get("shots", {}).get("blocked")),
+        ("Shots insidebox", lambda s: s.get("shots", {}).get("insidebox")),
+        ("Shots outsidebox", lambda s: s.get("shots", {}).get("outsidebox")),
+        ("Fouls", lambda s: s.get("fouls", {}).get("total")),
+        ("Corner Kicks", lambda s: s.get("corners", {}).get("total")),
+        ("Offsides", lambda s: s.get("offsides", {}).get("total")),
+        ("Ball Possession", lambda s: s.get("possession_percent", {}).get("total")),
+        ("Yellow Cards", lambda s: s.get("yellowcards", {}).get("total")),
+        ("Red Cards", lambda s: s.get("redcards", {}).get("total")),
+        ("Goalkeeper Saves", lambda s: s.get("saves", {}).get("total")),
+        ("Total passes", lambda s: s.get("passes", {}).get("total")),
+        ("Passes accurate", lambda s: s.get("passes", {}).get("accurate")),
+    ]
+    
+    home_stats = []
+    away_stats = []
+    
+    home_data = team_stats.get("home", {})
+    away_data = team_stats.get("away", {})
+    
+    for metric_name, extractor in metrics:
+        try:
+            home_val = extractor(home_data)
+            if home_val is not None:
+                home_stats.append({"type": metric_name, "value": home_val})
+        except Exception:
+            pass
+            
+        try:
+            away_val = extractor(away_data)
+            if away_val is not None:
+                away_stats.append({"type": metric_name, "value": away_val})
+        except Exception:
+            pass
+            
+    return [
+        {
+            "team": {"id": home_team_id, "name": home_team_name},
+            "statistics": home_stats
+        },
+        {
+            "team": {"id": away_team_id, "name": away_team_name},
+            "statistics": away_stats
+        }
+    ]
+
+
+def _convert_statpal_events_to_api_sports(match_data, home_team_name, home_team_id, away_team_name, away_team_id):
+    events = []
+    summary = match_data.get("event_summary", {})
+    if isinstance(summary, dict):
+        for side in ["home", "away"]:
+            side_team_name = home_team_name if side == "home" else away_team_name
+            side_team_id = home_team_id if side == "home" else away_team_id
+            
+            side_events = summary.get(side, {})
+            if not isinstance(side_events, dict):
+                continue
+                
+            # Goals
+            goals_list = _normalize_list(side_events.get("goals", {}).get("event", []))
+            for g in goals_list:
+                detail = "Normal Goal"
+                if g.get("penalty") == "True":
+                    detail = "Penalty"
+                elif g.get("own_goal") == "True":
+                    detail = "Own Goal"
+                events.append({
+                    "time": {
+                        "elapsed": int(g.get("minute") or 0) if g.get("minute") else 0,
+                        "extra": int(g.get("extra_min") or 0) if g.get("extra_min") else None
+                    },
+                    "team": {"id": side_team_id, "name": side_team_name},
+                    "player": {"id": g.get("player_id"), "name": g.get("player_name")},
+                    "assist": {"id": g.get("assist_player_id"), "name": g.get("assist_player_name")} if g.get("assist_player_id") else {"id": None, "name": None},
+                    "type": "Goal",
+                    "detail": detail,
+                    "comments": None
+                })
+                
+            # Yellow Cards
+            yc_list = _normalize_list(side_events.get("yellowcards", {}).get("event", []))
+            for yc in yc_list:
+                events.append({
+                    "time": {
+                        "elapsed": int(yc.get("minute") or 0) if yc.get("minute") else 0,
+                        "extra": int(yc.get("extra_min") or 0) if yc.get("extra_min") else None
+                    },
+                    "team": {"id": side_team_id, "name": side_team_name},
+                    "player": {"id": yc.get("player_id"), "name": yc.get("player_name")},
+                    "assist": {"id": None, "name": None},
+                    "type": "Card",
+                    "detail": "Yellow Card",
+                    "comments": yc.get("comment") or None
+                })
+
+            # Red Cards
+            rc_list = _normalize_list(side_events.get("redcards", {}).get("event", []))
+            for rc in rc_list:
+                events.append({
+                    "time": {
+                        "elapsed": int(rc.get("minute") or 0) if rc.get("minute") else 0,
+                        "extra": int(rc.get("extra_min") or 0) if rc.get("extra_min") else None
+                    },
+                    "team": {"id": side_team_id, "name": side_team_name},
+                    "player": {"id": rc.get("player_id"), "name": rc.get("player_name")},
+                    "assist": {"id": None, "name": None},
+                    "type": "Card",
+                    "detail": "Red Card",
+                    "comments": rc.get("comment") or None
+                })
+
+            # VAR
+            var_list = _normalize_list(side_events.get("var", {}).get("event", []))
+            for var in var_list:
+                events.append({
+                    "time": {
+                        "elapsed": int(var.get("minute") or 0) if var.get("minute") else 0,
+                        "extra": int(var.get("extra_min") or 0) if var.get("extra_min") else None
+                    },
+                    "team": {"id": side_team_id, "name": side_team_name},
+                    "player": {"id": var.get("player_id"), "name": var.get("player_name")},
+                    "assist": {"id": None, "name": None},
+                    "type": "Var",
+                    "detail": var.get("event_type") or "VAR Decision",
+                    "comments": var.get("ref_decision") or None
+                })
+
+    # Substitutions
+    subs = match_data.get("substitutions", {})
+    if isinstance(subs, dict):
+        for side in ["home", "away"]:
+            side_team_name = home_team_name if side == "home" else away_team_name
+            side_team_id = home_team_id if side == "home" else away_team_id
+            
+            sub_list = _normalize_list(subs.get(side, {}).get("substitution", []))
+            for s in sub_list:
+                events.append({
+                    "time": {
+                        "elapsed": int(s.get("minute") or 0) if s.get("minute") else 0,
+                        "extra": int(s.get("extra_min") or 0) if s.get("extra_min") else None
+                    },
+                    "team": {"id": side_team_id, "name": side_team_name},
+                    "player": {"id": s.get("player_off_id"), "name": s.get("player_off")},
+                    "assist": {"id": s.get("player_on_id"), "name": s.get("player_on")},
+                    "type": "subst",
+                    "detail": "Substitution",
+                    "comments": None
+                })
+
+    events.sort(key=lambda x: x["time"]["elapsed"])
+    return events
+
+
 # apps/score/views.py
 
 @api_view(['GET'])
@@ -251,53 +423,82 @@ def live_score_detail(request, score_id):
             }
 
         elif sport == 'soccer':
-            from apps.sports_apis.services.api_sports import api_sports_service
+            from apps.sports_apis.services.statpal import statpal_service
+            from apps.event.models import Event
 
+            event_obj = Event.objects.filter(sport=sport, external_id=game.external_id).first()
+            
             detail_raw = {}
-            result = api_sports_service.get_fixture_details(int(game.external_id))
-            if result['success']:
-                resp = result['data'].get('response', [])
-                if resp:
-                    detail_raw = resp[0]
+            if event_obj and event_obj.league:
+                try:
+                    league_id = int(event_obj.league.external_id)
+                    result = statpal_service.get_soccer_match_stats(league_id)
+                    if result['success']:
+                        matches = result['data'].get('match-stats', {}).get('tournament', {}).get('matches', [])
+                        for m in matches:
+                            if str(m.get('main_id')) == str(game.external_id) or str(m.get('id')) == str(game.external_id):
+                                detail_raw = m
+                                break
+                except Exception:
+                    pass
 
-            fix_data    = detail_raw.get('fixture', raw.get('fixture', {}))
-            league_data = detail_raw.get('league', raw.get('league', {}))
-
-            events_raw = detail_raw.get('events', raw.get('events', []))
-            if isinstance(events_raw, dict):
-                events = events_raw.get('event', [])
+            if detail_raw:
+                statistics = _convert_statpal_stats_to_api_sports(
+                    detail_raw.get('team_stats', {}),
+                    game.home_team, getattr(event_obj.home_entity, 'id', 0) if event_obj else 0,
+                    game.away_team, getattr(event_obj.away_entity, 'id', 0) if event_obj else 0
+                )
+                events = _convert_statpal_events_to_api_sports(
+                    detail_raw,
+                    game.home_team, getattr(event_obj.home_entity, 'id', 0) if event_obj else 0,
+                    game.away_team, getattr(event_obj.away_entity, 'id', 0) if event_obj else 0
+                )
+                
+                ht = detail_raw.get('ht', {}) or {}
+                
+                data = {
+                    'id': game.id,
+                    'sport': sport,
+                    'home_team': game.home_team,
+                    'away_team': game.away_team,
+                    'home_logo': game.home_logo,
+                    'away_logo': game.away_logo,
+                    'status': game.status,
+                    'status_detail': game.status_detail,
+                    'status_info': detail_raw.get('status', ''),
+                    'stadium': detail_raw.get('venue', {}).get('name', '') if isinstance(detail_raw.get('venue'), dict) else detail_raw.get('venue', ''),
+                    'league': event_obj.league.name if (event_obj and event_obj.league) else '',
+                    'league_logo': event_obj.league.logo_url if (event_obj and event_obj.league) else '',
+                    'home_rr': None,
+                    'away_rr': None,
+                    'home_score': game.home_score,
+                    'away_score': game.away_score,
+                    'halftime_score': {'home': ht.get('home'), 'away': ht.get('away')},
+                    'events': events,
+                    'statistics': statistics,
+                }
             else:
-                events = events_raw
-            if isinstance(events, dict):
-                events = [events]
-            elif not isinstance(events, list):
-                events = []
-        
-            statistics  = detail_raw.get('statistics', [])
-            goals       = detail_raw.get('goals', raw.get('goals', {}))
-            score       = detail_raw.get('score', raw.get('score', {}))
-        
-            data = {
-                'id': game.id,
-                'sport': sport,
-                'home_team': game.home_team,
-                'away_team': game.away_team,
-                'home_logo': game.home_logo,
-                'away_logo': game.away_logo,
-                'status': game.status,
-                'status_detail': game.status_detail,
-                'status_info': fix_data.get('status', {}).get('long', ''),
-                'stadium': fix_data.get('venue', {}).get('name', ''),
-                'league': league_data.get('name', ''),
-                'league_logo': league_data.get('logo', ''),
-                'home_rr': None,
-                'away_rr': None,
-                'home_score': goals.get('home'),
-                'away_score': goals.get('away'),
-                'halftime_score': score.get('halftime', {}),
-                'events': events,
-                'statistics': statistics,
-            }
+                data = {
+                    'id': game.id,
+                    'sport': sport,
+                    'home_team': game.home_team,
+                    'away_team': game.away_team,
+                    'home_logo': game.home_logo,
+                    'away_logo': game.away_logo,
+                    'status': game.status,
+                    'status_detail': game.status_detail,
+                    'status_info': game.status_detail or game.status,
+                    'stadium': raw.get('venue', ''),
+                    'league': event_obj.league.name if (event_obj and event_obj.league) else '',
+                    'league_logo': event_obj.league.logo_url if (event_obj and event_obj.league) else '',
+                    'home_rr': None,
+                    'away_rr': None,
+                    'home_score': game.home_score,
+                    'away_score': game.away_score,
+                    'halftime_score': {'home': None, 'away': None},
+                    'events': [],
+                    'statistics': [],
+                }
         else:
             # Generic fallback for NBA, MLB, Tennis, Golf, Horse Racing, Volleyball, Handball, Hockey, etc.
             from apps.event.models import Event

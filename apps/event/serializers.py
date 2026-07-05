@@ -86,6 +86,16 @@ class EventSerializer(serializers.ModelSerializer):
             'broadcaster', 'stream_url',
         ]
 
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        from django.utils import timezone
+        if instance.status == 'upcoming' and instance.start_time and instance.start_time < timezone.now():
+            data['status'] = 'completed'
+            status_det = str(data.get('status_detail') or '')
+            if status_det in ('Not Started', '') or ':' in status_det:
+                data['status_detail'] = 'FT'
+        return data
+
 
 # ── Full serializer for event detail screen ───────────────────────────────────
 
@@ -119,6 +129,16 @@ class EventDetailSerializer(serializers.ModelSerializer):
             'player_stats', 'highlights',
             'has_stats', 'has_lineups', 'key_players',
         ]
+
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        from django.utils import timezone
+        if instance.status == 'upcoming' and instance.start_time and instance.start_time < timezone.now():
+            data['status'] = 'completed'
+            status_det = str(data.get('status_detail') or '')
+            if status_det in ('Not Started', '') or ':' in status_det:
+                data['status_detail'] = 'FT'
+        return data
 
     def get_has_stats(self, obj):
         return obj.statistics.exists()

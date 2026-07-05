@@ -19,7 +19,7 @@ class Command(BaseCommand):
         soccer_leagues = [
             {'id': '3037', 'name': 'Premier League', 'sport': 'soccer'},
             {'id': '3102', 'name': 'Serie A', 'sport': 'soccer'},
-            {'id': '3232', 'name': 'La Liga', 'sport': 'soccer'}, # Spain Primera
+            {'id': '3232', 'name': 'La Liga', 'sport': 'soccer'}, 
             {'id': '3062', 'name': 'Bundesliga', 'sport': 'soccer'},
             {'id': '3054', 'name': 'Ligue 1', 'sport': 'soccer'},
             {'id': '3273', 'name': 'MLS', 'sport': 'soccer'},

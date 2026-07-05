@@ -19,6 +19,7 @@ from apps.sports_apis.services.rss import rss_discovery_service
 
 logger = logging.getLogger(__name__)
 
+# pyrefly: ignore [missing-import]
 from bs4 import BeautifulSoup
 from django.db.models import Q
 
@@ -310,6 +311,7 @@ Rules:
                 resp = requests.get(
                     domain, timeout=8, headers={'User-Agent': 'Mozilla/5.0'}
                 )
+                # pyrefly: ignore [missing-import]
                 from bs4 import BeautifulSoup
                 soup = BeautifulSoup(resp.text, 'html.parser')
                 title_tag = soup.find('title')

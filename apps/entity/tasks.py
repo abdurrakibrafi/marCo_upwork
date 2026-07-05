@@ -7,6 +7,7 @@ from django.conf import settings
 from apps.entity.models import Entity, Team, EntityStats
 from apps.sports_apis.services.api_sports import api_sports_service
 from apps.sports_apis.services.balldontlie import balldontlie_service
+from apps.sports_apis.services.statpal import statpal_service
 
 logger = get_task_logger(__name__)
 
@@ -38,17 +39,17 @@ def update_all_team_stats():
     Adding a new league never requires touching this file.
     """
 
-    # ── Soccer: find every unique api_sports league in the DB ──────────────
-    # Only teams that: came from api_sports, have a league linked, are active
+    # ── Soccer: find every unique soccer league in the DB ──────────────
+    # Only teams that: have a league linked, are active
     soccer_league_ids = (
         Entity.objects
         .filter(
             type='team',
             sport='soccer',
             is_active=True,
-            api_source='api_sports',
+            api_source__in=['api_sports', 'statpal'],
             team_details__league__isnull=False,
-            team_details__league__api_source='api_sports',
+            team_details__league__api_source__in=['api_sports', 'statpal'],
         )
         .values_list('team_details__league__external_id', flat=True)
         .distinct()
@@ -68,7 +69,7 @@ def update_all_team_stats():
     # ── Basketball: one task for all NBA teams ─────────────────────────────
     has_nba = Entity.objects.filter(
         type='team', sport='basketball',
-        is_active=True, api_source='balldontlie'
+        is_active=True, api_source__in=['balldontlie', 'statpal']
     ).exists()
 
     if has_nba:
@@ -83,94 +84,57 @@ def update_all_team_stats():
 
 @shared_task
 def seed_players_for_team(team_external_id: str, season: int = None):
-    import requests
-    from django.conf import settings
     from apps.entity.models import Entity, Athlete
-    from datetime import datetime
-
-    # Auto-detect season if not passed
-    if season is None:
-        now = datetime.now()
-        season = now.year if now.month >= 8 else now.year - 1
-
-    headers = {'x-apisports-key': settings.API_SPORTS_KEY}
-
-    page = 1
-    created_total = 0
 
     team_entity = Entity.objects.filter(
-        api_source='api_sports',
+        api_source__in=['api_sports', 'statpal'],
         external_id=str(team_external_id)
     ).first()
 
     if not team_entity:
         return f"Team {team_external_id} not found in DB"
 
-    while True:
-        resp = requests.get(
-            'https://v3.football.api-sports.io/players',
-            headers=headers,
-            params={'team': team_external_id, 'season': season, 'page': page},
-            timeout=10,
+    result = statpal_service.get_soccer_team(team_external_id)
+    if not result['success']:
+        return f"Failed to fetch team details from StatPal: {result.get('error')}"
+
+    squad = result['data'].get('team', {}).get('squad', {}).get('player', [])
+    if isinstance(squad, dict):
+        squad = [squad]
+
+    created_total = 0
+    for p in squad:
+        player_id = str(p.get('id', ''))
+        if not player_id:
+            continue
+
+        player_entity, _ = Entity.objects.get_or_create(
+            api_source='statpal',
+            external_id=player_id,
+            defaults={
+                'type': 'athlete',
+                'name': p.get('name', ''),
+                'sport': team_entity.sport,
+                'has_api_data': True,
+            }
         )
 
-        if resp.status_code != 200:
-            break
+        name_parts = p.get('name', '').split()
+        first_name = name_parts[0] if name_parts else ''
+        last_name = ' '.join(name_parts[1:]) if len(name_parts) > 1 else ''
 
-        data = resp.json()
-        players = data.get('response', [])
+        _, was_created = Athlete.objects.get_or_create(
+            entity=player_entity,
+            defaults={
+                'first_name': first_name,
+                'last_name': last_name,
+                'current_team': team_entity,
+            }
+        )
+        if was_created:
+            created_total += 1
 
-        if not players:
-            break
-
-        for item in players:
-            p = item.get('player', {})
-            player_id = str(p.get('id', ''))
-            if not player_id:
-                continue
-
-            player_entity, _ = Entity.objects.get_or_create(
-                api_source='api_sports',
-                external_id=player_id,
-                defaults={
-                    'type': 'athlete',
-                    'name': p.get('name', ''),
-                    'sport': team_entity.sport,
-                    'logo_url': p.get('photo', ''),
-                    'country': p.get('nationality', ''),
-                    'has_api_data': True,
-                }
-            )
-
-            # Parse height/weight safely
-            def parse_int(val, unit):
-                try:
-                    return int(val.replace(unit, '').strip())
-                except Exception:
-                    return None
-
-            _, was_created = Athlete.objects.get_or_create(
-                entity=player_entity,
-                defaults={
-                    'first_name':  p.get('firstname', ''),
-                    'last_name':   p.get('lastname', ''),
-                    'date_of_birth': p.get('birth', {}).get('date') or None,
-                    'nationality': p.get('nationality', ''),
-                    'height_cm':   parse_int(p.get('height', ''), 'cm'),
-                    'weight_kg':   parse_int(p.get('weight', ''), 'kg'),
-                    'current_team': team_entity,
-                }
-            )
-            if was_created:
-                created_total += 1
-
-        # Check if more pages
-        total_pages = data.get('paging', {}).get('total', 1)
-        if page >= total_pages:
-            break
-        page += 1
-
-    return f"Seeded {created_total} players for team {team_external_id} season {season}"
+    return f"Seeded {created_total} players for team {team_external_id} from StatPal"
 
 # ─────────────────────────────────────────────────────────────────────────────
 # SOCCER — one task per league
@@ -179,19 +143,16 @@ def seed_players_for_team(team_external_id: str, season: int = None):
 @shared_task(bind=True, max_retries=3, default_retry_delay=300)
 def update_soccer_league_stats(self, league_id: int):
     """
-    Fetch standings for ONE league, then update every team in that league
+    Fetch standings for ONE league using StatPal, then update every team in that league
     from the single API response.
-
-    1 API call per league regardless of how many teams are in it.
     """
     season = _current_season('soccer')
     cache_key = f"standings:soccer:{league_id}:{season}"
 
-    # Check cache first — avoids re-hitting API if called multiple times
     standings_response = cache.get(cache_key)
 
     if standings_response is None:
-        result = api_sports_service.get_standings(league_id, season)
+        result = statpal_service.get_soccer_standings(league_id)
 
         if not result['success']:
             status_code = result.get('status_code')
@@ -201,41 +162,53 @@ def update_soccer_league_stats(self, league_id: int):
             logger.error(f"Failed standings for league {league_id}: {result.get('error')}")
             return f"Failed: league {league_id}"
 
-        standings_response = result['data'].get('response', [])
+        standings_response = result['data'].get('standings', {})
         cache.set(cache_key, standings_response, timeout=3600)
 
-    # Build a flat lookup: api_sports team_id -> standing data
-    team_standings = {}
-    for group in standings_response:
-        for standings_list in group.get('league', {}).get('standings', []):
-            for standing in standings_list:
-                tid = str(standing.get('team', {}).get('id', ''))
-                if tid:
-                    team_standings[tid] = standing
+    # Build lookups: statpal team_id or team_name -> standing data
+    team_standings_by_id = {}
+    team_standings_by_name = {}
+    
+    standings_list = standings_response.get('tournament', {}).get('team', [])
+    if isinstance(standings_list, dict):
+        standings_list = [standings_list]
+        
+    for standing in standings_list:
+        tid = str(standing.get('id', ''))
+        tname = standing.get('name', '')
+        if tid:
+            team_standings_by_id[tid] = standing
+        if tname:
+            team_standings_by_name[tname.lower()] = standing
 
-    if not team_standings:
+    if not team_standings_by_id and not team_standings_by_name:
         return f"No standings data for league {league_id} season {season}"
 
-    # Find all teams in this league in our DB
+    # Find all teams in this league in our DB (supporting both api_sports and statpal sources)
     teams = Team.objects.filter(
         entity__sport='soccer',
         entity__is_active=True,
-        entity__api_source='api_sports',
+        entity__api_source__in=['api_sports', 'statpal'],
         league__external_id=str(league_id),
-        league__api_source='api_sports',
+        league__api_source__in=['api_sports', 'statpal'],
     ).select_related('entity')
 
     updated = 0
     for team in teams:
-        standing = team_standings.get(team.entity.external_id)
+        standing = team_standings_by_id.get(team.entity.external_id)
+        if not standing:
+            standing = team_standings_by_name.get(team.entity.name.lower())
+            
         if not standing:
             continue
 
-        all_stats = standing.get('all', {})
-        wins = all_stats.get('win', 0)
-        losses = all_stats.get('lose', 0)
-        draws = all_stats.get('draw', 0)
-        played = all_stats.get('played', 0)
+        overall = standing.get('overall', {})
+        total = standing.get('total', {})
+        
+        wins = int(overall.get('wins') or 0)
+        losses = int(overall.get('losses') or 0)
+        draws = int(overall.get('draws') or 0)
+        played = int(overall.get('games_played') or 0)
 
         team.total_wins = wins
         team.total_losses = losses
@@ -248,16 +221,16 @@ def update_soccer_league_stats(self, league_id: int):
             stat_type='season',
             defaults={
                 'stats_data': {
-                    'rank': standing.get('rank', 0),
-                    'points': standing.get('points', 0),
+                    'rank': int(standing.get('position') or 0),
+                    'points': int(total.get('points') or 0),
                     'played': played,
                     'win': wins,
                     'draw': draws,
                     'lose': losses,
-                    'goals_for': all_stats.get('goals', {}).get('for', 0),
-                    'goals_against': all_stats.get('goals', {}).get('against', 0),
-                    'goal_diff': standing.get('goalsDiff', 0),
-                    'form': standing.get('form', ''),
+                    'goals_for': int(overall.get('goals_scored') or 0),
+                    'goals_against': int(overall.get('goals_allowed') or 0),
+                    'goal_diff': int(total.get('goal_difference') or 0),
+                    'form': standing.get('recent_form', ''),
                 }
             }
         )
@@ -274,7 +247,7 @@ def update_soccer_league_stats(self, league_id: int):
 @shared_task(bind=True, max_retries=3, default_retry_delay=120)
 def update_nba_standings(self):
     """
-    Fetch NBA standings once, update all NBA teams from the single response.
+    Fetch NBA standings once using StatPal, update all NBA teams from the single response.
     """
     season = _current_season('basketball')
     cache_key = f"standings:nba:{season}"
@@ -282,38 +255,64 @@ def update_nba_standings(self):
     standings = cache.get(cache_key)
 
     if standings is None:
-        result = balldontlie_service.get_standings('nba', season=season)
+        result = statpal_service.get_nba_standings()
         if not result['success']:
             status_code = result.get('status_code')
             if status_code == 429:
                 raise self.retry(exc=Exception("Rate limited"), countdown=120)
             return f"Failed to fetch NBA standings: {result.get('error')}"
 
-        standings = result['data'].get('data', [])
+        standings = result['data'].get('standings', {})
         cache.set(cache_key, standings, timeout=3600)
 
-    # Build lookup: balldontlie team_id -> standing
-    team_standings = {
-        str(s.get('team', {}).get('id', '')): s
-        for s in standings
-    }
+    # Build lookups: statpal team_id or team_name -> standing data
+    team_standings_by_id = {}
+    team_standings_by_name = {}
+    
+    leagues = standings.get('tournament', {}).get('league', [])
+    if isinstance(leagues, dict):
+        leagues = [leagues]
+        
+    for lg in leagues:
+        conferences = lg.get('division', [])
+        if isinstance(conferences, dict):
+            conferences = [conferences]
+            
+        for conf in conferences:
+            teams_list = conf.get('team', [])
+            if isinstance(teams_list, dict):
+                teams_list = [teams_list]
+                
+            for standing in teams_list:
+                tid = str(standing.get('id', ''))
+                tname = standing.get('name', '')
+                if tid:
+                    team_standings_by_id[tid] = standing
+                if tname:
+                    team_standings_by_name[tname.lower()] = standing
+
+    if not team_standings_by_id and not team_standings_by_name:
+        return "No NBA standings data found"
 
     teams = Team.objects.filter(
         entity__sport='basketball',
         entity__is_active=True,
-        entity__api_source='balldontlie',
+        entity__api_source__in=['balldontlie', 'statpal'],
     ).select_related('entity')
 
     season_label = f"{season}-{str(season + 1)[-2:]}"
     updated = 0
 
     for team in teams:
-        standing = team_standings.get(team.entity.external_id)
+        standing = team_standings_by_id.get(team.entity.external_id)
+        if not standing:
+            standing = team_standings_by_name.get(team.entity.name.lower())
+            
         if not standing:
             continue
 
-        wins = standing.get('wins', 0)
-        losses = standing.get('losses', 0)
+        wins = int(standing.get('won') or 0)
+        losses = int(standing.get('lost') or 0)
         total = wins + losses
 
         team.total_wins = wins
@@ -330,9 +329,10 @@ def update_nba_standings(self):
                     'wins': wins,
                     'losses': losses,
                     'win_pct': float(team.win_percentage),
-                    'conference': standing.get('conference', ''),
-                    'division': standing.get('division', ''),
-                    'rank': standing.get('rank', 0),
+                    'conference_rank': int(standing.get('position') or 0),
+                    'streak': standing.get('streak', ''),
+                    'home_record': standing.get('home_record', ''),
+                    'road_record': standing.get('road_record', ''),
                 }
             }
         )

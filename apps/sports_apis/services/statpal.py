@@ -63,6 +63,22 @@ class StatPalService:
         """Response root: team"""
         return self._get(f"{self.base_v2}/soccer/teams/{team_id}")
 
+    def get_soccer_player(self, player_id) -> dict:
+        """Response root: player"""
+        return self._get(f"{self.base_v2}/soccer/players/{player_id}")
+
+    def get_soccer_coach(self, coach_id) -> dict:
+        """Response root: coach"""
+        return self._get(f"{self.base_v2}/soccer/coaches/{coach_id}")
+
+    def get_soccer_match_stats(self, league_id) -> dict:
+        """Response root: matches -> tournament -> week[] -> match[]"""
+        return self._get(f"{self.base_v2}/soccer/leagues/{league_id}/matches/stats")
+
+    def get_soccer_league_stats(self, league_id) -> dict:
+        """Response root: statistics -> team[]"""
+        return self._get(f"{self.base_v2}/soccer/leagues/{league_id}/stats")
+
     # ------------------------------------------------------------------ #
     # NBA (V1)
     # ------------------------------------------------------------------ #
@@ -91,6 +107,47 @@ class StatPalService:
     def get_nba_team_stats(self, team_abbreviation: str) -> dict:
         """Response root: statistics → category[] → player[]"""
         return self._get(f"{self.base_v1}/nba/team-stats/{team_abbreviation.lower()}")
+
+    # ------------------------------------------------------------------ #
+    # NFL (V1)
+    # ------------------------------------------------------------------ #
+
+    def get_nfl_live(self) -> dict:
+        """Response root: livescores → tournament → match[]"""
+        return self._get(f"{self.base_v1}/nfl/livescores")
+
+    def get_nfl_fixtures(self, offset: int = 0) -> dict:
+        if offset == 0:
+            token = "d1"
+        elif offset > 0:
+            token = f"d{offset}"
+        else:
+            token = f"d{offset}"
+        return self._get(f"{self.base_v1}/nfl/daily/{token}")
+
+    def get_nfl_schedule(self) -> dict:
+        """Response root: stage[] → week[] → matches.match"""
+        return self._get(f"{self.base_v1}/nfl/season-schedule")
+
+    def get_nfl_standings(self) -> dict:
+        """Response root: standings → tournament → league[] → division[] → team[]"""
+        return self._get(f"{self.base_v1}/nfl/standings")
+
+    def get_nfl_rosters(self, team_abbreviation: str) -> dict:
+        """Response root: team → player[]"""
+        return self._get(f"{self.base_v1}/nfl/rosters/{team_abbreviation.lower()}")
+
+    def get_nfl_injuries(self, team_abbreviation: str) -> dict:
+        return self._get(f"{self.base_v1}/nfl/injuries/{team_abbreviation.lower()}")
+
+    def get_nfl_team_stats(self, team_abbreviation: str) -> dict:
+        return self._get(f"{self.base_v1}/nfl/team-stats/{team_abbreviation.lower()}")
+
+    def get_nfl_player_stats(self, team_abbreviation: str) -> dict:
+        return self._get(f"{self.base_v1}/nfl/player-stats/{team_abbreviation.lower()}")
+
+    def get_nfl_league_stats(self, stat_type: str) -> dict:
+        return self._get(f"{self.base_v1}/nfl/league-stats/{stat_type}")
 
     # ------------------------------------------------------------------ #
     # Hockey (V1) - উদাহরণ
@@ -203,16 +260,33 @@ class StatPalService:
         return {
             "soccer": self.get_soccer_live,
             "nba": self.get_nba_live,
+            "nfl": self.get_nfl_live,
             "cricket": self.get_cricket_live,
+            "hockey": self.get_hockey_live,
+            "tennis": self.get_tennis_live,
+            "mlb": self.get_mlb_live,
+            "handball": self.get_handball_live,
+            "volleyball": self.get_volleyball_live,
+            "golf": self.get_golf_live,
         }.get(sport, lambda: {"success": False, "error": f"Unknown sport: {sport}"})()
 
     def get_fixtures(self, sport: str, offset: int = 0) -> dict:
         if sport == "soccer":
             return self.get_soccer_fixtures(offset=offset)
         if sport == "nba":
-            return self.get_nba_fixtures(day_offset=offset)
+            return self.get_nba_fixtures(offset=offset)
+        if sport == "nfl":
+            return self.get_nfl_fixtures(offset=offset)
         if sport == "cricket":
             return self.get_cricket_fixtures()
+        if sport == "hockey":
+            return self.get_hockey_fixtures(offset=offset)
+        if sport == "tennis":
+            return self.get_tennis_fixtures(offset=offset)
+        if sport == "mlb":
+            return self.get_mlb_fixtures(offset=offset)
+        if sport == "handball":
+            return self.get_handball_fixtures(offset=offset)
         return {"success": False, "error": f"Unknown sport: {sport}"}
 
 

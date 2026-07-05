@@ -299,11 +299,17 @@ def get_team_stats(request, team_id):
     # 2 — live API fallback
     stats_data = {}
  
-    if team_entity.sport == 'soccer' and team_entity.api_source == 'api_sports':
-        stats_data = _fetch_soccer_team_stats(team_entity.external_id, int(season))
+    if team_entity.sport == 'soccer':
+        if team_entity.api_source == 'api_sports':
+            stats_data = _fetch_soccer_team_stats(team_entity.external_id, int(season))
+        elif team_entity.api_source == 'statpal':
+            stats_data = _fetch_soccer_team_stats_statpal(team_entity.external_id, int(season))
  
-    elif team_entity.sport == 'basketball' and team_entity.api_source == 'balldontlie':
-        stats_data = _fetch_nba_team_stats(team_entity.external_id, int(season))
+    elif team_entity.sport == 'basketball':
+        if team_entity.api_source == 'balldontlie':
+            stats_data = _fetch_nba_team_stats(team_entity.external_id, int(season))
+        elif team_entity.api_source == 'statpal':
+            stats_data = _fetch_nba_team_stats_statpal(team_entity.external_id, int(season))
  
     # 3 — save to DB so next call is instant
     if stats_data:
@@ -413,6 +419,103 @@ def _fetch_nba_team_stats(external_id, season):
                 return stats_data
         return {}
  
+    except Exception:
+        return {}
+
+
+def _fetch_soccer_team_stats_statpal(external_id, season):
+    cache_key = f'team_stats:soccer:{external_id}:{season}:statpal'
+    cached = cache.get(cache_key)
+    if cached:
+        return cached
+        
+    try:
+        from apps.sports_apis.services.statpal import statpal_service
+        result = statpal_service.get_soccer_team(external_id)
+        if not result['success']:
+            return {}
+            
+        leagues = result['data'].get('team', {}).get('league_stats', {}).get('league', [])
+        if isinstance(leagues, dict):
+            leagues = [leagues]
+            
+        lstat = None
+        for l in leagues:
+            if str(l.get('season')) == str(season):
+                lstat = l
+                break
+        if not lstat and leagues:
+            lstat = leagues[0]
+            
+        if not lstat:
+            return {}
+            
+        ft = lstat.get('fulltime', {})
+        wins = int(ft.get('win', {}).get('total') or 0)
+        losses = int(ft.get('lost', {}).get('total') or 0)
+        draws = int(ft.get('draw', {}).get('total') or 0)
+        played = wins + losses + draws
+        
+        stats_data = {
+            'form':           '',
+            'played':         played,
+            'wins':           wins,
+            'draws':          draws,
+            'losses':         losses,
+            'goals_for':      int(ft.get('goals_for', {}).get('total') or 0),
+            'goals_against':  int(ft.get('goals_against', {}).get('total') or 0),
+            'clean_sheets':   int(ft.get('clean_sheet', {}).get('total') or 0),
+            'failed_to_score':int(ft.get('failed_to_score', {}).get('total') or 0),
+        }
+        cache.set(cache_key, stats_data, timeout=3600)
+        return stats_data
+    except Exception:
+        return {}
+
+
+def _fetch_nba_team_stats_statpal(external_id, season):
+    cache_key = f'team_stats:nba:{external_id}:{season}:statpal'
+    cached = cache.get(cache_key)
+    if cached:
+        return cached
+        
+    try:
+        from apps.sports_apis.services.statpal import statpal_service
+        result = statpal_service.get_nba_standings()
+        if not result['success']:
+            return {}
+            
+        standings = result['data'].get('standings', {})
+        leagues = standings.get('tournament', {}).get('league', [])
+        if isinstance(leagues, dict):
+            leagues = [leagues]
+            
+        for lg in leagues:
+            conferences = lg.get('division', [])
+            if isinstance(conferences, dict):
+                conferences = [conferences]
+                
+            for conf in conferences:
+                teams_list = conf.get('team', [])
+                if isinstance(teams_list, dict):
+                    teams_list = [teams_list]
+                    
+                for standing in teams_list:
+                    if str(standing.get('id', '')) == str(external_id):
+                        wins = int(standing.get('won') or 0)
+                        losses = int(standing.get('lost') or 0)
+                        total = wins + losses
+                        stats_data = {
+                            'wins':       wins,
+                            'losses':     losses,
+                            'win_pct':    round(wins / total * 100, 1) if total else 0,
+                            'conference': conf.get('name', ''),
+                            'division':   lg.get('name', ''),
+                            'rank':       int(standing.get('position') or 0),
+                        }
+                        cache.set(cache_key, stats_data, timeout=3600)
+                        return stats_data
+        return {}
     except Exception:
         return {}
  
