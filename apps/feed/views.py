@@ -254,13 +254,10 @@ def hide_source(request):
             status=status.HTTP_400_BAD_REQUEST
         )
         
-    # If feed_item_id is provided, resolve to publisher_name or source_id
+    # If feed_item_id is provided, resolve to the entire source_id to hide all articles from that source
     if feed_item_id:
         feed_item = get_object_or_404(FeedItem, id=feed_item_id)
-        if feed_item.publisher_name:
-            publisher_name = feed_item.publisher_name
-        else:
-            source_id = feed_item.source_id
+        source_id = feed_item.source_id
             
     if publisher_name:
         hidden, created = HiddenSource.objects.get_or_create(
@@ -302,10 +299,7 @@ def unhide_source(request):
         
     if feed_item_id:
         feed_item = get_object_or_404(FeedItem, id=feed_item_id)
-        if feed_item.publisher_name:
-            publisher_name = feed_item.publisher_name
-        else:
-            source_id = feed_item.source_id
+        source_id = feed_item.source_id
 
     if publisher_name:
         deleted_count = HiddenSource.objects.filter(
@@ -381,8 +375,19 @@ def get_breaking_news(request):
     Get breaking news across all sports
     GET /api/feed/breaking
     """
+    hidden_source_ids = []
+    hidden_publishers = []
+    if request.user.is_authenticated:
+        hidden_sources_qs = HiddenSource.objects.filter(user=request.user)
+        hidden_source_ids = hidden_sources_qs.filter(source__isnull=False).values_list('source_id', flat=True)
+        hidden_publishers = hidden_sources_qs.exclude(publisher_name='').values_list('publisher_name', flat=True)
+
     feed = FeedItem.objects.filter(
         is_breaking=True
+    ).exclude(
+        source_id__in=hidden_source_ids
+    ).exclude(
+        publisher_name__in=hidden_publishers
     ).select_related('source').prefetch_related('entities').order_by('-published_at')[:50]
     
     serializer = FeedItemCompactSerializer(feed, many=True, context={'request': request})
@@ -400,8 +405,19 @@ def get_trending_feed(request):
     Get trending content
     GET /api/feed/trending
     """
+    hidden_source_ids = []
+    hidden_publishers = []
+    if request.user.is_authenticated:
+        hidden_sources_qs = HiddenSource.objects.filter(user=request.user)
+        hidden_source_ids = hidden_sources_qs.filter(source__isnull=False).values_list('source_id', flat=True)
+        hidden_publishers = hidden_sources_qs.exclude(publisher_name='').values_list('publisher_name', flat=True)
+
     feed = FeedItem.objects.filter(
         is_trending=True
+    ).exclude(
+        source_id__in=hidden_source_ids
+    ).exclude(
+        publisher_name__in=hidden_publishers
     ).select_related('source').prefetch_related('entities').order_by('-views', '-published_at')[:50]
     
     serializer = FeedItemCompactSerializer(feed, many=True, context={'request': request})
