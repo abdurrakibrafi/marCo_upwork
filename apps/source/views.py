@@ -137,26 +137,56 @@ def add_source(request):
     # Get or create the Source object
     if source_id:
         source = get_object_or_404(Source, id=source_id)
+        created = False
     else:
         # Normalize domain
         if not domain.startswith('http'):
             domain = f'https://{domain}'
 
-        source, created = Source.objects.get_or_create(
-            domain=domain,
-            defaults={
-                'name': name or domain,
-                'rss_url': rss_url or None,
-                'favicon_url': favicon_url,
-                'is_active': True,
-                'discovery_source': 'manual',
-            }
-        )
+        source = None
+        created = False
+
+        # 1. First attempt: Find by unique rss_url if provided
+        if rss_url:
+            source = Source.objects.filter(rss_url=rss_url).first()
+
+        # 2. Second attempt: Find by domain if not found by rss_url
+        if not source:
+            source = Source.objects.filter(domain=domain).first()
+
+        # 3. Third attempt: If still not found, create a new one
+        if not source:
+            from django.db import IntegrityError
+            try:
+                source = Source.objects.create(
+                    domain=domain,
+                    name=name or domain,
+                    rss_url=rss_url or None,
+                    favicon_url=favicon_url,
+                    is_active=True,
+                    discovery_source='manual',
+                )
+                created = True
+            except IntegrityError:
+                # Handle concurrent creation or unexpected integrity clash
+                if rss_url:
+                    source = Source.objects.filter(rss_url=rss_url).first()
+                if not source:
+                    source = Source.objects.filter(domain=domain).first()
+                if not source:
+                    raise
 
         # If source existed but had no rss_url and we now have one, update it
         if not created and rss_url and not source.rss_url:
-            source.rss_url = rss_url
-            source.save(update_fields=['rss_url'])
+            from django.db import IntegrityError
+            try:
+                source.rss_url = rss_url
+                source.save(update_fields=['rss_url'])
+            except IntegrityError:
+                # If this rss_url already exists under another source, use that source instead
+                other_source = Source.objects.filter(rss_url=rss_url).first()
+                if other_source:
+                    source = other_source
 
         # If source existed but had no name, update it
         if not created and name and not source.name:
