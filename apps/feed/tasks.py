@@ -755,22 +755,30 @@ def _is_junk_page(url: str, content: str) -> bool:
         "promo code", "bonus bet", "bonus bets", "sign-up bonus", "signup bonus",
         "risk-free bet", "deposit match", "sign-up offer", "signup offer",
         "gambling problem? call", "1-800-gambler", "must be 21+", "must be 21 or older",
-        "terms and conditions apply", "wagering requirements", "wager $5", "bet $5"
+        "terms and conditions apply", "wagering requirements", "wager $5", "bet $5",
+        "new customers only", "bonus code", "free bet", "free bets", "terms apply",
+        "gambling problem", "first deposit", "exclusive offer", "play now",
+        "t&cs apply", "t&c apply", "wagering", "deposing", "deposit match",
+        "odds", "spread", "moneyline", "parlay", "parlays", "fanduel", "draftkings",
+        "betmgm", "caesars sportsbook", "bet365", "betrivers"
     ]
     promo_matches = sum(1 for kw in promo_keywords if kw in content_lower)
 
-    if promo_matches >= 5:
+    if promo_matches >= 6:
         return True
-    if promo_matches >= 3 and content_len < 1500:
+    if promo_matches >= 3 and content_len < 2000:
+        return True
+    if any(x in url_lower for x in ["promo", "bonus", "betting", "odds", "wagering"]) and promo_matches >= 2:
         return True
 
     # 3. Standard boilerplate fallback detection (in case readability failed and extracted nav/header garbage)
     boilerplate_indicators = [
         "cookie policy", "privacy policy", "terms of service", "terms of use",
-        "all rights reserved", "contact us", "site map", "copyright", "feedback"
+        "all rights reserved", "contact us", "site map", "copyright", "feedback",
+        "sign in", "create account", "forgot password", "log in"
     ]
     bp_matches = sum(1 for bp in boilerplate_indicators if bp in content_lower)
-    if bp_matches >= 4 and content_len < 800:
+    if bp_matches >= 4 and content_len < 1000:
         return True
 
     return False
