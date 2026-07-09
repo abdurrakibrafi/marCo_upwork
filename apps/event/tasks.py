@@ -223,14 +223,153 @@ def update_soccer_live_scores_only():
 
 
 # ================================================================
-# MATCH DETAILS (API-Sports deep stats for completed soccer games)
+# MATCH DETAILS (deep stats for completed games)
 # ================================================================
+
+def _populate_statpal_event_details(event):
+    """
+    Parse StatPal metadata to populate EventTimeline (goals, cards, subs)
+    and update HT/FT/ET scores for a completed event.
+    """
+    meta = event.metadata or {}
+    raw_events = meta.get('events')
+    if not raw_events:
+        return
+
+    # events can be a dict with 'event' key (list of events) or directly a list
+    event_list = raw_events
+    if isinstance(raw_events, dict):
+        event_list = raw_events.get('event', [])
+    if isinstance(event_list, dict):
+        event_list = [event_list]
+    if not isinstance(event_list, list):
+        return
+
+    # Clear old timeline entries before re-populating
+    EventTimeline.objects.filter(event=event).delete()
+
+    for ev in event_list:
+        if not isinstance(ev, dict):
+            continue
+
+        ev_type_raw = ev.get('type', '').lower()
+        team_side = ev.get('team', '')  # 'home' or 'away'
+        minute = 0
+        extra_min = 0
+        try:
+            minute = int(ev.get('minute', 0) or 0)
+        except (ValueError, TypeError):
+            pass
+        try:
+            extra_min = int(ev.get('extra_min', 0) or 0)
+        except (ValueError, TypeError):
+            pass
+
+        # Map StatPal event types to our model types
+        type_map = {
+            'goal': 'goal',
+            'yellowcard': 'yellow_card',
+            'yellow_card': 'yellow_card',
+            'redcard': 'red_card',
+            'red_card': 'red_card',
+            'yellowred': 'red_card',
+            'subst': 'substitution',
+            'substitution': 'substitution',
+            'penalty': 'penalty',
+            'var': 'var',
+        }
+        mapped_type = type_map.get(ev_type_raw, ev_type_raw)
+
+        # Resolve team entity
+        team_entity = None
+        if team_side == 'home':
+            team_entity = event.home_entity
+        elif team_side == 'away':
+            team_entity = event.away_entity
+
+        # Build description
+        player_name = ev.get('player', '')
+        result_text = ev.get('result', '')
+        assist = ev.get('assist_player', '')
+        description_parts = []
+        if player_name:
+            description_parts.append(player_name)
+        if result_text:
+            description_parts.append(result_text)
+        if assist and assist.lower() not in ('', 'none'):
+            description_parts.append(f"Assist: {assist}")
+        # For substitutions
+        player_on = ev.get('player_on', '')
+        player_off = ev.get('player_off', '')
+        if mapped_type == 'substitution':
+            description_parts = []
+            if player_on:
+                description_parts.append(f"IN: {player_on}")
+            if player_off:
+                description_parts.append(f"OUT: {player_off}")
+
+        description = ' — '.join(description_parts).strip(' —')
+
+        EventTimeline.objects.create(
+            event=event,
+            event_type=mapped_type,
+            minute=minute,
+            extra_minute=extra_min,
+            team=team_entity,
+            player=None,  # StatPal doesn't provide player entity IDs
+            description=description,
+            metadata=ev,
+        )
+
+    # Update HT/FT/ET scores from metadata
+    ht = meta.get('ht')
+    ft = meta.get('ft')
+    if ft and isinstance(ft, dict):
+        try:
+            event.home_score = int(ft.get('home_goals', 0) or 0)
+            event.away_score = int(ft.get('away_goals', 0) or 0)
+            event.save(update_fields=['home_score', 'away_score'])
+        except (ValueError, TypeError):
+            pass
+
+    # Store scoreboard breakdown as EventStatistics
+    scoreboard = {}
+    if ht and isinstance(ht, dict):
+        scoreboard['ht_home'] = ht.get('home_goals')
+        scoreboard['ht_away'] = ht.get('away_goals')
+    if ft and isinstance(ft, dict):
+        scoreboard['ft_home'] = ft.get('home_goals')
+        scoreboard['ft_away'] = ft.get('away_goals')
+    et = meta.get('et')
+    if et and isinstance(et, dict):
+        scoreboard['et_home'] = et.get('home_goals')
+        scoreboard['et_away'] = et.get('away_goals')
+    penalties = meta.get('penalties')
+    if penalties and isinstance(penalties, dict):
+        scoreboard['pen_home'] = penalties.get('home_goals') or penalties.get('home')
+        scoreboard['pen_away'] = penalties.get('away_goals') or penalties.get('away')
+
+    if scoreboard and event.home_entity:
+        EventStatistics.objects.update_or_create(
+            event=event,
+            team=event.home_entity,
+            defaults={'stats': {**scoreboard, 'side': 'home'}},
+        )
+    if scoreboard and event.away_entity:
+        EventStatistics.objects.update_or_create(
+            event=event,
+            team=event.away_entity,
+            defaults={'stats': {**scoreboard, 'side': 'away'}},
+        )
+
+    logger.info(f"_populate_statpal_event_details: populated timeline for event {event.id}")
+
 
 @shared_task(bind=True, max_retries=2, default_retry_delay=60)
 def fetch_event_details(self, event_id: int):
     """
     Fetch full stats, lineups, and player stats for a completed event.
-    Called automatically when a soccer game finishes.
+    Handles both api_sports and statpal events.
     """
     try:
         event = Event.objects.select_related(
@@ -238,9 +377,20 @@ def fetch_event_details(self, event_id: int):
         ).get(id=event_id)
     except Event.DoesNotExist:
         return f"Event {event_id} not found"
- 
+
+    # ── StatPal events: parse metadata for timeline/scores ──
+    if event.api_source == 'statpal':
+        _populate_statpal_event_details(event)
+        try:
+            from apps.sports_apis.tasks import fetch_highlight_for_event
+            fetch_highlight_for_event.apply_async(args=[event_id], countdown=900)
+        except Exception as e:
+            logger.error(f"Failed to queue highlight fetch for event {event_id}: {e}")
+        return f"Event {event_id} (statpal) details populated"
+
+    # ── api_sports events: fetch from API ──
     if event.api_source != 'api_sports':
-        return f"Event {event_id} is not from api_sports — skipping"
+        return f"Event {event_id} has unknown source '{event.api_source}' — skipping"
  
     fixture_id = event.external_id
     headers = {'x-apisports-key': settings.API_SPORTS_KEY}
@@ -489,7 +639,7 @@ def check_completed_events():
         .filter(
             status='completed',
             sport='soccer',
-            api_source='api_sports',
+            api_source__in=['api_sports', 'statpal'],
         )
         .exclude(
             id__in=EventStatistics.objects.values_list('event_id', flat=True)
