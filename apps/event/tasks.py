@@ -591,7 +591,13 @@ def _soccer_rows(data: dict) -> list:
 
     rows = []
     for lg in leagues:
-        for m in lg.get("match", []):
+        matches = lg.get("match", [])
+        if isinstance(matches, dict):
+            matches = [matches]
+        elif not isinstance(matches, list):
+            matches = []
+
+        for m in matches:
             # BUG FIX: API can sometimes return a string instead of a match dict
             if not isinstance(m, dict):
                 continue
