@@ -232,6 +232,199 @@ def _populate_statpal_event_details(event):
     and update HT/FT/ET scores for a completed event.
     """
     meta = event.metadata or {}
+    
+    # 1. Fetch soccer stats if they are missing from metadata
+    if event.sport == 'soccer' and not meta.get('event_summary') and not meta.get('team_stats') and event.league:
+        try:
+            from apps.sports_apis.services.statpal import statpal_service
+            league_id = int(event.league.external_id)
+            result = statpal_service.get_soccer_match_stats(league_id)
+            if result['success']:
+                matches = result['data'].get('match-stats', {}).get('tournament', {}).get('matches', [])
+                if isinstance(matches, dict):
+                    matches = [matches]
+                elif not isinstance(matches, list):
+                    matches = []
+                for m in matches:
+                    if not isinstance(m, dict):
+                        continue
+                    if str(m.get('main_id')) == str(event.external_id) or str(m.get('id')) == str(event.external_id):
+                        event.metadata = m
+                        event.save(update_fields=['metadata'])
+                        meta = m
+                        break
+        except Exception as e:
+            logger.warning(f"Failed to fetch soccer match stats for event {event.id}: {e}")
+
+    # 2. Parse soccer-specific metadata structure
+    if event.sport == 'soccer':
+        EventTimeline.objects.filter(event=event).delete()
+        EventStatistics.objects.filter(event=event).delete()
+        EventLineup.objects.filter(event=event).delete()
+
+        summary = meta.get('event_summary', {})
+        if isinstance(summary, dict):
+            for side in ['home', 'away']:
+                team_entity = event.home_entity if side == 'home' else event.away_entity
+                side_events = summary.get(side, {})
+                if not isinstance(side_events, dict):
+                    continue
+
+                # Goals
+                goals = side_events.get('goals', {})
+                goals_list = goals.get('event', []) if isinstance(goals, dict) else []
+                if isinstance(goals_list, dict):
+                    goals_list = [goals_list]
+                for g in goals_list:
+                    if not isinstance(g, dict):
+                        continue
+                    minute = int(g.get('minute') or 0) if g.get('minute') else 0
+                    extra = int(g.get('extra_min') or 0) if g.get('extra_min') else 0
+                    player_name = g.get('player_name', '')
+                    assist_name = g.get('assist_player_name', '')
+                    desc = player_name
+                    if assist_name:
+                        desc += f" (Assist: {assist_name})"
+                    EventTimeline.objects.create(
+                        event=event,
+                        event_type='goal',
+                        minute=minute,
+                        extra_minute=extra,
+                        team=team_entity,
+                        description=desc,
+                        metadata=g
+                    )
+
+                # Yellow Cards
+                yc = side_events.get('yellowcards', {})
+                yc_list = yc.get('event', []) if isinstance(yc, dict) else []
+                if isinstance(yc_list, dict):
+                    yc_list = [yc_list]
+                for card in yc_list:
+                    if not isinstance(card, dict):
+                        continue
+                    minute = int(card.get('minute') or 0) if card.get('minute') else 0
+                    extra = int(card.get('extra_min') or 0) if card.get('extra_min') else 0
+                    player_name = card.get('player_name', '')
+                    EventTimeline.objects.create(
+                        event=event,
+                        event_type='yellow_card',
+                        minute=minute,
+                        extra_minute=extra,
+                        team=team_entity,
+                        description=player_name,
+                        metadata=card
+                    )
+
+                # Red Cards
+                rc = side_events.get('redcards', {})
+                rc_list = rc.get('event', []) if isinstance(rc, dict) else []
+                if isinstance(rc_list, dict):
+                    rc_list = [rc_list]
+                for card in rc_list:
+                    if not isinstance(card, dict):
+                        continue
+                    minute = int(card.get('minute') or 0) if card.get('minute') else 0
+                    extra = int(card.get('extra_min') or 0) if card.get('extra_min') else 0
+                    player_name = card.get('player_name', '')
+                    EventTimeline.objects.create(
+                        event=event,
+                        event_type='red_card',
+                        minute=minute,
+                        extra_minute=extra,
+                        team=team_entity,
+                        description=player_name,
+                        metadata=card
+                    )
+
+                # Substitutions
+                subs = side_events.get('substitutions', {})
+                subs_list = subs.get('event', []) if isinstance(subs, dict) else []
+                if isinstance(subs_list, dict):
+                    subs_list = [subs_list]
+                for sub in subs_list:
+                    if not isinstance(sub, dict):
+                        continue
+                    minute = int(sub.get('minute') or 0) if sub.get('minute') else 0
+                    extra = int(sub.get('extra_min') or 0) if sub.get('extra_min') else 0
+                    p_on = sub.get('player_on', '')
+                    p_off = sub.get('player_off', '')
+                    desc = f"IN: {p_on} — OUT: {p_off}"
+                    EventTimeline.objects.create(
+                        event=event,
+                        event_type='substitution',
+                        minute=minute,
+                        extra_minute=extra,
+                        team=team_entity,
+                        description=desc,
+                        metadata=sub
+                    )
+
+        # Populate EventStatistics
+        team_stats = meta.get('team_stats', {})
+        if isinstance(team_stats, dict):
+            for side in ['home', 'away']:
+                team_entity = event.home_entity if side == 'home' else event.away_entity
+                if not team_entity:
+                    continue
+                stats_dict = team_stats.get(side, {})
+                if isinstance(stats_dict, dict):
+                    flat_stats = {}
+                    for k, v in stats_dict.items():
+                        if isinstance(v, dict):
+                            val = v.get('value') or v.get('total')
+                            if val is not None:
+                                flat_stats[k] = val
+                        else:
+                            flat_stats[k] = v
+                    EventStatistics.objects.update_or_create(
+                        event=event,
+                        team=team_entity,
+                        defaults={'stats': flat_stats}
+                    )
+
+        # Populate EventLineups
+        lineups = meta.get('lineups', {})
+        if isinstance(lineups, dict):
+            for side in ['home', 'away']:
+                team_entity = event.home_entity if side == 'home' else event.away_entity
+                if not team_entity:
+                    continue
+                players = lineups.get(side, {}).get('player', [])
+                if isinstance(players, dict):
+                    players = [players]
+                for p in players:
+                    if not isinstance(p, dict):
+                        continue
+                    player_name = p.get('name')
+                    player_number = p.get('number')
+                    player_pos = p.get('pos')
+                    if player_name:
+                        player_entity = get_or_create_precise_entity(
+                            str(p.get('id', '')),
+                            player_name,
+                            'soccer',
+                            entity_type='athlete'
+                        )
+                        EventLineup.objects.create(
+                            event=event,
+                            team=team_entity,
+                            player=player_entity,
+                            position_type=player_pos or '',
+                            jersey_number=int(player_number) if str(player_number).isdigit() else None
+                        )
+
+        # Update scores from ft
+        ft = meta.get('ft')
+        if isinstance(ft, dict):
+            try:
+                event.home_score = int(ft.get('home_goals', 0) or 0)
+                event.away_score = int(ft.get('away_goals', 0) or 0)
+                event.save(update_fields=['home_score', 'away_score'])
+            except (ValueError, TypeError):
+                pass
+        return
+
     raw_events = meta.get('events')
     if not raw_events:
         return
