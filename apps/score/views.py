@@ -468,7 +468,13 @@ def live_score_detail(request, score_id):
                     result = statpal_service.get_soccer_match_stats(league_id)
                     if result['success']:
                         matches = result['data'].get('match-stats', {}).get('tournament', {}).get('matches', [])
+                        if isinstance(matches, dict):
+                            matches = [matches]
+                        elif not isinstance(matches, list):
+                            matches = []
                         for m in matches:
+                            if not isinstance(m, dict):
+                                continue
                             if str(m.get('main_id')) == str(game.external_id) or str(m.get('id')) == str(game.external_id):
                                 detail_raw = m
                                 break
