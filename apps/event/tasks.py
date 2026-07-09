@@ -983,6 +983,15 @@ def _horse_racing_rows(data: dict) -> list:
     return rows
 
 
+def _clean_score(val):
+    if val is None or str(val).strip() in ("", "None", "null", "undefined"):
+        return None
+    try:
+        return int(str(val).split("/")[0].split("&")[0].strip())
+    except Exception:
+        return None
+
+
 def _save_event(row: dict) -> Event | None:
     status = _map_status(row["status_raw"])
     if status is None:
@@ -991,6 +1000,11 @@ def _save_event(row: dict) -> Event | None:
         return None
     if not row["external_id"]:
         return None
+
+    # Prevent overwriting "live" status with "upcoming" from subsequent fixture updates
+    existing_event = Event.objects.filter(external_id=row["external_id"]).first()
+    if existing_event and existing_event.status == "live" and status == "upcoming":
+        status = "live"
 
     sport = row["sport"]
     league = get_or_create_precise_entity(
@@ -1023,8 +1037,8 @@ def _save_event(row: dict) -> Event | None:
             "league":       league,
             "status":       status,
             "status_detail": row["status_raw"],
-            "home_score":   row["home_score"],
-            "away_score":   row["away_score"],
+            "home_score":   _clean_score(row.get("home_score")),
+            "away_score":   _clean_score(row.get("away_score")),
             "venue_name":   row["venue"],
             "start_time":   start_time,
             "metadata":     row["raw"],
@@ -1039,7 +1053,7 @@ def _save_event(row: dict) -> Event | None:
 
 
 def _save_livescore(row: dict, event: Event):
-    status = _map_status(row["status_raw"])
+    status = event.status
     ls_sport = row["sport"]
     external_id = row["external_id"]
 
@@ -1057,8 +1071,8 @@ def _save_livescore(row: dict, event: Event):
             "away_team":     row["away_name"],
             "home_logo":     event.home_entity.logo_url if event.home_entity else "",
             "away_logo":     event.away_entity.logo_url if event.away_entity else "",
-            "home_score":    row["home_score"] or None,
-            "away_score":    row["away_score"] or None,
+            "home_score":    _clean_score(row.get("home_score")),
+            "away_score":    _clean_score(row.get("away_score")),
             "status":        status,
             "status_detail": row["status_raw"],
             "start_time":    event.start_time,

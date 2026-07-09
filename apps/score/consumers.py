@@ -19,26 +19,25 @@ class LiveScoreConsumer(AsyncWebsocketConsumer):
                 raw_sport = None
         self.sport_filter = raw_sport
 
-        # join the global group always
-        await self.channel_layer.group_add(self.GROUP_ALL, self.channel_name)
-
-        # also join sport-specific group if filter provided
         if self.sport_filter:
             await self.channel_layer.group_add(
                 f'live_scores_{self.sport_filter}',
                 self.channel_name
             )
+        else:
+            await self.channel_layer.group_add(self.GROUP_ALL, self.channel_name)
 
         await self.accept()
         await self.send_snapshot()
 
     async def disconnect(self, close_code):
-        await self.channel_layer.group_discard(self.GROUP_ALL, self.channel_name)
         if self.sport_filter:
             await self.channel_layer.group_discard(
                 f'live_scores_{self.sport_filter}',
                 self.channel_name
             )
+        else:
+            await self.channel_layer.group_discard(self.GROUP_ALL, self.channel_name)
 
     async def send_snapshot(self):
         games = await self.get_live_games()
