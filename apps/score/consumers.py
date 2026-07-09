@@ -12,7 +12,12 @@ class LiveScoreConsumer(AsyncWebsocketConsumer):
         query_string = self.scope.get('query_string', b'').decode()
         from urllib.parse import parse_qs
         params = parse_qs(query_string)
-        self.sport_filter = params.get('sport', [None])[0]  # None = all sports
+        raw_sport = params.get('sport', [None])[0]
+        if raw_sport:
+            raw_sport = raw_sport.lower().strip()
+            if raw_sport in ('null', 'undefined', '', 'none'):
+                raw_sport = None
+        self.sport_filter = raw_sport
 
         # join the global group always
         await self.channel_layer.group_add(self.GROUP_ALL, self.channel_name)
