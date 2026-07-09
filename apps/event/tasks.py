@@ -902,38 +902,49 @@ def _golf_position_sort_key(p):
         
 
 def _golf_rows(data: dict) -> list:
-    tour = data.get("livescore", {}).get("tournament") or data.get("tournament")
-    if not tour:
+    tour_data = data.get("livescore", {}).get("tournament") or data.get("tournament")
+    if not tour_data:
         return []
 
+    tournaments = tour_data if isinstance(tour_data, list) else [tour_data]
     rows = []
-    league_name = tour.get("name", "Golf Event")
-    league_id = str(tour.get("id", ""))
-    players = tour.get("player", [])
+    for tour in tournaments:
+        if not isinstance(tour, dict):
+            continue
+        league_name = tour.get("name", "Golf Event")
+        league_id = str(tour.get("id", ""))
+        players = tour.get("player", [])
+        if isinstance(players, dict):
+            players = [players]
+        elif not isinstance(players, list):
+            players = []
 
-    leader_score, leader_name = None, None
-    if players:
-        leader = sorted(players, key=_golf_position_sort_key)[0]
-        leader_name = leader.get('name')
-        leader_score = leader.get('par')
+        leader_score, leader_name = None, None
+        if players:
+            try:
+                leader = sorted(players, key=_golf_position_sort_key)[0]
+                leader_name = leader.get('name')
+                leader_score = leader.get('par')
+            except Exception:
+                pass
 
-    rows.append({
-        "external_id": f"golf_{league_id}",
-        "sport": "golf",
-        "league_id": league_id,
-        "league_name": league_name,
-        "home_id": f"golf_{league_id}",
-        "home_name": league_name,
-        "away_id": None,
-        "away_name": None,
-        "home_score": leader_score,
-        "away_score": tour.get('par'),
-        "status_raw": tour.get("status", "NS"),
-        "date": tour.get("start_date", timezone.now().strftime("%d.%m.%Y")),
-        "time": "00:00",
-        "venue": tour.get("venue", ""),
-        "raw": tour,
-    })
+        rows.append({
+            "external_id": f"golf_{league_id}",
+            "sport": "golf",
+            "league_id": league_id,
+            "league_name": league_name,
+            "home_id": f"golf_{league_id}",
+            "home_name": league_name,
+            "away_id": None,
+            "away_name": None,
+            "home_score": leader_score,
+            "away_score": tour.get('par'),
+            "status_raw": tour.get("status", "NS"),
+            "date": tour.get("start_date", timezone.now().strftime("%d.%m.%Y")),
+            "time": "00:00",
+            "venue": tour.get("venue", ""),
+            "raw": tour,
+        })
     return rows
 
 
