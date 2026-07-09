@@ -610,46 +610,8 @@ def fetch_article_content(feed_item_id: int):
     # Trim to first 4000 chars for OpenAI (cost control)
     content_for_ai = content[:4000]
 
-    # ── Step 2: Generate AI summary via OpenAI ────────────────────────────────
-    ai_summary = ""
-    openai_key = getattr(settings, "OPENAI_API_KEY", "")
-    if openai_key:
-        try:
-            resp_ai = requests.post(
-                "https://api.openai.com/v1/chat/completions",
-                headers={
-                    "Authorization": f"Bearer {openai_key}",
-                    "Content-Type": "application/json",
-                },
-                json={
-                    "model": "gpt-4o-mini",
-                    "messages": [
-                        {
-                            "role": "system",
-                            "content": (
-                                "You are a sports journalist. Given an article, "
-                                "write a 2-3 sentence summary in clear English. "
-                                "Be factual and concise. No filler phrases."
-                            ),
-                        },
-                        {
-                            "role": "user",
-                            "content": f"Summarize this sports article:\n\n{content_for_ai}",
-                        },
-                    ],
-                    "max_tokens": 120,
-                    "temperature": 0.3,
-                },
-                timeout=20,
-            )
-            resp_ai.raise_for_status()
-            ai_summary = resp_ai.json()["choices"][0]["message"]["content"].strip()
-        except Exception as exc:
-            logger.warning(f"[OpenAI] Summary failed for item {feed_item_id}: {exc}")
-            ai_summary = _clean_fallback_summary(content, item.title)
-    else:
-        # No OpenAI key — use clean fallback
-        ai_summary = _clean_fallback_summary(content, item.title)
+    # ── Step 2: Generate summary via fallback (OpenAI disabled for now) ──────
+    ai_summary = _clean_fallback_summary(content, item.title)
 
     # ── Step 3: Save to DB ───────────────────────────────────────────────────
     item.content = content

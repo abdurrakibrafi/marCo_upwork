@@ -83,21 +83,81 @@ def update_soccer_fixtures(date=None):
 # ================================================================
 
 @shared_task
+def update_statpal_fixtures_for_dates(dates: list[str] = None):
+    """
+    Fetch and save upcoming/past fixtures from StatPal for all sports:
+    Soccer, NBA, NFL, Cricket, Tennis, Baseball, Handball.
+    """
+    if not dates:
+        dates = [timezone.now().date().isoformat()]
+
+    parsed_dates = []
+    for d in dates:
+        try:
+            parsed_dates.append(datetime.strptime(d, "%Y-%m-%d").date())
+        except Exception:
+            pass
+    parsed_dates.sort()
+
+    # Cricket: Update all cricket fixtures (does not take date offset, returns bulk future/current schedule)
+    try:
+        logger.info("StatPal: Fetching cricket fixtures")
+        result = statpal_service.get_cricket_fixtures()
+        if result.get('success'):
+            rows = _cricket_rows(result['data'])
+            for row in rows:
+                _save_event(row)
+            logger.info(f"StatPal: Saved {len(rows)} cricket fixtures")
+    except Exception as exc:
+        logger.exception("Cricket fixtures update failed: %s", exc)
+
+    # Daily offset sports
+    sports_configs = [
+        ("soccer", statpal_service.get_soccer_fixtures, _soccer_rows),
+        ("nba", statpal_service.get_nba_fixtures, _nba_rows),
+        ("football", statpal_service.get_nfl_fixtures, _nfl_rows),
+        ("tennis", statpal_service.get_tennis_fixtures, _tennis_rows),
+        ("baseball", statpal_service.get_mlb_fixtures, _mlb_rows),
+        ("handball", statpal_service.get_handball_fixtures, _handball_rows),
+    ]
+
+    today = timezone.now().date()
+    total_saved = 0
+    for target_date in parsed_dates:
+        offset = (target_date - today).days
+        date_str = target_date.isoformat()
+
+        for sport, fetch_fn, extract_fn in sports_configs:
+            # Skip offset 0 for tennis, baseball, handball since they return empty or not supported
+            if offset == 0 and sport in ["tennis", "baseball", "handball"]:
+                continue
+
+            try:
+                logger.info(f"StatPal: Fetching {sport} fixtures for {date_str} (offset={offset})")
+                res = fetch_fn(offset=offset)
+                if res.get('success'):
+                    rows = extract_fn(res['data'])
+                    for row in rows:
+                        _save_event(row)
+                    total_saved += len(rows)
+                    logger.info(f"StatPal: Saved {len(rows)} {sport} fixtures for {date_str}")
+            except Exception as exc:
+                logger.exception(f"StatPal: {sport} fixtures failed for {date_str}: %s", exc)
+            
+            time.sleep(0.5)  # Throttling prevention
+
+    return f"Completed: Saved/Updated {total_saved} fixtures across daily sports."
+
+
+@shared_task
 def update_all_fixtures():
     """Update fixtures for all sports — today + next 7 days"""
     dates = [
         (timezone.now().date() + timedelta(days=i)).isoformat()
         for i in range(-7, 8)
     ]
-    
-    for date in dates:
-        # Soccer API has a higher rate limit, so parallel tasks are okay.
-        update_soccer_fixtures.delay(date)
-
-    # NFL API has a stricter rate limit, so we run them sequentially in one task.
-    update_nfl_fixtures.delay(dates)
-    
-    logger.info(f"update_all_fixtures: Queued tasks for {len(dates)} days.")
+    update_statpal_fixtures_for_dates.delay(dates)
+    logger.info(f"update_all_fixtures: Triggered update_statpal_fixtures_for_dates for {len(dates)} days.")
     return f"Fixture updates triggered for {dates[0]} to {dates[-1]}"
 
 
@@ -199,6 +259,7 @@ def fetch_event_details(self, event_id: int):
                 team_entity = Entity.objects.filter(
                     api_source='api_sports',
                     external_id=str(team_data.get('id', '')),
+                    type='team',
                 ).first()
  
                 if not team_entity:
@@ -232,6 +293,7 @@ def fetch_event_details(self, event_id: int):
                 team_entity = Entity.objects.filter(
                     api_source='api_sports',
                     external_id=str(team_data.get('id', '')),
+                    type='team',
                 ).first()
  
                 if not team_entity:
@@ -242,6 +304,7 @@ def fetch_event_details(self, event_id: int):
                     player_entity = Entity.objects.filter(
                         api_source='api_sports',
                         external_id=str(p.get('id', '')),
+                        type='athlete',
                     ).first()
                     if not player_entity:
                         continue
@@ -263,6 +326,7 @@ def fetch_event_details(self, event_id: int):
                     player_entity = Entity.objects.filter(
                         api_source='api_sports',
                         external_id=str(p.get('id', '')),
+                        type='athlete',
                     ).first()
                     if not player_entity:
                         continue
@@ -293,6 +357,7 @@ def fetch_event_details(self, event_id: int):
                 team_entity = Entity.objects.filter(
                     api_source='api_sports',
                     external_id=str(team_data.get('team', {}).get('id', '')),
+                    type='team',
                 ).first()
  
                 if not team_entity:
@@ -303,6 +368,7 @@ def fetch_event_details(self, event_id: int):
                     player_entity = Entity.objects.filter(
                         api_source='api_sports',
                         external_id=str(player_info.get('id', '')),
+                        type='athlete',
                     ).first()
  
                     if not player_entity:
@@ -364,7 +430,17 @@ def fetch_event_details(self, event_id: int):
                 team_entity = Entity.objects.filter(
                     api_source='api_sports',
                     external_id=str(team_data.get('id', '')),
+                    type='team',
                 ).first()
+ 
+                player_data = ev.get('player', {})
+                player_entity = None
+                if player_data and player_data.get('id'):
+                    player_entity = Entity.objects.filter(
+                        api_source='api_sports',
+                        external_id=str(player_data.get('id')),
+                        type='athlete',
+                    ).first()
  
                 ev_type = ev.get('type', '').lower()
                 detail  = ev.get('detail', '').lower()
@@ -388,6 +464,7 @@ def fetch_event_details(self, event_id: int):
                     minute=ev.get('time', {}).get('elapsed', 0) or 0,
                     extra_minute=ev.get('time', {}).get('extra', 0) or 0,
                     team=team_entity,
+                    player=player_entity,
                     description=f"{ev.get('detail', '')} — {ev.get('comments', '') or ''}".strip(' —'),
                     metadata=ev,
                 )
