@@ -9,6 +9,8 @@ User = get_user_model()
 
 @database_sync_to_async
 def get_user_from_jwt(token):
+    from django.db import close_old_connections
+    close_old_connections()
     try:
         payload = jwt.decode(token, settings.SECRET_KEY, algorithms=["HS256"])
         user_id = payload.get("user_id")

@@ -48,6 +48,8 @@ class LiveScoreConsumer(AsyncWebsocketConsumer):
 
     @database_sync_to_async
     def get_live_games(self):
+        from django.db import close_old_connections
+        close_old_connections()
         qs = LiveScore.objects.filter(status='live').order_by('-updated_at')
         if self.sport_filter:
             qs = qs.filter(sport=self.sport_filter)
