@@ -184,14 +184,6 @@ def get_nest_calendar(request):
             
         nest_entity_ids = list(nest_entity_ids)
 
-        # 2. Days window
-        try:
-            days = int(request.query_params.get("days", 7))
-        except ValueError:
-            days = 7
-        cutoff = timezone.now() + timezone.timedelta(days=days)
-        past_cutoff = timezone.now() - timezone.timedelta(days=days)
-
         # 3. Queryset
         qs = (
             Event.objects.filter(
@@ -203,18 +195,14 @@ def get_nest_calendar(request):
         now = timezone.now()
         status_param = request.query_params.get("status")
         if status_param == "upcoming":
-            qs = qs.filter(start_time__gte=now, start_time__lte=cutoff)
+            qs = qs.filter(start_time__gte=now)
         elif status_param == "completed":
-            qs = qs.filter(start_time__lt=now, start_time__gte=past_cutoff)
+            qs = qs.filter(Q(start_time__lt=now) | Q(status="completed"))
         elif status_param == "live":
             qs = qs.filter(status="live")
         else:
-            # Default: show live, upcoming (next 7 days), and past (last 7 days)
-            qs = qs.filter(
-                Q(status="live")
-                | Q(start_time__gte=now, start_time__lte=cutoff)
-                | Q(start_time__lt=now, start_time__gte=past_cutoff)
-            )
+            # Default: show all match data present in the database for followed teams
+            pass
 
         qs = qs.select_related("home_entity", "away_entity", "league").order_by("start_time")
 

@@ -128,6 +128,7 @@ class EventDetailSerializer(serializers.ModelSerializer):
             'timeline', 'lineups', 'statistics',
             'player_stats', 'highlights',
             'has_stats', 'has_lineups', 'key_players',
+            'metadata',
         ]
 
     def to_representation(self, instance):
