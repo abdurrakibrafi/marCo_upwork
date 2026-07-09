@@ -1005,6 +1005,9 @@ def _save_event(row: dict) -> Event | None:
     existing_event = Event.objects.filter(external_id=row["external_id"]).first()
     if existing_event and existing_event.status == "live" and status == "upcoming":
         status = "live"
+        row["status_raw"] = existing_event.status_detail
+        if existing_event.metadata and not row["raw"].get("inning") and not row["raw"].get("events"):
+            row["raw"] = existing_event.metadata
 
     sport = row["sport"]
     league = get_or_create_precise_entity(
