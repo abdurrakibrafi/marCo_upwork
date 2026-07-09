@@ -10,14 +10,16 @@ User = get_user_model()
 @database_sync_to_async
 def get_user_from_jwt(token):
     from django.db import close_old_connections
-    close_old_connections()
     try:
+        close_old_connections()
+        if not token:
+            return AnonymousUser()
         payload = jwt.decode(token, settings.SECRET_KEY, algorithms=["HS256"])
         user_id = payload.get("user_id")
         if user_id is None:
             return AnonymousUser()
         return User.objects.get(id=user_id)
-    except (jwt.ExpiredSignatureError, jwt.DecodeError, User.DoesNotExist):
+    except Exception:
         return AnonymousUser()
 
 
