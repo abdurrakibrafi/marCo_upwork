@@ -1019,6 +1019,11 @@ def _save_event(row: dict) -> Event | None:
             "metadata":     row["raw"],
         },
     )
+    if status == "completed":
+        try:
+            _populate_statpal_event_details(event)
+        except Exception as e:
+            logger.warning(f"Failed to auto-populate statpal event details for {event.id}: {e}")
     return event
 
 

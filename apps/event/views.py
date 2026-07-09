@@ -411,6 +411,28 @@ def get_event_detail(request, event_id):
             ),
             id=event_id
         )
+
+        # On-the-fly details population for completed/finished StatPal events
+        is_completed = (event.status == 'completed') or (
+            event.status == 'upcoming' and event.start_time and event.start_time < timezone.now()
+        )
+        if is_completed and event.api_source == 'statpal':
+            has_timeline = event.timeline.exists()
+            has_events_meta = bool(event.metadata.get('events')) if event.metadata else False
+            if not has_timeline and has_events_meta:
+                from apps.event.tasks import _populate_statpal_event_details
+                try:
+                    _populate_statpal_event_details(event)
+                    # Re-fetch event to include newly created timeline and stats
+                    event = Event.objects.select_related(
+                        'home_entity', 'away_entity', 'league'
+                    ).prefetch_related(
+                        'timeline', 'lineups', 'statistics',
+                        'player_stats', 'highlights'
+                    ).get(id=event_id)
+                except Exception:
+                    pass
+
         return mixin.success_response(data=EventDetailSerializer(event).data)
     except Exception as exc:
         return mixin.handle_exception(exc)
@@ -530,9 +552,9 @@ def trigger_event_detail_fetch(request, event_id):
 
         event = get_object_or_404(Event, id=event_id)
 
-        if event.api_source != 'api_sports':
+        if event.api_source not in ['api_sports', 'statpal']:
             return mixin.error_response(
-                message=f'Only api_sports events supported. This event is from {event.api_source}',
+                message=f'Only api_sports and statpal events supported. This event is from {event.api_source}',
                 status_code=status.HTTP_400_BAD_REQUEST
             )
 
