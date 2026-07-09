@@ -296,7 +296,40 @@ def nest_live_scores(request):
 def live_score_detail(request, score_id):
     mixin = BaseResponseMixin()
     try:
-        game = LiveScore.objects.get(id=score_id)
+        game = None
+        # 1. Try LiveScore ID
+        try:
+            game = LiveScore.objects.get(id=score_id)
+        except LiveScore.DoesNotExist:
+            pass
+
+        # 2. Try looking up Event ID -> check if live score exists for its external_id
+        from apps.event.models import Event
+        event_obj = Event.objects.filter(id=score_id).first()
+        if not game and event_obj:
+            game = LiveScore.objects.filter(external_id=event_obj.external_id).first()
+
+        # 3. Fallback: If not live, mock the game object from the completed/upcoming Event!
+        if not game and event_obj:
+            class MockGame:
+                id = event_obj.id
+                sport = event_obj.sport
+                external_id = event_obj.external_id
+                home_team = event_obj.home_entity.name if event_obj.home_entity else ""
+                away_team = event_obj.away_entity.name if event_obj.away_entity else ""
+                home_logo = event_obj.home_entity.logo_url if event_obj.home_entity else ""
+                away_logo = event_obj.away_entity.logo_url if event_obj.away_entity else ""
+                status = event_obj.status
+                status_detail = event_obj.status_detail
+                home_score = event_obj.home_score
+                away_score = event_obj.away_score
+                raw_data = event_obj.metadata or {}
+            game = MockGame()
+
+        # 4. If still not found anywhere, return 404
+        if not game:
+            return mixin.error_response(message='Game not found', status_code=404)
+
         raw = game.raw_data
         if isinstance(raw, list):
             raw = raw[0] if raw else {}
