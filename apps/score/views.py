@@ -387,20 +387,21 @@ def live_score_detail(request, score_id):
 
         sport = game.sport
 
-        # 5. Initialize all output fields with safe default values
-        toss_str = ""
-        status_info = game.status_detail or game.status
+        # 5. Initialize all output fields with original raw values to match StatPal exact structures
+        toss_str = raw.get('event_toss', '')
+        status_info = raw.get('event_status_info', game.status_detail or game.status)
         league_name = raw.get('league_name', '')
-        home_rr = None
-        away_rr = None
-        scorecard = {}
-        ball_by_ball = []
+        home_rr = raw.get('event_home_rr')
+        away_rr = raw.get('event_away_rr')
+        scorecard = raw.get('scorecard', {})
+        ball_by_ball = raw.get('comments', {}).get('Live', [])[-10:]
         events = []
         statistics = []
         halftime_score = {}
-        wickets = {}
-        lineups = {}
-        match_type = raw.get('type', '')
+        wickets = raw.get('wickets', {})
+        lineups = raw.get('lineups', {})
+        match_type = raw.get('event_type', raw.get('type', ''))
+        stadium = raw.get('event_stadium', raw.get('venue', ''))
 
         # Fetch League from database Event mapping if available
         from apps.event.models import Event
@@ -501,6 +502,8 @@ def live_score_detail(request, score_id):
             status_info = raw.get('comment', {}).get('post', '') or raw.get('event_status_info', '')
             wickets = raw.get('wickets', {})
             lineups = raw.get('lineups', {})
+            match_type = raw.get('type', '')
+            stadium = raw.get('venue', '')
 
         elif sport == 'soccer':
             from apps.sports_apis.services.statpal import statpal_service
@@ -612,7 +615,7 @@ def live_score_detail(request, score_id):
                     })
                 scorecard = {"Runners": runner_list}
             else:
-                # NBA, Volleyball, Handball, Hockey, etc.
+                # NBA, Volleyball, Handball, Hockey, etc. (periods/sets/quarters)
                 home_raw = raw.get('home', {})
                 away_raw = raw.get('away', {})
                 if home_raw and away_raw:
@@ -646,7 +649,7 @@ def live_score_detail(request, score_id):
             'match_type': match_type,
             'toss': toss_str,
             'status_info': status_info,
-            'stadium': raw.get('venue', ''),
+            'stadium': stadium,
             'league': league_name,
             'home_rr': home_rr,
             'away_rr': away_rr,
