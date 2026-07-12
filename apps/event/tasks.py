@@ -423,7 +423,8 @@ def _populate_statpal_event_details(event):
                 event.save(update_fields=['home_score', 'away_score'])
             except (ValueError, TypeError):
                 pass
-        return
+        if EventTimeline.objects.filter(event=event).exists():
+            return
 
     raw_events = meta.get('events')
     if not raw_events:

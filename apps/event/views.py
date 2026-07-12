@@ -236,6 +236,7 @@ def get_nest_calendar(request):
 
 
 @api_view(["GET"])
+@permission_classes([AllowAny])
 def get_event_detail(request, event_id: int):
     """
     Full detail for a single event including metadata (lineups, etc.)
@@ -248,13 +249,52 @@ def get_event_detail(request, event_id: int):
     """
     mixin = BaseResponseMixin()
     try:
-        event = (
-            Event.objects.select_related("home_entity", "away_entity", "league")
-            .get(pk=event_id)
-        ) # Changed to EventDetailSerializer
+        event = get_object_or_404(
+            Event.objects.select_related(
+                "home_entity", "away_entity", "league"
+            ).prefetch_related(
+                "timeline", "lineups", "statistics",
+                "player_stats", "highlights"
+            ),
+            id=event_id
+        )
+
+        # On-the-fly details population for completed/finished events (if missing)
+        is_completed = (event.status == "completed") or (
+            event.status == "upcoming" and event.start_time and event.start_time < timezone.now()
+        )
+        if is_completed:
+            has_timeline = event.timeline.exists()
+            has_lineups = event.lineups.exists()
+            has_stats = event.statistics.exists()
+            
+            if not (has_timeline or has_lineups or has_stats):
+                if event.api_source == "statpal":
+                    from apps.event.tasks import _populate_statpal_event_details
+                    try:
+                        _populate_statpal_event_details(event)
+                        event = Event.objects.select_related(
+                            "home_entity", "away_entity", "league"
+                        ).prefetch_related(
+                            "timeline", "lineups", "statistics",
+                            "player_stats", "highlights"
+                        ).get(id=event_id)
+                    except Exception:
+                        pass
+                elif event.api_source == "api_sports":
+                    from apps.event.tasks import fetch_event_details
+                    try:
+                        fetch_event_details(event.id)
+                        event = Event.objects.select_related(
+                            "home_entity", "away_entity", "league"
+                        ).prefetch_related(
+                            "timeline", "lineups", "statistics",
+                            "player_stats", "highlights"
+                        ).get(id=event_id)
+                    except Exception:
+                        pass
+
         return mixin.success_response(data=EventDetailSerializer(event).data)
-    except Event.DoesNotExist:
-        return mixin.error_response(message="Event not found.", status_code=404)
     except Exception as exc:
         return mixin.handle_exception(exc)
 
@@ -394,48 +434,7 @@ def get_entity_calendar(request, entity_id):
         return mixin.handle_exception(exc)
 
 
-@api_view(['GET'])
-@permission_classes([AllowAny])
-def get_event_detail(request, event_id):
-    """
-    GET /api/events/{event_id}
-    """
-    mixin = BaseResponseMixin()
-    try:
-        event = get_object_or_404(
-            Event.objects.select_related(
-                'home_entity', 'away_entity', 'league'
-            ).prefetch_related(
-                'timeline', 'lineups', 'statistics',
-                'player_stats', 'highlights'
-            ),
-            id=event_id
-        )
 
-        # On-the-fly details population for completed/finished StatPal events
-        is_completed = (event.status == 'completed') or (
-            event.status == 'upcoming' and event.start_time and event.start_time < timezone.now()
-        )
-        if is_completed and event.api_source == 'statpal':
-            has_timeline = event.timeline.exists()
-            has_events_meta = bool(event.metadata.get('events')) if event.metadata else False
-            if not has_timeline and has_events_meta:
-                from apps.event.tasks import _populate_statpal_event_details
-                try:
-                    _populate_statpal_event_details(event)
-                    # Re-fetch event to include newly created timeline and stats
-                    event = Event.objects.select_related(
-                        'home_entity', 'away_entity', 'league'
-                    ).prefetch_related(
-                        'timeline', 'lineups', 'statistics',
-                        'player_stats', 'highlights'
-                    ).get(id=event_id)
-                except Exception:
-                    pass
-
-        return mixin.success_response(data=EventDetailSerializer(event).data)
-    except Exception as exc:
-        return mixin.handle_exception(exc)
 
 
 @api_view(['GET'])

@@ -166,7 +166,7 @@ REST_FRAMEWORK = {
 
 SPECTACULAR_SETTINGS = {
     'TITLE': 'MySportsNest API',
-    'DESCRIPTION': 'Built with 🐍 by Rafi',
+    # 'DESCRIPTION': 'Built with 🐍 by Rafi',
     'VERSION': '1.0.0',
     'SERVE_INCLUDE_SCHEMA': False,
     'COMPONENT_SPLIT_REQUEST': True,
