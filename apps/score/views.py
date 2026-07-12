@@ -548,9 +548,100 @@ def live_score_detail(request, score_id):
                     game.away_team, event.away_entity.id if (event and event.away_entity) else 0
                 )
                 
-                ht = detail_raw.get('ht', {}) or {}
-                halftime_score = {'home': ht.get('home'), 'away': ht.get('away')}
+                # Halftime score resolver
+                ht = detail_raw.get('ht')
+                if ht and isinstance(ht, dict):
+                    halftime_score = {
+                        'home': ht.get('home') if ht.get('home') is not None else ht.get('home_goals'),
+                        'away': ht.get('away') if ht.get('away') is not None else ht.get('away_goals')
+                    }
+                else:
+                    score_dict = detail_raw.get('score', {}) or {}
+                    ht_fallback = score_dict.get('halftime', {}) or {} if isinstance(score_dict, dict) else {}
+                    if isinstance(ht_fallback, dict):
+                        halftime_score = {
+                            'home': ht_fallback.get('home') if ht_fallback.get('home') is not None else ht_fallback.get('home_goals'),
+                            'away': ht_fallback.get('away') if ht_fallback.get('away') is not None else ht_fallback.get('away_goals')
+                        }
                 status_info = detail_raw.get('status', '')
+
+            # Fallback to database models for timeline, statistics, and lineups if empty
+            if event:
+                from apps.event.models import EventStatistics, EventTimeline, EventLineup
+                if not statistics:
+                    db_stats = EventStatistics.objects.filter(event=event).select_related('team')
+                    if db_stats.exists():
+                        statistics = []
+                        for s_obj in db_stats:
+                            team_info = {"id": s_obj.team.id, "name": s_obj.team.name}
+                            metrics_list = []
+                            for k, v in s_obj.stats.items():
+                                metric_name = k.replace('_', ' ').title()
+                                metrics_list.append({"type": metric_name, "value": v})
+                            statistics.append({
+                                "team": team_info,
+                                "statistics": metrics_list
+                            })
+
+                if not events:
+                    db_timeline = EventTimeline.objects.filter(event=event).select_related('team', 'player')
+                    if db_timeline.exists():
+                        events = []
+                        for ev in db_timeline:
+                            api_type = "Goal"
+                            detail = "Normal Goal"
+                            ev_type = ev.event_type.lower()
+                            if "goal" in ev_type:
+                                api_type = "Goal"
+                                detail = "Normal Goal"
+                            elif "card" in ev_type or "yellow" in ev_type or "red" in ev_type:
+                                api_type = "Card"
+                                detail = "Red Card" if "red" in ev_type else "Yellow Card"
+                            elif "sub" in ev_type:
+                                api_type = "Subst"
+                                detail = "Substitution"
+
+                            events.append({
+                                "time": {
+                                    "elapsed": ev.minute,
+                                    "extra": ev.extra_minute
+                                },
+                                "team": {"id": ev.team.id, "name": ev.team.name} if ev.team else {"id": None, "name": None},
+                                "player": {"id": ev.player.id if ev.player else None, "name": ev.player.name if ev.player else ev.description},
+                                "assist": {"id": None, "name": None},
+                                "type": api_type,
+                                "detail": detail,
+                                "comments": ev.description
+                            })
+                        events.sort(key=lambda x: x["time"]["elapsed"])
+
+                if not lineups:
+                    db_lineups = EventLineup.objects.filter(event=event).select_related('team', 'player')
+                    if db_lineups.exists():
+                        lineups = {}
+                        for l_obj in db_lineups:
+                            side = "home" if (event.home_entity and l_obj.team_id == event.home_entity_id) else "away"
+                            if side not in lineups:
+                                lineups[side] = {
+                                    "coach": {"id": None, "name": None},
+                                    "formation": "",
+                                    "startXI": [],
+                                    "substitutes": []
+                                }
+                            
+                            player_info = {
+                                "player": {
+                                    "id": l_obj.player.id if l_obj.player else None,
+                                    "name": l_obj.player.name if l_obj.player else "",
+                                    "number": l_obj.jersey_number,
+                                    "pos": l_obj.position,
+                                    "grid": l_obj.grid_position
+                                }
+                            }
+                            if l_obj.position_type == "substitute":
+                                lineups[side]["substitutes"].append(player_info)
+                            else:
+                                lineups[side]["startXI"].append(player_info)
 
         else:
             # NBA, MLB, Tennis, Golf, Horse Racing, Volleyball, Handball, Hockey, etc.
