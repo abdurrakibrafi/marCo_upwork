@@ -1086,7 +1086,7 @@ def _generic_sport_rows(data: dict, sport_name: str) -> list:
             continue
 
         league_id   = str(tournament.get("id", ""))
-        league_name = tournament.get("league", "")
+        league_name = tournament.get("league") or tournament.get("name") or ""
 
         matches = tournament.get("match", [])
         if isinstance(matches, dict):
@@ -1099,6 +1099,13 @@ def _generic_sport_rows(data: dict, sport_name: str) -> list:
                 continue
             home = m.get("home", {})
             away = m.get("away", {})
+
+            # Tennis and other individual sports may use player array instead of home/away keys
+            players = m.get("player", [])
+            if (not home or not away) and isinstance(players, list) and len(players) >= 2:
+                home = players[0]
+                away = players[1]
+
             rows.append({
                 "external_id": str(m.get("id", "")),
                 "sport": sport_name,
