@@ -107,6 +107,94 @@ def _convert_statpal_stats_to_api_sports(team_stats, home_team_name, home_team_i
     ]
 
 
+def _convert_tennis_stats(match_data, home_player_name, home_team_id, away_player_name, away_team_id):
+    players = match_data.get('player', [])
+    if not isinstance(players, list) or len(players) < 2:
+        return []
+    
+    p1, p2 = players[0], players[1]
+    
+    p1_stats = {}
+    p2_stats = {}
+    
+    p1_periods = p1.get('stats', {}).get('period', [])
+    if isinstance(p1_periods, dict):
+        p1_periods = [p1_periods]
+    elif not isinstance(p1_periods, list):
+        p1_periods = []
+        
+    for p in p1_periods:
+        if isinstance(p, dict) and p.get('name') == 'match':
+            types = p.get('type', [])
+            if isinstance(types, dict):
+                types = [types]
+            for t in types:
+                if not isinstance(t, dict):
+                    continue
+                stats_list = t.get('stat', [])
+                if isinstance(stats_list, dict):
+                    stats_list = [stats_list]
+                for s in stats_list:
+                    if isinstance(s, dict) and s.get('name'):
+                        p1_stats[s.get('name')] = s.get('value')
+                        
+    p2_periods = p2.get('stats', {}).get('period', [])
+    if isinstance(p2_periods, dict):
+        p2_periods = [p2_periods]
+    elif not isinstance(p2_periods, list):
+        p2_periods = []
+        
+    for p in p2_periods:
+        if isinstance(p, dict) and p.get('name') == 'match':
+            types = p.get('type', [])
+            if isinstance(types, dict):
+                types = [types]
+            for t in types:
+                if not isinstance(t, dict):
+                    continue
+                stats_list = t.get('stat', [])
+                if isinstance(stats_list, dict):
+                    stats_list = [stats_list]
+                for s in stats_list:
+                    if isinstance(s, dict) and s.get('name'):
+                        p2_stats[s.get('name')] = s.get('value')
+                        
+    metrics = [
+        "Aces",
+        "Double Faults",
+        "1st serve percentage",
+        "1st serve points won",
+        "2nd serve points won",
+        "Break Points Saved",
+        "Break Points Converted",
+        "Service Points Won",
+        "Return Points Won",
+        "Total Points Won",
+    ]
+    
+    home_stats = []
+    away_stats = []
+    
+    for metric in metrics:
+        v1 = p1_stats.get(metric)
+        if v1 is not None:
+            home_stats.append({"type": metric, "value": v1})
+        v2 = p2_stats.get(metric)
+        if v2 is not None:
+            away_stats.append({"type": metric, "value": v2})
+            
+    return [
+        {
+            "team": {"id": home_team_id, "name": p1.get('name') or home_player_name},
+            "statistics": home_stats
+        },
+        {
+            "team": {"id": away_team_id, "name": p2.get('name') or away_player_name},
+            "statistics": away_stats
+        }
+    ]
+
+
 def _convert_statpal_events_to_api_sports(match_data, home_team_name, home_team_id, away_team_name, away_team_id):
     events = []
     summary = match_data.get("event_summary", {})
@@ -684,6 +772,40 @@ def live_score_detail(request, score_id):
                         "Set 4": {"home": p1.get("s4"), "away": p2.get("s4")},
                         "Set 5": {"home": p1.get("s5"), "away": p2.get("s5")},
                     }
+
+                # Fetch live stats for tennis
+                from apps.sports_apis.services.statpal import statpal_service
+                try:
+                    cache_key = 'statpal_tennis_livestats'
+                    stats_all = cache.get(cache_key)
+                    if not stats_all:
+                        stats_result = statpal_service.get_tennis_live_stats()
+                        if stats_result.get('success'):
+                            stats_all = stats_result['data'].get('livestats', {}).get('tournament', [])
+                            if isinstance(stats_all, dict):
+                                stats_all = [stats_all]
+                            cache.set(cache_key, stats_all, 15)  # 15s cache
+
+                    if stats_all:
+                        ext_id = str(game.external_id)
+                        for tour_block in stats_all:
+                            if not isinstance(tour_block, dict):
+                                continue
+                            matches = tour_block.get('match', [])
+                            if isinstance(matches, dict):
+                                matches = [matches]
+                            elif not isinstance(matches, list):
+                                matches = []
+                            for m in matches:
+                                if isinstance(m, dict) and str(m.get('id')) == ext_id:
+                                    statistics = _convert_tennis_stats(
+                                        m,
+                                        game.home_team, home_entity_id,
+                                        game.away_team, away_entity_id
+                                    )
+                                    break
+                except Exception:
+                    pass
             elif sport == 'baseball':
                 events_raw = raw.get('events', {}).get('event', [])
                 if isinstance(events_raw, dict):
