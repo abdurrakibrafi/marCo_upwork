@@ -527,43 +527,45 @@ def live_score_detail(request, score_id):
                                 break
                 except Exception:
                     pass
-            if not detail_raw and game.raw_data:
-                raw_dict = game.raw_data[0] if isinstance(game.raw_data, list) else game.raw_data
-                if isinstance(raw_dict, dict) and ("event_summary" in raw_dict or "events" in raw_dict or "team_stats" in raw_dict):
-                    detail_raw = raw_dict
-            
-            if not detail_raw and event and event.metadata:
-                if isinstance(event.metadata, dict) and ("event_summary" in event.metadata or "events" in event.metadata or "team_stats" in event.metadata):
-                    detail_raw = event.metadata
+
+            # If StatPal match-stats API returned 404 or nothing, use the raw_data stored in DB
+            # raw_data already contains events, ht (halftime), home/away goals etc.
+            if not detail_raw:
+                detail_raw = raw  # raw_data from LiveScore / Event has all the info
 
             if detail_raw:
+                home_entity_id = event.home_entity.id if (event and event.home_entity) else 0
+                away_entity_id = event.away_entity.id if (event and event.away_entity) else 0
+
                 statistics = _convert_statpal_stats_to_api_sports(
                     detail_raw.get('team_stats', {}),
-                    game.home_team, event.home_entity.id if (event and event.home_entity) else 0,
-                    game.away_team, event.away_entity.id if (event and event.away_entity) else 0
+                    game.home_team, home_entity_id,
+                    game.away_team, away_entity_id
                 )
                 events = _convert_statpal_events_to_api_sports(
                     detail_raw,
-                    game.home_team, event.home_entity.id if (event and event.home_entity) else 0,
-                    game.away_team, event.away_entity.id if (event and event.away_entity) else 0
+                    game.home_team, home_entity_id,
+                    game.away_team, away_entity_id
                 )
-                
-                # Halftime score resolver
+
+                # Halftime score resolver - check both StatPal match-stats format and raw_data format
                 ht = detail_raw.get('ht')
                 if ht and isinstance(ht, dict):
-                    halftime_score = {
-                        'home': ht.get('home') if ht.get('home') is not None else ht.get('home_goals'),
-                        'away': ht.get('away') if ht.get('away') is not None else ht.get('away_goals')
-                    }
+                    # raw_data format: {"home_goals": 2, "away_goals": 1}
+                    # match-stats format: {"home": 2, "away": 1}
+                    home_ht = ht.get('home') if ht.get('home') is not None else ht.get('home_goals')
+                    away_ht = ht.get('away') if ht.get('away') is not None else ht.get('away_goals')
+                    if home_ht is not None or away_ht is not None:
+                        halftime_score = {'home': home_ht, 'away': away_ht}
                 else:
                     score_dict = detail_raw.get('score', {}) or {}
                     ht_fallback = score_dict.get('halftime', {}) or {} if isinstance(score_dict, dict) else {}
-                    if isinstance(ht_fallback, dict):
+                    if isinstance(ht_fallback, dict) and ht_fallback:
                         halftime_score = {
                             'home': ht_fallback.get('home') if ht_fallback.get('home') is not None else ht_fallback.get('home_goals'),
                             'away': ht_fallback.get('away') if ht_fallback.get('away') is not None else ht_fallback.get('away_goals')
                         }
-                status_info = detail_raw.get('status', '')
+                status_info = detail_raw.get('status', '') or game.status_detail or game.status
 
             # Fallback to database models for timeline, statistics, and lineups if empty
             if event:
