@@ -263,36 +263,37 @@ def get_event_detail(request, event_id: int):
         is_completed = (event.status == "completed") or (
             event.status == "upcoming" and event.start_time and event.start_time < timezone.now()
         )
-        if is_completed:
-            has_timeline = event.timeline.exists()
-            has_lineups = event.lineups.exists()
-            has_stats = event.statistics.exists()
-            
-            if not (has_timeline or has_lineups or has_stats):
-                if event.api_source == "statpal":
-                    from apps.event.tasks import _populate_statpal_event_details
-                    try:
-                        _populate_statpal_event_details(event)
-                        event = Event.objects.select_related(
-                            "home_entity", "away_entity", "league"
-                        ).prefetch_related(
-                            "timeline", "lineups", "statistics",
-                            "player_stats", "highlights"
-                        ).get(id=event_id)
-                    except Exception:
-                        pass
-                elif event.api_source == "api_sports":
-                    from apps.event.tasks import fetch_event_details
-                    try:
-                        fetch_event_details(event.id)
-                        event = Event.objects.select_related(
-                            "home_entity", "away_entity", "league"
-                        ).prefetch_related(
-                            "timeline", "lineups", "statistics",
-                            "player_stats", "highlights"
-                        ).get(id=event_id)
-                    except Exception:
-                        pass
+        if is_completed and not event.metadata.get("details_fetched"):
+            if event.api_source == "statpal":
+                from apps.event.tasks import _populate_statpal_event_details
+                try:
+                    _populate_statpal_event_details(event)
+                    event.metadata["details_fetched"] = True
+                    event.save(update_fields=["metadata"])
+                    # Re-fetch event to include newly created timeline and stats
+                    event = Event.objects.select_related(
+                        "home_entity", "away_entity", "league"
+                    ).prefetch_related(
+                        "timeline", "lineups", "statistics",
+                        "player_stats", "highlights"
+                    ).get(id=event_id)
+                except Exception:
+                    pass
+            elif event.api_source == "api_sports":
+                from apps.event.tasks import fetch_event_details
+                try:
+                    fetch_event_details(event.id)
+                    # Re-fetch event to include newly fetched data
+                    event = Event.objects.select_related(
+                        "home_entity", "away_entity", "league"
+                    ).prefetch_related(
+                        "timeline", "lineups", "statistics",
+                        "player_stats", "highlights"
+                    ).get(id=event_id)
+                    event.metadata["details_fetched"] = True
+                    event.save(update_fields=["metadata"])
+                except Exception:
+                    pass
 
         return mixin.success_response(data=EventDetailSerializer(event).data)
     except Exception as exc:
