@@ -381,6 +381,8 @@ def live_score_detail(request, score_id):
         raw = game.raw_data
         if isinstance(raw, list):
             raw = raw[0] if raw else {}
+        if not isinstance(raw, dict):
+            raw = {}
 
         sport = game.sport
 
