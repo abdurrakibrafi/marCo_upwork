@@ -623,6 +623,30 @@ def _on_the_fly_update_statpal_event(event):
     except Exception as e:
         logger.warning(f"On-the-fly live scores fetch failed for event {event.id}: {e}")
         
+    # For cricket, try the tournament schedule if we have a league
+    if sport == "cricket" and event.league and event.league.external_id:
+        try:
+            res = statpal_service.get_cricket_tournaments()
+            if res.get('success'):
+                cats = res.get('data', {}).get('tours', {}).get('category', [])
+                if isinstance(cats, dict):
+                    cats = [cats]
+                
+                tour = next((c for c in cats if str(c.get('id')) == str(event.league.external_id)), None)
+                if tour and tour.get('schedule_uri'):
+                    parts = tour['schedule_uri'].strip('/').split('/')
+                    if len(parts) >= 2:
+                        t_type, t_id = parts[0], parts[1]
+                        sched_res = statpal_service.get_cricket_schedule(t_type, t_id)
+                        if sched_res.get('success'):
+                            rows = _cricket_rows(sched_res['data'])
+                            for row in rows:
+                                if str(row.get("external_id")) == str(event.external_id):
+                                    _save_event(row)
+                                    return True
+        except Exception as e:
+            logger.warning(f"On-the-fly cricket tournament schedule fetch failed for event {event.id}: {e}")
+
     # Special fallback for soccer match stats
     if sport == "soccer":
         try:
@@ -1128,6 +1152,8 @@ def _cricket_rows(data: dict) -> list:
         data.get("scores", {}).get("category", [])
         or data.get("fixtures", {}).get("category", [])
     )
+    if isinstance(categories, dict):
+        categories = [categories]
 
     rows = []
     for cat in categories:
