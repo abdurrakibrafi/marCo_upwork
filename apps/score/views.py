@@ -110,104 +110,152 @@ def _convert_statpal_stats_to_api_sports(team_stats, home_team_name, home_team_i
 def _convert_statpal_events_to_api_sports(match_data, home_team_name, home_team_id, away_team_name, away_team_id):
     events = []
     summary = match_data.get("event_summary", {})
-    if isinstance(summary, dict):
-        for side in ["home", "away"]:
-            side_team_name = home_team_name if side == "home" else away_team_name
-            side_team_id = home_team_id if side == "home" else away_team_id
-            
-            side_events = summary.get(side, {})
-            if not isinstance(side_events, dict):
-                continue
-                
-            # Goals
-            goals_list = _normalize_list(side_events.get("goals", {}).get("event", []))
-            for g in goals_list:
-                detail = "Normal Goal"
-                if g.get("penalty") == "True":
-                    detail = "Penalty"
-                elif g.get("own_goal") == "True":
-                    detail = "Own Goal"
-                events.append({
-                    "time": {
-                        "elapsed": int(g.get("minute") or 0) if g.get("minute") else 0,
-                        "extra": int(g.get("extra_min") or 0) if g.get("extra_min") else None
-                    },
-                    "team": {"id": side_team_id, "name": side_team_name},
-                    "player": {"id": g.get("player_id"), "name": g.get("player_name")},
-                    "assist": {"id": g.get("assist_player_id"), "name": g.get("assist_player_name")} if g.get("assist_player_id") else {"id": None, "name": None},
-                    "type": "Goal",
-                    "detail": detail,
-                    "comments": None
-                })
-                
-            # Yellow Cards
-            yc_list = _normalize_list(side_events.get("yellowcards", {}).get("event", []))
-            for yc in yc_list:
-                events.append({
-                    "time": {
-                        "elapsed": int(yc.get("minute") or 0) if yc.get("minute") else 0,
-                        "extra": int(yc.get("extra_min") or 0) if yc.get("extra_min") else None
-                    },
-                    "team": {"id": side_team_id, "name": side_team_name},
-                    "player": {"id": yc.get("player_id"), "name": yc.get("player_name")},
-                    "assist": {"id": None, "name": None},
-                    "type": "Card",
-                    "detail": "Yellow Card",
-                    "comments": yc.get("comment") or None
-                })
-
-            # Red Cards
-            rc_list = _normalize_list(side_events.get("redcards", {}).get("event", []))
-            for rc in rc_list:
-                events.append({
-                    "time": {
-                        "elapsed": int(rc.get("minute") or 0) if rc.get("minute") else 0,
-                        "extra": int(rc.get("extra_min") or 0) if rc.get("extra_min") else None
-                    },
-                    "team": {"id": side_team_id, "name": side_team_name},
-                    "player": {"id": rc.get("player_id"), "name": rc.get("player_name")},
-                    "assist": {"id": None, "name": None},
-                    "type": "Card",
-                    "detail": "Red Card",
-                    "comments": rc.get("comment") or None
-                })
-
-            # VAR
-            var_list = _normalize_list(side_events.get("var", {}).get("event", []))
-            for var in var_list:
-                events.append({
-                    "time": {
-                        "elapsed": int(var.get("minute") or 0) if var.get("minute") else 0,
-                        "extra": int(var.get("extra_min") or 0) if var.get("extra_min") else None
-                    },
-                    "team": {"id": side_team_id, "name": side_team_name},
-                    "player": {"id": var.get("player_id"), "name": var.get("player_name")},
-                    "assist": {"id": None, "name": None},
-                    "type": "Var",
-                    "detail": var.get("event_type") or "VAR Decision",
-                    "comments": var.get("ref_decision") or None
-                })
-
-    # Substitutions
     subs = match_data.get("substitutions", {})
-    if isinstance(subs, dict):
-        for side in ["home", "away"]:
-            side_team_name = home_team_name if side == "home" else away_team_name
-            side_team_id = home_team_id if side == "home" else away_team_id
-            
-            sub_list = _normalize_list(subs.get(side, {}).get("substitution", []))
-            for s in sub_list:
+    
+    # Check if we have event_summary or substitutions
+    has_summary_or_subs = (isinstance(summary, dict) and summary) or (isinstance(subs, dict) and subs)
+    
+    if has_summary_or_subs:
+        if isinstance(summary, dict):
+            for side in ["home", "away"]:
+                side_team_name = home_team_name if side == "home" else away_team_name
+                side_team_id = home_team_id if side == "home" else away_team_id
+                
+                side_events = summary.get(side, {})
+                if not isinstance(side_events, dict):
+                    continue
+                    
+                # Goals
+                goals_list = _normalize_list(side_events.get("goals", {}).get("event", []))
+                for g in goals_list:
+                    detail = "Normal Goal"
+                    if g.get("penalty") == "True":
+                        detail = "Penalty"
+                    elif g.get("own_goal") == "True":
+                        detail = "Own Goal"
+                    events.append({
+                        "time": {
+                            "elapsed": int(g.get("minute") or 0) if g.get("minute") else 0,
+                            "extra": int(g.get("extra_min") or 0) if g.get("extra_min") else None
+                        },
+                        "team": {"id": side_team_id, "name": side_team_name},
+                        "player": {"id": g.get("player_id"), "name": g.get("player_name")},
+                        "assist": {"id": g.get("assist_player_id"), "name": g.get("assist_player_name")} if g.get("assist_player_id") else {"id": None, "name": None},
+                        "type": "Goal",
+                        "detail": detail,
+                        "comments": None
+                    })
+                    
+                # Yellow Cards
+                yc_list = _normalize_list(side_events.get("yellowcards", {}).get("event", []))
+                for yc in yc_list:
+                    events.append({
+                        "time": {
+                            "elapsed": int(yc.get("minute") or 0) if yc.get("minute") else 0,
+                            "extra": int(yc.get("extra_min") or 0) if yc.get("extra_min") else None
+                        },
+                        "team": {"id": side_team_id, "name": side_team_name},
+                        "player": {"id": yc.get("player_id"), "name": yc.get("player_name")},
+                        "assist": {"id": None, "name": None},
+                        "type": "Card",
+                        "detail": "Yellow Card",
+                        "comments": yc.get("comment") or None
+                    })
+
+                # Red Cards
+                rc_list = _normalize_list(side_events.get("redcards", {}).get("event", []))
+                for rc in rc_list:
+                    events.append({
+                        "time": {
+                            "elapsed": int(rc.get("minute") or 0) if rc.get("minute") else 0,
+                            "extra": int(rc.get("extra_min") or 0) if rc.get("extra_min") else None
+                        },
+                        "team": {"id": side_team_id, "name": side_team_name},
+                        "player": {"id": rc.get("player_id"), "name": rc.get("player_name")},
+                        "assist": {"id": None, "name": None},
+                        "type": "Card",
+                        "detail": "Red Card",
+                        "comments": rc.get("comment") or None
+                    })
+
+                # VAR
+                var_list = _normalize_list(side_events.get("var", {}).get("event", []))
+                for var in var_list:
+                    events.append({
+                        "time": {
+                            "elapsed": int(var.get("minute") or 0) if var.get("minute") else 0,
+                            "extra": int(var.get("extra_min") or 0) if var.get("extra_min") else None
+                        },
+                        "team": {"id": side_team_id, "name": side_team_name},
+                        "player": {"id": var.get("player_id"), "name": var.get("player_name")},
+                        "assist": {"id": None, "name": None},
+                        "type": "Var",
+                        "detail": var.get("event_type") or "VAR Decision",
+                        "comments": var.get("ref_decision") or None
+                    })
+
+        # Substitutions
+        if isinstance(subs, dict):
+            for side in ["home", "away"]:
+                side_team_name = home_team_name if side == "home" else away_team_name
+                side_team_id = home_team_id if side == "home" else away_team_id
+                
+                sub_list = _normalize_list(subs.get(side, {}).get("substitution", []))
+                for s in sub_list:
+                    events.append({
+                        "time": {
+                            "elapsed": int(s.get("minute") or 0) if s.get("minute") else 0,
+                            "extra": int(s.get("extra_min") or 0) if s.get("extra_min") else None
+                        },
+                        "team": {"id": side_team_id, "name": side_team_name},
+                        "player": {"id": s.get("player_off_id"), "name": s.get("player_off")},
+                        "assist": {"id": s.get("player_on_id"), "name": s.get("player_on")},
+                        "type": "subst",
+                        "detail": "Substitution",
+                        "comments": None
+                    })
+    else:
+        # Fallback: parse generic events list format
+        raw_events = match_data.get("events", {})
+        if isinstance(raw_events, dict):
+            event_list = raw_events.get("event", [])
+            if isinstance(event_list, dict):
+                event_list = [event_list]
+            elif not isinstance(event_list, list):
+                event_list = []
+                
+            for ev in event_list:
+                if not isinstance(ev, dict):
+                    continue
+                
+                side = ev.get("team")
+                side_team_name = home_team_name if side == "home" else away_team_name
+                side_team_id = home_team_id if side == "home" else away_team_id
+                
+                ev_type = ev.get("type", "").lower()
+                api_type = "Goal"
+                detail = "Normal Goal"
+                if "goal" in ev_type:
+                    api_type = "Goal"
+                    detail = "Normal Goal"
+                elif "card" in ev_type or "yellow" in ev_type or "red" in ev_type:
+                    api_type = "Card"
+                    detail = "Red Card" if "red" in ev_type else "Yellow Card"
+                elif "sub" in ev_type:
+                    api_type = "Subst"
+                    detail = "Substitution"
+                
                 events.append({
                     "time": {
-                        "elapsed": int(s.get("minute") or 0) if s.get("minute") else 0,
-                        "extra": int(s.get("extra_min") or 0) if s.get("extra_min") else None
+                        "elapsed": int(ev.get("minute") or 0) if ev.get("minute") else 0,
+                        "extra": int(ev.get("extra_min") or 0) if ev.get("extra_min") else None
                     },
                     "team": {"id": side_team_id, "name": side_team_name},
-                    "player": {"id": s.get("player_off_id"), "name": s.get("player_off")},
-                    "assist": {"id": s.get("player_on_id"), "name": s.get("player_on")},
-                    "type": "subst",
-                    "detail": "Substitution",
-                    "comments": None
+                    "player": {"id": ev.get("player_id"), "name": ev.get("player")},
+                    "assist": {"id": ev.get("assist_id"), "name": ev.get("assist_player")} if ev.get("assist_id") else {"id": None, "name": None},
+                    "type": api_type,
+                    "detail": detail,
+                    "comments": ev.get("result") or None
                 })
 
     events.sort(key=lambda x: x["time"]["elapsed"])
@@ -480,6 +528,14 @@ def live_score_detail(request, score_id):
                                 break
                 except Exception:
                     pass
+            if not detail_raw and game.raw_data:
+                raw_dict = game.raw_data[0] if isinstance(game.raw_data, list) else game.raw_data
+                if isinstance(raw_dict, dict) and ("event_summary" in raw_dict or "events" in raw_dict or "team_stats" in raw_dict):
+                    detail_raw = raw_dict
+            
+            if not detail_raw and event_obj and event_obj.metadata:
+                if isinstance(event_obj.metadata, dict) and ("event_summary" in event_obj.metadata or "events" in event_obj.metadata or "team_stats" in event_obj.metadata):
+                    detail_raw = event_obj.metadata
 
             if detail_raw:
                 statistics = _convert_statpal_stats_to_api_sports(
@@ -608,15 +664,21 @@ def live_score_detail(request, score_id):
                     })
                 scorecard = {"Runners": runner_list}
             else:
-                # NBA, Volleyball, Handball, Hockey, etc. (periods/sets)
+                # NBA, Volleyball, Handball, Hockey, etc. (periods/sets/quarters)
                 home_raw = raw.get('home', {})
                 away_raw = raw.get('away', {})
                 if home_raw and away_raw:
-                    for key in ['s1', 's2', 's3', 's4', 's5', 's6', 's7', 's8', 's9']:
+                    for key in ['s1', 's2', 's3', 's4', 's5', 's6', 's7', 's8', 's9', 'q1', 'q2', 'q3', 'q4', 'ot']:
                         h_val = home_raw.get(key)
                         a_val = away_raw.get(key)
                         if h_val or a_val:
-                            scorecard[f"Period {key[1]}"] = {
+                            if key == 'ot':
+                                label = "Overtime"
+                            elif key.startswith('q'):
+                                label = f"Quarter {key[1]}"
+                            else:
+                                label = f"Period {key[1]}"
+                            scorecard[label] = {
                                 "home": h_val,
                                 "away": a_val
                             }
