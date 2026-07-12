@@ -369,6 +369,7 @@ def live_score_detail(request, score_id):
                 away_logo = event_obj.away_entity.logo_url if event_obj.away_entity else ""
                 status = event_obj.status
                 status_detail = event_obj.status_detail
+                start_time = event_obj.start_time
                 home_score = event_obj.home_score
                 away_score = event_obj.away_score
                 raw_data = event_obj.metadata or {}
@@ -386,6 +387,28 @@ def live_score_detail(request, score_id):
 
         sport = game.sport
 
+        # 5. Initialize all output fields with safe default values
+        toss_str = ""
+        status_info = game.status_detail or game.status
+        league_name = raw.get('league_name', '')
+        home_rr = None
+        away_rr = None
+        scorecard = {}
+        ball_by_ball = []
+        events = []
+        statistics = []
+        halftime_score = {}
+        wickets = {}
+        lineups = {}
+        match_type = raw.get('type', '')
+
+        # Fetch League from database Event mapping if available
+        from apps.event.models import Event
+        event = Event.objects.filter(sport=sport, external_id=game.external_id).first()
+        if event and event.league:
+            league_name = event.league.name
+
+        # 6. Extract sport-specific details
         if sport == 'cricket':
             # Extract scorecard
             innings_list = raw.get('inning', [])
@@ -456,7 +479,6 @@ def live_score_detail(request, score_id):
                 })
 
             # Extract Toss
-            toss_str = ""
             info_list = raw.get('matchinfo', {}).get('info', [])
             if isinstance(info_list, dict):
                 info_list = [info_list]
@@ -468,8 +490,6 @@ def live_score_detail(request, score_id):
                     break
 
             # Fetch run rates
-            home_rr = None
-            away_rr = None
             for inn in innings_list:
                 if not isinstance(inn, dict):
                     continue
@@ -478,43 +498,17 @@ def live_score_detail(request, score_id):
                 elif inn.get('team') == 'visitorteam':
                     away_rr = inn.get('total', {}).get('rr')
 
-            # Fetch League from Event mapping
-            from apps.event.models import Event
-            event = Event.objects.filter(sport=sport, external_id=game.external_id).first()
-            league_name = event.league.name if (event and event.league) else raw.get('league_name', '')
-
             status_info = raw.get('comment', {}).get('post', '') or raw.get('event_status_info', '')
-
-            data = {
-                'id': game.id,
-                'sport': sport,
-                'home_team': game.home_team,
-                'away_team': game.away_team,
-                'home_logo': game.home_logo,
-                'away_logo': game.away_logo,
-                'status': game.status,
-                'status_detail': game.status_detail,
-                'status_info': status_info,
-                'match_type': raw.get('type', ''),
-                'toss': toss_str,
-                'stadium': raw.get('venue', ''),
-                'league': league_name,
-                'home_rr': home_rr,
-                'away_rr': away_rr,
-                'scorecard': scorecard,
-                'ball_by_ball': ball_by_ball,
-            }
+            wickets = raw.get('wickets', {})
+            lineups = raw.get('lineups', {})
 
         elif sport == 'soccer':
             from apps.sports_apis.services.statpal import statpal_service
-            from apps.event.models import Event
 
-            event_obj = Event.objects.filter(sport=sport, external_id=game.external_id).first()
-            
             detail_raw = {}
-            if event_obj and event_obj.league:
+            if event and event.league:
                 try:
-                    league_id = int(event_obj.league.external_id)
+                    league_id = int(event.league.external_id)
                     result = statpal_service.get_soccer_match_stats(league_id)
                     if result['success']:
                         matches = result['data'].get('match-stats', {}).get('tournament', {}).get('matches', [])
@@ -535,77 +529,29 @@ def live_score_detail(request, score_id):
                 if isinstance(raw_dict, dict) and ("event_summary" in raw_dict or "events" in raw_dict or "team_stats" in raw_dict):
                     detail_raw = raw_dict
             
-            if not detail_raw and event_obj and event_obj.metadata:
-                if isinstance(event_obj.metadata, dict) and ("event_summary" in event_obj.metadata or "events" in event_obj.metadata or "team_stats" in event_obj.metadata):
-                    detail_raw = event_obj.metadata
+            if not detail_raw and event and event.metadata:
+                if isinstance(event.metadata, dict) and ("event_summary" in event.metadata or "events" in event.metadata or "team_stats" in event.metadata):
+                    detail_raw = event.metadata
 
             if detail_raw:
                 statistics = _convert_statpal_stats_to_api_sports(
                     detail_raw.get('team_stats', {}),
-                    game.home_team, getattr(event_obj.home_entity, 'id', 0) if event_obj else 0,
-                    game.away_team, getattr(event_obj.away_entity, 'id', 0) if event_obj else 0
+                    game.home_team, event.home_entity.id if (event and event.home_entity) else 0,
+                    game.away_team, event.away_entity.id if (event and event.away_entity) else 0
                 )
                 events = _convert_statpal_events_to_api_sports(
                     detail_raw,
-                    game.home_team, getattr(event_obj.home_entity, 'id', 0) if event_obj else 0,
-                    game.away_team, getattr(event_obj.away_entity, 'id', 0) if event_obj else 0
+                    game.home_team, event.home_entity.id if (event and event.home_entity) else 0,
+                    game.away_team, event.away_entity.id if (event and event.away_entity) else 0
                 )
                 
                 ht = detail_raw.get('ht', {}) or {}
-                
-                data = {
-                    'id': game.id,
-                    'sport': sport,
-                    'home_team': game.home_team,
-                    'away_team': game.away_team,
-                    'home_logo': game.home_logo,
-                    'away_logo': game.away_logo,
-                    'status': game.status,
-                    'status_detail': game.status_detail,
-                    'status_info': detail_raw.get('status', ''),
-                    'stadium': detail_raw.get('venue', {}).get('name', '') if isinstance(detail_raw.get('venue'), dict) else detail_raw.get('venue', ''),
-                    'league': event_obj.league.name if (event_obj and event_obj.league) else '',
-                    'league_logo': event_obj.league.logo_url if (event_obj and event_obj.league) else '',
-                    'home_rr': None,
-                    'away_rr': None,
-                    'home_score': game.home_score,
-                    'away_score': game.away_score,
-                    'halftime_score': {'home': ht.get('home'), 'away': ht.get('away')},
-                    'events': events,
-                    'statistics': statistics,
-                }
-            else:
-                data = {
-                    'id': game.id,
-                    'sport': sport,
-                    'home_team': game.home_team,
-                    'away_team': game.away_team,
-                    'home_logo': game.home_logo,
-                    'away_logo': game.away_logo,
-                    'status': game.status,
-                    'status_detail': game.status_detail,
-                    'status_info': game.status_detail or game.status,
-                    'stadium': raw.get('venue', ''),
-                    'league': event_obj.league.name if (event_obj and event_obj.league) else '',
-                    'league_logo': event_obj.league.logo_url if (event_obj and event_obj.league) else '',
-                    'home_rr': None,
-                    'away_rr': None,
-                    'home_score': game.home_score,
-                    'away_score': game.away_score,
-                    'halftime_score': {'home': None, 'away': None},
-                    'events': [],
-                    'statistics': [],
-                }
+                halftime_score = {'home': ht.get('home'), 'away': ht.get('away')}
+                status_info = detail_raw.get('status', '')
+
         else:
-            # Generic fallback for NBA, MLB, Tennis, Golf, Horse Racing, Volleyball, Handball, Hockey, etc.
-            from apps.event.models import Event
-            event = Event.objects.filter(sport=sport, external_id=game.external_id).first()
-            league_name = event.league.name if (event and event.league) else raw.get('league_name', '')
-
+            # NBA, MLB, Tennis, Golf, Horse Racing, Volleyball, Handball, Hockey, etc.
             status_info = game.status_detail or game.status
-
-            scorecard = {}
-            events = []
 
             if sport == 'tennis':
                 players = raw.get('player', [])
@@ -666,7 +612,7 @@ def live_score_detail(request, score_id):
                     })
                 scorecard = {"Runners": runner_list}
             else:
-                # NBA, Volleyball, Handball, Hockey, etc. (periods/sets/quarters)
+                # NBA, Volleyball, Handball, Hockey, etc.
                 home_raw = raw.get('home', {})
                 away_raw = raw.get('away', {})
                 if home_raw and away_raw:
@@ -685,32 +631,41 @@ def live_score_detail(request, score_id):
                                 "away": a_val
                             }
 
-            data = {
-                'id': game.id,
-                'sport': sport,
-                'home_team': game.home_team,
-                'away_team': game.away_team,
-                'home_logo': game.home_logo,
-                'away_logo': game.away_logo,
-                'status': game.status,
-                'status_detail': game.status_detail,
-                'status_info': status_info,
-                'stadium': raw.get('venue', ''),
-                'league': league_name,
-                'home_rr': None,
-                'away_rr': None,
-                'home_score': game.home_score,
-                'away_score': game.away_score,
-                'halftime_score': {},
-                'events': events,
-                'statistics': [],
-                'scorecard': scorecard,
-                'ball_by_ball': [],
-            }
+        # 7. Construct final data dictionary containing ALL keys (original + new fields)
+        data = {
+            # Original keys:
+            'id': game.id,
+            'sport': sport,
+            'home_team': game.home_team,
+            'away_team': game.away_team,
+            'home_logo': game.home_logo,
+            'away_logo': game.away_logo,
+            'status': game.status,
+            'status_detail': game.status_detail,
+            'start_time': game.start_time,
+            'match_type': match_type,
+            'toss': toss_str,
+            'status_info': status_info,
+            'stadium': raw.get('venue', ''),
+            'league': league_name,
+            'home_rr': home_rr,
+            'away_rr': away_rr,
+            'scorecard': scorecard,
+            'ball_by_ball': ball_by_ball,
+            'wickets': wickets,
+            'lineups': lineups,
+            
+            # New/Extra fields to ensure compatibility:
+            'home_score': getattr(game, 'home_score', None),
+            'away_score': getattr(game, 'away_score', None),
+            'halftime_score': halftime_score,
+            'events': events,
+            'statistics': statistics,
+        }
 
         return mixin.success_response(data=data)
-    except LiveScore.DoesNotExist:
-        return mixin.error_response(message='Game not found', status_code=404)
+    except Exception as exc:
+        return mixin.handle_exception(exc)
     
 
     
