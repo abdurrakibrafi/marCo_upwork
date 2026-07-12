@@ -521,9 +521,27 @@ def live_score_detail(request, score_id):
         ball_by_ball = raw.get('comments', {}).get('Live', [])[-10:]
         events = []
         statistics = []
-        halftime_score = {}
+        halftime_score = {"home": None, "away": None}
         wickets = raw.get('wickets', {})
-        lineups = raw.get('lineups', {})
+        
+        # Lineups initialization to prevent frontend key/null crashes on empty data
+        if sport == 'soccer':
+            lineups = {
+                "home": {
+                    "coach": {"id": None, "name": None},
+                    "formation": "",
+                    "startXI": [],
+                    "substitutes": []
+                },
+                "away": {
+                    "coach": {"id": None, "name": None},
+                    "formation": "",
+                    "startXI": [],
+                    "substitutes": []
+                }
+            }
+        else:
+            lineups = raw.get('lineups', {})
         match_type = raw.get('event_type', raw.get('type', ''))
         stadium = raw.get('event_stadium', raw.get('venue', ''))
 
@@ -765,10 +783,29 @@ def live_score_detail(request, score_id):
                             })
                         events.sort(key=lambda x: x["time"]["elapsed"])
 
-                if not lineups:
+                has_players = False
+                if isinstance(lineups, dict) and "home" in lineups and "away" in lineups:
+                    h_lineup = lineups.get("home") or {}
+                    a_lineup = lineups.get("away") or {}
+                    has_players = bool(h_lineup.get("startXI") or h_lineup.get("substitutes") or a_lineup.get("startXI") or a_lineup.get("substitutes"))
+
+                if not has_players:
                     db_lineups = EventLineup.objects.filter(event=event).select_related('team', 'player')
                     if db_lineups.exists():
-                        lineups = {}
+                        lineups = {
+                            "home": {
+                                "coach": {"id": None, "name": None},
+                                "formation": "",
+                                "startXI": [],
+                                "substitutes": []
+                            },
+                            "away": {
+                                "coach": {"id": None, "name": None},
+                                "formation": "",
+                                "startXI": [],
+                                "substitutes": []
+                            }
+                        }
                         for l_obj in db_lineups:
                             side = "home" if (event.home_entity and l_obj.team_id == event.home_entity_id) else "away"
                             if side not in lineups:
