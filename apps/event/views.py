@@ -265,9 +265,9 @@ def get_event_detail(request, event_id: int):
         )
         if is_completed and not event.metadata.get("details_fetched"):
             if event.api_source == "statpal":
-                from apps.event.tasks import _populate_statpal_event_details
+                from apps.event.tasks import _on_the_fly_update_statpal_event
                 try:
-                    _populate_statpal_event_details(event)
+                    _on_the_fly_update_statpal_event(event)
                     event.metadata["details_fetched"] = True
                     event.save(update_fields=["metadata"])
                     # Re-fetch event to include newly created timeline and stats

@@ -559,6 +559,82 @@ def _populate_statpal_event_details(event):
     logger.info(f"_populate_statpal_event_details: populated timeline for event {event.id}")
 
 
+def _on_the_fly_update_statpal_event(event):
+    """
+    On-the-fly fetch and save latest event details/fixtures for a StatPal event.
+    """
+    from apps.sports_apis.services.statpal import statpal_service
+    
+    sport = event.sport
+    today = timezone.now().date()
+    offset = (event.start_time.date() - today).days
+    
+    # Check if the sport is a daily offset sport
+    configs = {
+        "soccer": (statpal_service.get_soccer_fixtures, _soccer_rows),
+        "nba": (statpal_service.get_nba_fixtures, _nba_rows),
+        "football": (statpal_service.get_nfl_fixtures, _nfl_rows),
+        "tennis": (statpal_service.get_tennis_fixtures, _tennis_rows),
+        "baseball": (statpal_service.get_mlb_fixtures, _mlb_rows),
+        "handball": (statpal_service.get_handball_fixtures, _handball_rows),
+    }
+    
+    if sport in configs:
+        fetch_fn, extract_fn = configs[sport]
+        try:
+            # For offset sports, offset must be in -7 to 7 range (except soccer)
+            if sport == "soccer" or (-7 <= offset <= 7):
+                if offset == 0 and sport in ["tennis", "baseball", "handball"]:
+                    res = statpal_service.get_live_scores(sport)
+                else:
+                    res = fetch_fn(offset=offset)
+                
+                if res.get('success'):
+                    rows = extract_fn(res['data'])
+                    for row in rows:
+                        if str(row.get("external_id")) == str(event.external_id):
+                            _save_event(row)
+                            return True
+        except Exception as e:
+            logger.warning(f"On-the-fly fixtures update failed for event {event.id} ({sport}): {e}")
+            
+    # For other/all sports (or if daily lookup failed), try live scores endpoint
+    try:
+        res = statpal_service.get_live_scores(sport)
+        if res.get('success'):
+            extract_fn = {
+                "soccer": _soccer_rows,
+                "nba": _nba_rows,
+                "football": _nfl_rows,
+                "tennis": _tennis_rows,
+                "baseball": _mlb_rows,
+                "handball": _handball_rows,
+                "cricket": _cricket_rows,
+                "golf": _golf_rows,
+                "volleyball": _volleyball_rows,
+                "horse_racing": _horse_racing_rows,
+            }.get(sport)
+            if extract_fn:
+                rows = extract_fn(res['data'])
+                for row in rows:
+                    if str(row.get("external_id")) == str(event.external_id):
+                        _save_event(row)
+                        return True
+    except Exception as e:
+        logger.warning(f"On-the-fly live scores fetch failed for event {event.id}: {e}")
+        
+    # Special fallback for soccer match stats
+    if sport == "soccer":
+        try:
+            _populate_statpal_event_details(event)
+            return True
+        except Exception:
+            pass
+            
+    return False
+
+
+
 @shared_task(bind=True, max_retries=2, default_retry_delay=60)
 def fetch_event_details(self, event_id: int):
     """
