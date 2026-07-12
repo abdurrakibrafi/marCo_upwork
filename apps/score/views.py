@@ -195,6 +195,42 @@ def _convert_tennis_stats(match_data, home_player_name, home_team_id, away_playe
     ]
 
 
+def _convert_generic_team_stats(team_stats, home_team_name, home_team_id, away_team_name, away_team_id):
+    if not team_stats or not isinstance(team_stats, dict):
+        return []
+    
+    home_data = team_stats.get("home", {}) or {}
+    away_data = team_stats.get("away", {}) or {}
+    
+    def extract_metrics(data, prefix=""):
+        res = []
+        if isinstance(data, dict):
+            for k, v in data.items():
+                label = f"{prefix} {k}".strip().replace("_", " ").title()
+                if isinstance(v, (str, int, float)) and str(v).strip():
+                    res.append({"type": label, "value": str(v)})
+                elif isinstance(v, dict):
+                    res.extend(extract_metrics(v, label))
+        return res
+
+    home_stats = extract_metrics(home_data)
+    away_stats = extract_metrics(away_data)
+    
+    if not home_stats and not away_stats:
+        return []
+        
+    return [
+        {
+            "team": {"id": home_team_id, "name": home_team_name},
+            "statistics": home_stats
+        },
+        {
+            "team": {"id": away_team_id, "name": away_team_name},
+            "statistics": away_stats
+        }
+    ]
+
+
 def _convert_statpal_events_to_api_sports(match_data, home_team_name, home_team_id, away_team_name, away_team_id):
     events = []
     summary = match_data.get("event_summary", {})
@@ -972,6 +1008,16 @@ def live_score_detail(request, score_id):
                                 "home": h_val,
                                 "away": a_val
                             }
+
+        # Fallback for statistics (extract team_stats recursively for generic sports)
+        if not statistics:
+            team_stats = raw.get('team_stats') or raw.get('stats')
+            if isinstance(team_stats, dict):
+                statistics = _convert_generic_team_stats(
+                    team_stats,
+                    game.home_team, home_entity_id,
+                    game.away_team, away_entity_id
+                )
 
         # 7. Construct final data dictionary containing ALL keys (original + new fields)
         data = {
