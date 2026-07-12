@@ -409,6 +409,10 @@ def live_score_detail(request, score_id):
         if event and event.league:
             league_name = event.league.name
 
+        # Entity IDs for team linking (used in events/statistics)
+        home_entity_id = event.home_entity.id if (event and event.home_entity) else 0
+        away_entity_id = event.away_entity.id if (event and event.away_entity) else 0
+
         # 6. Extract sport-specific details
         if sport == 'cricket':
             # Extract scorecard
@@ -509,12 +513,26 @@ def live_score_detail(request, score_id):
             from apps.sports_apis.services.statpal import statpal_service
 
             detail_raw = {}
-            if event and event.league:
-                try:
-                    league_id = int(event.league.external_id)
-                    result = statpal_service.get_soccer_match_stats(league_id)
-                    if result['success']:
-                        matches = result['data'].get('match-stats', {}).get('tournament', {}).get('matches', [])
+
+            # Step 1: get_soccer_live() — সবচেয়ে সম্পূর্ণ ডাটা (events, player names, ht score)
+            # এটি সব লাইভ ম্যাচ একসাথে দেয়, তাই cache করে রাখা হয়
+            try:
+                cache_key = 'statpal_soccer_live_full'
+                live_all = cache.get(cache_key)
+                if not live_all:
+                    live_result = statpal_service.get_soccer_live()
+                    if live_result.get('success'):
+                        live_all = live_result['data'].get('live_matches', {}).get('league', [])
+                        if isinstance(live_all, dict):
+                            live_all = [live_all]
+                        cache.set(cache_key, live_all, 30)  # 30 সেকেন্ড cache
+
+                if live_all:
+                    ext_id = str(game.external_id)
+                    for league_block in live_all:
+                        if not isinstance(league_block, dict):
+                            continue
+                        matches = league_block.get('match', [])
                         if isinstance(matches, dict):
                             matches = [matches]
                         elif not isinstance(matches, list):
@@ -522,21 +540,26 @@ def live_score_detail(request, score_id):
                         for m in matches:
                             if not isinstance(m, dict):
                                 continue
-                            if str(m.get('main_id')) == str(game.external_id) or str(m.get('id')) == str(game.external_id):
+                            # main_id এবং fallback id গুলো দিয়ে ম্যাচ খোঁজা হচ্ছে
+                            ids = {
+                                str(m.get('main_id', '')),
+                                str(m.get('fallback_id_1', '')),
+                                str(m.get('fallback_id_2', '')),
+                                str(m.get('fallback_id_3', '')),
+                            }
+                            if ext_id in ids:
                                 detail_raw = m
                                 break
-                except Exception:
-                    pass
+                        if detail_raw:
+                            break
+            except Exception:
+                pass
 
-            # If StatPal match-stats API returned 404 or nothing, use the raw_data stored in DB
-            # raw_data already contains events, ht (halftime), home/away goals etc.
+            # Step 2: live API তে না পেলে raw_data ব্যবহার করো (DB তে stored data)
             if not detail_raw:
-                detail_raw = raw  # raw_data from LiveScore / Event has all the info
+                detail_raw = raw
 
             if detail_raw:
-                home_entity_id = event.home_entity.id if (event and event.home_entity) else 0
-                away_entity_id = event.away_entity.id if (event and event.away_entity) else 0
-
                 statistics = _convert_statpal_stats_to_api_sports(
                     detail_raw.get('team_stats', {}),
                     game.home_team, home_entity_id,
@@ -548,11 +571,11 @@ def live_score_detail(request, score_id):
                     game.away_team, away_entity_id
                 )
 
-                # Halftime score resolver - check both StatPal match-stats format and raw_data format
+                # Halftime score — দুটো ফরম্যাট সাপোর্ট করে:
+                # raw_data: {"home_goals": 2, "away_goals": 1}
+                # match-stats / live: {"home": 2, "away": 1}
                 ht = detail_raw.get('ht')
                 if ht and isinstance(ht, dict):
-                    # raw_data format: {"home_goals": 2, "away_goals": 1}
-                    # match-stats format: {"home": 2, "away": 1}
                     home_ht = ht.get('home') if ht.get('home') is not None else ht.get('home_goals')
                     away_ht = ht.get('away') if ht.get('away') is not None else ht.get('away_goals')
                     if home_ht is not None or away_ht is not None:
@@ -566,6 +589,7 @@ def live_score_detail(request, score_id):
                             'away': ht_fallback.get('away') if ht_fallback.get('away') is not None else ht_fallback.get('away_goals')
                         }
                 status_info = detail_raw.get('status', '') or game.status_detail or game.status
+
 
             # Fallback to database models for timeline, statistics, and lineups if empty
             if event:
@@ -707,7 +731,107 @@ def live_score_detail(request, score_id):
                         "odds": h.get("odds", {}).get("bookmaker", {}).get("odd")
                     })
                 scorecard = {"Runners": runner_list}
+            elif sport in ('f1', 'formula1', 'formula 1'):
+                # Formula 1 — Race results (position, grid, laps, driver, team, time, pits)
+                tournament = raw.get('tournament', {}) or {}
+                race = tournament.get('race', {}) or {}
+                if race:
+                    track_name = race.get('track', '')
+                    total_laps = race.get('total_laps', '')
+                    fastest_lap = race.get('fastest_lap', '')
+                    status_info = f"Track: {track_name} | Laps: {total_laps} | Fastest Lap: {fastest_lap}"
+                    
+                    drivers = race.get('results', {}).get('driver', [])
+                    if isinstance(drivers, dict):
+                        drivers = [drivers]
+                    elif not isinstance(drivers, list):
+                        drivers = []
+                        
+                    results_list = []
+                    for d in drivers:
+                        results_list.append({
+                            "pos": d.get("pos"),
+                            "driver": d.get("name"),
+                            "team": d.get("team"),
+                            "grid": d.get("grid"),
+                            "laps": d.get("laps"),
+                            "time": d.get("time"),
+                            "pit": d.get("pit")
+                        })
+                    scorecard = {"Race Results": results_list}
+            elif sport == 'esports':
+                # Esports — Map/Round scorecards (e.g. CS:GO, Dota2, LoL maps won)
+                maps = raw.get('maps', {}).get('map', [])
+                if isinstance(maps, dict):
+                    maps = [maps]
+                elif not isinstance(maps, list):
+                    maps = []
+                
+                map_scores = {}
+                for idx, m in enumerate(maps):
+                    map_name = m.get('name') or f"Map {idx + 1}"
+                    scores = m.get('scores', {}) or {}
+                    home_val = scores.get('home', {}).get('total', '')
+                    away_val = scores.get('away', {}).get('total', '')
+                    if home_val or away_val:
+                        map_scores[map_name] = {"home": home_val, "away": away_val}
+                        
+                if map_scores:
+                    scorecard = map_scores
+                else:
+                    home_score = raw.get('home', {}).get('score', '')
+                    away_score = raw.get('away', {}).get('score', '')
+                    scorecard = {"Match Score": {"home": home_score, "away": away_score}}
+            elif sport in ('football', 'nfl'):
+                # NFL — quarter scores + events (TDs, FGs, etc.) from livescores endpoint
+                home_raw = raw.get('home', {}) or {}
+                away_raw = raw.get('away', {}) or {}
+
+                # Quarter scorecard
+                for key, label in [('q1', 'Q1'), ('q2', 'Q2'), ('q3', 'Q3'), ('q4', 'Q4'), ('ot', 'OT')]:
+                    h_val = home_raw.get(key)
+                    a_val = away_raw.get(key)
+                    if h_val is not None or a_val is not None:
+                        scorecard[label] = {'home': h_val, 'away': a_val}
+
+                # Events per quarter
+                quarter_map = {
+                    'firstquarter': 'Q1',
+                    'secondquarter': 'Q2',
+                    'thirdquarter': 'Q3',
+                    'fourthquarter': 'Q4',
+                    'overtime': 'OT',
+                }
+                nfl_events_raw = raw.get('events', {}) or {}
+                if isinstance(nfl_events_raw, dict):
+                    for qname, qlabel in quarter_map.items():
+                        q_data = nfl_events_raw.get(qname, {})
+                        if not q_data:
+                            continue
+                        ev_list = q_data.get('event', [])
+                        if isinstance(ev_list, dict):
+                            ev_list = [ev_list]
+                        elif not isinstance(ev_list, list):
+                            ev_list = []
+                        for ev in ev_list:
+                            if not isinstance(ev, dict):
+                                continue
+                            side = ev.get('team', '')
+                            team_name = game.home_team if side == 'hometeam' else game.away_team
+                            team_id = home_entity_id if side == 'hometeam' else away_entity_id
+                            ev_type = ev.get('type', '').upper()
+                            detail = {'TD': 'Touchdown', 'FG': 'Field Goal', 'SAF': 'Safety', 'PAT': 'Extra Point', 'PAT2': '2-Point Conversion'}.get(ev_type, ev_type)
+                            events.append({
+                                'time': {'quarter': qlabel, 'clock': ev.get('min', '')},
+                                'team': {'id': team_id, 'name': team_name},
+                                'player': {'id': ev.get('player_id', ''), 'name': ev.get('player', '')},
+                                'assist': {'id': None, 'name': None},
+                                'type': ev_type,
+                                'detail': detail,
+                                'comments': 'H: ' + str(ev.get('home_score', '')) + ' - A: ' + str(ev.get('away_score', '')),
+                            })
             else:
+
                 # NBA, Volleyball, Handball, Hockey, etc. (periods/sets/quarters)
                 home_raw = raw.get('home', {})
                 away_raw = raw.get('away', {})

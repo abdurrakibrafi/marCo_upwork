@@ -150,17 +150,23 @@ class StatPalService:
         return self._get(f"{self.base_v1}/nfl/league-stats/{stat_type}")
 
     # ------------------------------------------------------------------ #
-    # Hockey (V1) - উদাহরণ
+    # NHL / Hockey (V1)
     # ------------------------------------------------------------------ #
 
+    def get_nhl_live(self) -> dict:
+        """NHL live scores — Response root: livescores → tournament → match[]"""
+        return self._get(f"{self.base_v1}/nhl/livescores")
+
     def get_hockey_live(self) -> dict:
-        """Response root: livescores → tournament → match[]"""
-        return self._get(f"{self.base_v1}/hockey/livescores")
+        """Alias for get_nhl_live() — StatPal endpoint is /nhl/livescores"""
+        return self.get_nhl_live()
 
     def get_hockey_fixtures(self, offset: int = 0) -> dict:
         """Response root: scores → tournament → match[]"""
-        token = f"d{offset}"  # StatPal only accepts d-7..d-1, d1..d7 (no d0, no d+ prefix)
-        return self._get(f"{self.base_v1}/hockey/daily/{token}")
+        if offset == 0:
+            return {"success": True, "data": {}}  # d0 not supported
+        token = f"d{offset}"
+        return self._get(f"{self.base_v1}/nhl/daily/{token}")
 
     # ------------------------------------------------------------------ #
     # Tennis (V1)
@@ -230,6 +236,23 @@ class StatPalService:
     def get_horse_racing_live(self, country: str) -> dict:
         return self._get(f"{self.base_v1}/horse-racing/live/{country}")
 
+    def get_horse_racing_schedule(self, country: str) -> dict:
+        return self._get(f"{self.base_v1}/horse-racing/schedule/{country}")
+
+    # ------------------------------------------------------------------ #
+    # Esports (V1)
+    # ------------------------------------------------------------------ #
+
+    def get_esports_live(self) -> dict:
+        return self._get(f"{self.base_v1}/esports/livescores")
+
+    # ------------------------------------------------------------------ #
+    # Formula 1 (V1)
+    # ------------------------------------------------------------------ #
+
+    def get_f1_live(self) -> dict:
+        return self._get(f"{self.base_v1}/f1/livescores")
+
     # ------------------------------------------------------------------ #
     # Cricket (V1)
     # ------------------------------------------------------------------ #
@@ -268,6 +291,9 @@ class StatPalService:
             "handball": self.get_handball_live,
             "volleyball": self.get_volleyball_live,
             "golf": self.get_golf_live,
+            "esports": self.get_esports_live,
+            "f1": self.get_f1_live,
+            "formula1": self.get_f1_live,
         }.get(sport, lambda: {"success": False, "error": f"Unknown sport: {sport}"})()
 
     def get_fixtures(self, sport: str, offset: int = 0) -> dict:
