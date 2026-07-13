@@ -414,9 +414,21 @@ def _populate_statpal_event_details(event):
                             jersey_number=int(player_number) if str(player_number).isdigit() else None
                         )
 
-        # Update scores from ft
+        # Update scores from ft / et (Option B: sum ft + et)
         ft = meta.get('ft')
-        if isinstance(ft, dict):
+        et = meta.get('et')
+        if isinstance(et, dict) and (et.get('home_goals') is not None or et.get('away_goals') is not None):
+            try:
+                ft_home = int(ft.get('home_goals', 0) or 0) if isinstance(ft, dict) else 0
+                ft_away = int(ft.get('away_goals', 0) or 0) if isinstance(ft, dict) else 0
+                et_home = int(et.get('home_goals', 0) or 0)
+                et_away = int(et.get('away_goals', 0) or 0)
+                event.home_score = ft_home + et_home
+                event.away_score = ft_away + et_away
+                event.save(update_fields=['home_score', 'away_score'])
+            except (ValueError, TypeError):
+                pass
+        elif isinstance(ft, dict):
             try:
                 event.home_score = int(ft.get('home_goals', 0) or 0)
                 event.away_score = int(ft.get('away_goals', 0) or 0)
@@ -515,10 +527,22 @@ def _populate_statpal_event_details(event):
             metadata=ev,
         )
 
-    # Update HT/FT/ET scores from metadata
+    # Update HT/FT/ET scores from metadata (Option B: sum ft + et)
     ht = meta.get('ht')
     ft = meta.get('ft')
-    if ft and isinstance(ft, dict):
+    et = meta.get('et')
+    if isinstance(et, dict) and (et.get('home_goals') is not None or et.get('away_goals') is not None):
+        try:
+            ft_home = int(ft.get('home_goals', 0) or 0) if isinstance(ft, dict) else 0
+            ft_away = int(ft.get('away_goals', 0) or 0) if isinstance(ft, dict) else 0
+            et_home = int(et.get('home_goals', 0) or 0)
+            et_away = int(et.get('away_goals', 0) or 0)
+            event.home_score = ft_home + et_home
+            event.away_score = ft_away + et_away
+            event.save(update_fields=['home_score', 'away_score'])
+        except (ValueError, TypeError):
+            pass
+    elif isinstance(ft, dict):
         try:
             event.home_score = int(ft.get('home_goals', 0) or 0)
             event.away_score = int(ft.get('away_goals', 0) or 0)
