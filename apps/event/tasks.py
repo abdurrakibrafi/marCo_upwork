@@ -1013,7 +1013,7 @@ _LIVE = {
 }
 
 
-def _map_status(raw: str):
+def _map_status(raw: str, sport: str = None, metadata: dict = None):
     """
     Receives raw status strings from multiple different sports data providers (StatPal etc.)
     across 13 sports. Provider formatting is inconsistent (capitalization, periods, and
@@ -1027,9 +1027,8 @@ def _map_status(raw: str):
 
     raw_normalized = raw.lower().strip().rstrip('.')
 
-    # Check if the status is a plain number or number with '+' (e.g., '76', '90+3')
-    # indicating a live match minute.
-    if re.match(r'^\d+(\+\d+)?$', raw_normalized):
+    # soccer-only numeric minute check
+    if sport == "soccer" and re.match(r"^\d+(\+\d+)?$", raw_normalized):
         return "live"
 
     if raw_normalized in _CANCELLED:
@@ -1040,6 +1039,23 @@ def _map_status(raw: str):
 
     if raw_normalized in _LIVE:
         return "live"
+
+    # Tennis-specific live check via populated score fields
+    if sport == "tennis" and metadata:
+        players = metadata.get("player", [])
+        if isinstance(players, list):
+            score_populated = False
+            for p in players:
+                if not isinstance(p, dict):
+                    continue
+                for key in ["s1", "s2", "s3", "s4", "s5", "totalscore"]:
+                    if str(p.get(key, "")).strip() != "":
+                        score_populated = True
+                        break
+                if score_populated:
+                    break
+            if score_populated:
+                return "live"
         
     # Check for Baseball live inning indicators (e.g., "Top 5th", "Bottom 8th", "End 6th", "Middle 2nd")
     if any(ind in raw_normalized for ind in ["top ", "bottom ", "middle ", "end "]):
@@ -1346,7 +1362,7 @@ def _clean_score(val):
 
 
 def _save_event(row: dict) -> Event | None:
-    status = _map_status(row["status_raw"])
+    status = _map_status(row["status_raw"], sport=row.get("sport"), metadata=row.get("raw"))
     if status is None:
         if row.get("external_id"):
             LiveScore.objects.filter(sport=row["sport"], external_id=row["external_id"]).delete()

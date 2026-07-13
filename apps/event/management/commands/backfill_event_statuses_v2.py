@@ -28,7 +28,7 @@ class Command(BaseCommand):
 
         for event in upcoming_events:
             status_detail = event.status_detail or ""
-            target_status = _map_status(status_detail)
+            target_status = _map_status(status_detail, sport=event.sport, metadata=event.metadata)
 
             if target_status != 'upcoming':
                 corrected_count += 1
