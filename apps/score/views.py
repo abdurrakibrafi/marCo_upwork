@@ -520,7 +520,19 @@ def live_score_detail(request, score_id):
             commentary_list = [commentary_list]
         elif not isinstance(commentary_list, list):
             commentary_list = []
-        ball_by_ball = commentary_list[:10]
+            
+        ball_by_ball = []
+        for item in commentary_list[:10]:
+            if not isinstance(item, dict):
+                continue
+            is_wicket = str(item.get("iswicket", "False")).strip().lower() == "true"
+            ball_by_ball.append({
+                "post": item.get("post", ""),
+                "runs": item.get("runs", ""),
+                "overs": item.get("over", ""),
+                "ended": str(item.get("over_ended", item.get("ended", "false"))).lower(),
+                "is_wicket": is_wicket
+            })
         events = []
         statistics = []
         halftime_score = {"home": None, "away": None}
@@ -620,11 +632,13 @@ def live_score_detail(request, score_id):
             for item in commentary_list[:10]:
                 if not isinstance(item, dict):
                     continue
+                is_wicket = str(item.get("iswicket", "False")).strip().lower() == "true"
                 ball_by_ball.append({
                     "post": item.get("post", ""),
                     "runs": item.get("runs", ""),
                     "overs": item.get("over", ""),
-                    "ended": str(item.get("over_ended", item.get("ended", "false"))).lower()
+                    "ended": str(item.get("over_ended", item.get("ended", "false"))).lower(),
+                    "is_wicket": is_wicket
                 })
 
             # Extract Toss
