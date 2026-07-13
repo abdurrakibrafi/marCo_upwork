@@ -1,92 +1,84 @@
-# সমস্যা ও সমাধান — Soccer Live Match (has_live_stats: False) Filter করা
- 
-## সমস্যার বিবরণ (Diagnosis)
- 
-MySportsNest প্রজেক্টে soccer live matches এর `statistics` ও `events` ফিল্ড কিছু ম্যাচে খালি
-(`[]`) আসছে। কারণ StatPal API নিজেই সেই ম্যাচগুলোর জন্য detailed stats/events data দেয় না —
-এটা তাদের raw response এ একটা ফ্ল্যাগ দিয়ে আগে থেকেই জানিয়ে দেয়:
- 
-```json
-"has_live_stats": "False"
-```
- 
-উদাহরণ (StatPal soccer live match object):
+# ফিক্স ১: Cricket ball-by-ball কমেন্ট্রি (সহজ)
+
+`score/views.py`-তে cricket ball-by-ball বের করার সময় ভুল key ব্যবহার হচ্ছে:
+
 ```python
-{
-    'main_id': '2026071368174',
-    'status': '76',
-    'home': {'id': '2363758', 'name': 'San Juan', 'goals': '0'},
-    'away': {'id': '2368082', 'name': 'Marin', 'goals': '0'},
-    'events': None,
-    'ht': {'home_goals': 2, 'away_goals': 1},
-    'has_live_stats': 'False',   # <-- এইটাই মূল কারণ
-    ...
-}
+ball_by_ball = raw.get('comments', {}).get('Live', [])[-10:]
 ```
- 
-এটা bug না — এটা কিছু নিচু-স্তরের league (যেমন "USA: Usl League Two") এর ম্যাচে StatPal-এর
-data source limitation। এটার জন্য code fix করা যাবে না, বরং decision নেওয়া হয়েছে: **যেসব ম্যাচে
-`has_live_stats: False`, সেগুলো frontend-এ একদমই দেখানো হবে না** — অর্থাৎ এগুলো
-`LiveScore` টেবিলে save/update-ই করা হবে না।
- 
-## যা করতে হবে (Required Fix)
- 
-### ধাপ ১: soccer sync flow খুঁজে বের করা
- 
-`/app/apps/event/tasks.py` ফাইলে `update_soccer_live_scores_only()` ফাংশনটি দেখা গেছে, যেটা
-সরাসরি নিজে কিছু করে না — বরং এটা `sync_statpal_data.delay()` নামের আরেকটা Celery task-কে
-delegate করে। **`sync_statpal_data` ফাংশনটা খুঁজে বের করতে হবে** (সম্ভবত `/app/apps/event/tasks.py`
-বা অন্য কোনো shared tasks ফাইলে থাকতে পারে):
- 
-```bash
-grep -rn "def sync_statpal_data" /app/apps --include="*.py"
-```
- 
-এই ফাংশনের ভেতরেই soccer-এর জন্য StatPal থেকে live match list আনা হয় এবং প্রতিটা match নিয়ে
-`LiveScore.objects.update_or_create(...)` বা `get_or_create(...)` কল করা হয়।
- 
-### ধাপ ২: filter বসানো
- 
-`sync_statpal_data` (বা যেখানেই soccer match loop হয়) এর ভেতরে, প্রতিটা soccer match `m`
-(StatPal raw match dict) নিয়ে লুপ করার সময়, `LiveScore.objects.update_or_create(...)` কল করার
-ঠিক আগে এই চেক বসাতে হবে:
- 
+
+কিন্তু StatPal-এর raw response-এ আসল key হলো **`commentaries`**, `comments` না। এটা ঠিক করো:
+
 ```python
-# StatPal নিজেই বলছে এই ম্যাচের জন্য stats/events নেই → skip করো, DB তে save/update করো না
-if str(m.get('has_live_stats', 'True')).strip().lower() == 'false':
-    continue  # (বা for-loop এর syntax অনুযায়ী এর সমতুল্য 'skip this match')
+ball_by_ball = raw.get('commentaries', {}).get('Live', [])[-10:]
 ```
- 
-**গুরুত্বপূর্ণ:** `.strip().lower() == 'false'` ব্যবহার করা হয়েছে কারণ StatPal এই ফিল্ডটা string
-হিসেবে পাঠায় (`'False'`/`'True'`), Python বুলিয়ান হিসেবে না। তাই সরাসরি `if not m.get('has_live_stats')`
-লিখলে কাজ করবে না (কারণ non-empty string সবসময় truthy হয়, এমনকি `'False'` স্ট্রিংও)।
- 
-### ধাপ ৩: আগে থেকে save হয়ে থাকা ম্যাচ পরিষ্কার করা (Cleanup — one-time)
- 
-কিছু ম্যাচ ইতিমধ্যে DB-তে `LiveScore` হিসেবে সেভ হয়ে গেছে যেগুলোর `has_live_stats: False`
-(যেমন এই কথোপকথনে পাওয়া id=15743, "San Juan vs Marin")। নতুন sync চালু হওয়ার পর এগুলো
-আর আপডেট হবে না ঠিকই, কিন্তু status='live' থাকা অবস্থাতেই থেকে যাবে (নতুন sync এসে বাদ দিলেও
-পুরনো রেকর্ড DB-তে থেকে যাবে, delete হবে না, যতক্ষণ না কেউ সেটা explicitly delete করে)।
- 
-তাই একটা one-time cleanup script/management command চালানো উচিত, যেটা:
-1. বর্তমানে `status='live'` থাকা সব soccer `LiveScore` রেকর্ড নিয়ে StatPal থেকে আবার চেক করবে
-2. যাদের `has_live_stats: False` (অথবা যাদের external_id বর্তমান live feed-এ খুঁজে পাওয়া যায় না),
-   সেগুলোকে either delete করবে অথবা status পরিবর্তন করে দেবে (যেমন `status='hidden'` বা
-   সরাসরি delete — যেটা প্রজেক্টের business logic অনুযায়ী উপযুক্ত মনে হয়)
-### ধাপ ৪: যাচাই (Verification)
- 
-fix করার পর:
+
+**গুরুত্বপূর্ণ:** ঠিক করার আগে `commentaries`-এর ভেতরের actual structure verify করে নাও (raw dict-এ `commentaries` key-এর ভ্যালু dict নাকি list, আর তার ভেতরে `'Live'` নামে sub-key সত্যিই আছে কিনা)। যদি structure ভিন্ন হয় (যেমন সরাসরি list, বা অন্য sub-key নাম), সেই অনুযায়ী কোড এডজাস্ট করো। এটা যাচাই করতে:
+
 ```bash
 docker exec mysportsnest_backend python manage.py shell -c "
-from apps.score.models import LiveScore
-print(LiveScore.objects.filter(id=15743).exists())
+from apps.sports_apis.services.statpal import statpal_service
+r = statpal_service.get_cricket_live()
+data = r.get('data', {})
+categories = data.get('scores', {}).get('category', [])
+if isinstance(categories, dict):
+    categories = [categories]
+for cat in categories:
+    matches = cat.get('match', [])
+    if isinstance(matches, dict):
+        matches = [matches]
+    for m in matches:
+        if m.get('commentaries'):
+            print(type(m['commentaries']), m['commentaries'])
+            break
 "
 ```
-এটা `False` দেখানো উচিত (অর্থাৎ পরবর্তী sync cycle-এর পর এই ম্যাচ আর DB-তে থাকবে না,
-এবং API response-এও আর আসবে না)।
- 
-## সংক্ষেপে (TL;DR for agent)
-1. `sync_statpal_data` টাস্ক খুঁজে বের করো (grep দিয়ে)
-2. soccer match loop-এ, `LiveScore` create/update করার আগে `has_live_stats == 'False'` (string check) হলে `continue` করে skip করো
-3. একটা one-time cleanup command লিখে বর্তমানে থাকা `has_live_stats: False` ম্যাচগুলো DB থেকে সরাও
-4. টেস্ট করে নিশ্চিত করো id=15743 আর ফিরে আসছে না
+
+---
+
+# ফিক্স ২: Tennis statistics (নতুন API কল লাগবে)
+
+**সমস্যা:** এখন soccer-এর মতোই, tennis-এর জন্যও `get_tennis_live()` (endpoint: `https://statpal.io/api/v1/tennis/livescores`) কল করা হচ্ছে, যেটা শুধু বেসিক স্কোর দেয় (সেট স্কোর, সার্ভ, উইনার)। বিস্তারিত ম্যাচ statistics (winners, unforced errors, break points, ইত্যাদি) এই endpoint-এ নেই।
+
+StatPal-এর কাছে এর জন্য আলাদা endpoint আছে:
+```
+GET https://statpal.io/api/v1/tennis/livestats
+```
+
+`statpal.py`-তে এটা ইতিমধ্যে আছে:
+```python
+def get_tennis_live_stats(self) -> dict:
+    """Response root: live_stats → tournament → match[]"""
+    return self._get(f"{self.base_v1}/tennis/livestats")
+```
+
+কিন্তু `score/views.py`-এর tennis detail flow-এ এই ফাংশনটা call করা হচ্ছে না — শুধু `get_tennis_live()`-এর data দিয়ে `_convert_tennis_stats` চালানো হচ্ছে, যেখানে `stats`/`period` structure নেই বলে statistics সবসময় খালি আসে।
+
+## যা করতে হবে:
+
+1. `score/views.py`-তে যেখানে tennis-এর জন্য `detail_raw`/match data বের করা হয়, সেখানে **আরেকটা কল যোগ করো**: `statpal_service.get_tennis_live_stats()`।
+2. `live_stats → tournament → match[]` থেকে external_id/main_id মিলিয়ে সংশ্লিষ্ট ম্যাচের stats object বের করো (ঠিক যেভাবে soccer-এর জন্য `main_id`/`fallback_id` মিলিয়ে ম্যাচ খোঁজা হয়, একই প্যাটার্নে)।
+3. এই stats object-টা `_convert_tennis_stats`-এ পাস করো, `get_tennis_live()`-এর match object-এর বদলে (অথবা দুটো merge করে পাঠাও, যদি `_convert_tennis_stats` উভয় সোর্স থেকে ডেটা নেয়)।
+4. প্রথমে raw response দেখে `live_stats` object-এর আসল structure (`player` এর ভেতরে `stats`/`period` কী ফরম্যাটে আছে) verify করে নাও, তারপর `_convert_tennis_stats` ফাংশনের parsing logic সেই অনুযায়ী ঠিক আছে কিনা মিলিয়ে দেখো। যাচাই করতে:
+
+```bash
+docker exec mysportsnest_backend python manage.py shell -c "
+from apps.sports_apis.services.statpal import statpal_service
+r = statpal_service.get_tennis_live_stats()
+print('success:', r.get('success'))
+data = r.get('data', {})
+tournaments = data.get('live_stats', {}).get('tournament', [])
+if isinstance(tournaments, dict):
+    tournaments = [tournaments]
+for t in tournaments[:1]:
+    matches = t.get('match', [])
+    if isinstance(matches, dict):
+        matches = [matches]
+    for m in matches[:1]:
+        print(m)
+"
+```
+
+5. **Performance/rate-limit সতর্কতা:** এই নতুন `get_tennis_live_stats()` কলটা প্রতি tennis detail request-এ আলাদা API hit করবে (soccer-এর match-stats কলের মতোই যেটাতে আগে আমরা অনেক HTTP 404 দেখেছিলাম)। তাই এটা আগের মতোই cache করার কথা বিবেচনা করো (যেমন soccer-এর জন্য `cache_key = 'statpal_soccer_live_full'` ৩০ সেকেন্ডের জন্য cache করা হয়েছিল, tennis-এর জন্যও একই প্যাটার্নে ৩০-৬০ সেকেন্ডের cache যোগ করো), যাতে বারবার API rate limit বা delay-এর সমস্যা না হয়।
+
+## যাচাই
+ফিক্স করার পর, id=15748 বা 15747 (তোমার DB-তে থাকা লাইভ tennis ম্যাচ) দিয়ে detail endpoint হিট করে দেখো `statistics` array-তে এখন ডেটা আসছে কিনা।
