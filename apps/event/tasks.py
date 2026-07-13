@@ -991,35 +991,61 @@ def cleanup_stale_live_events():
 # ================================================================
 
 _FINISHED = {
-    "FT", "AET", "PEN", "Finished", "After Over Time",
-    "Full-time", "finished", "ft", "aet", "CANC", "ABD",
+    "ft", "aet", "pen", "finished", "after over time",
+    "full-time", "retired", "walk over", "walkover", "awarded",
 }
+
+_CANCELLED = {
+    "cancelled", "cancl", "abandoned", "abd", "canc",
+}
+
 _LIVE = {
     # General
-    "1H", "2H", "HT", "ET", "BT", "P", "SUSP", "INT", "LIVE",
-    "In Progress", "In Play", "live",
+    "1h", "2h", "ht", "et", "bt", "p", "susp", "int", "live",
+    "in progress", "in play",
     # Basketball
-    "Q1", "Q2", "Q3", "Q4", "OT", "Halftime",
+    "q1", "q2", "q3", "q4", "ot", "halftime",
     # Tennis
-    "1st Set", "2nd Set", "3rd Set", "4th Set", "5th Set", "Break",
-    "Set 1", "Set 2", "Set 3", "Set 4", "Set 5",
+    "1st set", "2nd set", "3rd set", "4th set", "5th set", "break",
+    "set 1", "set 2", "set 3", "set 4", "set 5",
     # Cricket
-    "Stumps", "Innings Break", "Lunch", "Tea", "Rain Delay",
+    "stumps", "innings break", "lunch", "tea", "rain delay",
 }
 
 
 def _map_status(raw: str):
-    raw_lower = raw.lower().strip()
-    if raw_lower in [f.lower() for f in _FINISHED] or "final" in raw_lower:
+    """
+    Receives raw status strings from multiple different sports data providers (StatPal etc.)
+    across 13 sports. Provider formatting is inconsistent (capitalization, periods, and
+    abbreviations vary), so exact-string matching alone is fragile.
+    Normalization is required, and any new provider integration should audit status strings
+    against _FINISHED/_LIVE before assuming defaults are safe.
+    """
+    import re
+    if not raw:
+        return "upcoming"
+
+    raw_normalized = raw.lower().strip().rstrip('.')
+
+    # Check if the status is a plain number or number with '+' (e.g., '76', '90+3')
+    # indicating a live match minute.
+    if re.match(r'^\d+(\+\d+)?$', raw_normalized):
+        return "live"
+
+    if raw_normalized in _CANCELLED:
+        return "cancelled"
+
+    if raw_normalized in _FINISHED or "final" in raw_normalized:
         return "completed"
-    if raw_lower in [l.lower() for l in _LIVE]:
+
+    if raw_normalized in _LIVE:
         return "live"
         
     # Check for Baseball live inning indicators (e.g., "Top 5th", "Bottom 8th", "End 6th", "Middle 2nd")
-    if any(ind in raw_lower for ind in ["top ", "bottom ", "middle ", "end "]):
-        if any(ind in raw_lower for ind in ["1st", "2nd", "3rd", "4th", "5th", "6th", "7th", "8th", "9th", "10th", "st", "nd", "rd", "th"]):
+    if any(ind in raw_normalized for ind in ["top ", "bottom ", "middle ", "end "]):
+        if any(ind in raw_normalized for ind in ["1st", "2nd", "3rd", "4th", "5th", "6th", "7th", "8th", "9th", "10th", "st", "nd", "rd", "th"]):
             return "live"
-    if "inning" in raw_lower:
+    if "inning" in raw_normalized:
         return "live"
         
     return "upcoming"
