@@ -1369,6 +1369,13 @@ def _save_livescore(row: dict, event: Event):
         LiveScore.objects.filter(sport=ls_sport, external_id=external_id).delete()
         return None
 
+    # Extra safety guard: StatPal has no live stats for this soccer match
+    if ls_sport == "soccer":
+        raw_match = row.get("raw", {})
+        if str(raw_match.get("has_live_stats", "True")).strip().lower() == "false":
+            LiveScore.objects.filter(sport=ls_sport, external_id=external_id).delete()
+            return None
+
     live_obj, _ = LiveScore.objects.update_or_create(
         sport=ls_sport,
         external_id=external_id,
@@ -1460,6 +1467,14 @@ def sync_statpal_data(self):
 
         for row in extracted_rows:
             try:
+                # Skip soccer matches with no live stats
+                if sport == "soccer":
+                    raw_match = row.get("raw", {})
+                    if str(raw_match.get("has_live_stats", "True")).strip().lower() == "false":
+                        LiveScore.objects.filter(sport="soccer", external_id=row["external_id"]).delete()
+                        skipped += 1
+                        continue
+
                 from django.db import transaction
                 with transaction.atomic():
                     event_obj = _save_event(row)
