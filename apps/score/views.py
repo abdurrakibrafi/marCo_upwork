@@ -515,7 +515,12 @@ def live_score_detail(request, score_id):
         home_rr = raw.get('event_home_rr')
         away_rr = raw.get('event_away_rr')
         scorecard = raw.get('scorecard', {})
-        ball_by_ball = raw.get('comments', {}).get('Live', [])[-10:]
+        commentary_list = raw.get('commentaries', {}).get('commentary', [])
+        if isinstance(commentary_list, dict):
+            commentary_list = [commentary_list]
+        elif not isinstance(commentary_list, list):
+            commentary_list = []
+        ball_by_ball = commentary_list[:10]
         events = []
         statistics = []
         halftime_score = {"home": None, "away": None}
@@ -841,13 +846,15 @@ def live_score_detail(request, score_id):
                 try:
                     cache_key = 'statpal_tennis_livestats'
                     stats_all = cache.get(cache_key)
-                    if not stats_all:
+                    if stats_all is None:
                         stats_result = statpal_service.get_tennis_live_stats()
                         if stats_result.get('success'):
                             stats_all = stats_result['data'].get('livestats', {}).get('tournament', [])
                             if isinstance(stats_all, dict):
                                 stats_all = [stats_all]
-                            cache.set(cache_key, stats_all, 15)  # 15s cache
+                            cache.set(cache_key, stats_all, 30)  # 30s cache
+                        else:
+                            stats_all = []
 
                     if stats_all:
                         ext_id = str(game.external_id)
@@ -860,7 +867,10 @@ def live_score_detail(request, score_id):
                             elif not isinstance(matches, list):
                                 matches = []
                             for m in matches:
-                                if isinstance(m, dict) and str(m.get('id')) == ext_id:
+                                if not isinstance(m, dict):
+                                    continue
+                                match_id = str(m.get('id') or m.get('main_id') or '')
+                                if match_id == ext_id:
                                     statistics = _convert_tennis_stats(
                                         m,
                                         game.home_team, home_entity_id,
