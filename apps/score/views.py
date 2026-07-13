@@ -407,7 +407,6 @@ def live_scores(request):
         return mixin.success_response(data=data, message='Live scores retrieved successfully')
     except Exception as exc:
         return mixin.handle_exception(exc)
-# তোমার existing imports-এর নিচে এই function টা add করো:
 
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
@@ -428,8 +427,6 @@ def nest_live_scores(request):
                 message="No entities in your nest.",
             )
 
-        # LiveScore-এ সরাসরি team entity FK নেই,
-        # তাই Event → LiveScore join করতে হবে
         from apps.event.models import Event
         live_event_ids = (
             Event.objects.filter(
@@ -656,8 +653,6 @@ def live_score_detail(request, score_id):
 
             detail_raw = {}
 
-            # Step 1: get_soccer_live() — সবচেয়ে সম্পূর্ণ ডাটা (events, player names, ht score)
-            # এটি সব লাইভ ম্যাচ একসাথে দেয়, তাই cache করে রাখা হয়
             try:
                 cache_key = 'statpal_soccer_live_full'
                 live_all = cache.get(cache_key)
@@ -682,7 +677,6 @@ def live_score_detail(request, score_id):
                         for m in matches:
                             if not isinstance(m, dict):
                                 continue
-                            # main_id এবং fallback id গুলো দিয়ে ম্যাচ খোঁজা হচ্ছে
                             ids = {
                                 str(m.get('main_id', '')),
                                 str(m.get('fallback_id_1', '')),
@@ -697,7 +691,6 @@ def live_score_detail(request, score_id):
             except Exception:
                 pass
 
-            # Step 2: live API তে না পেলে raw_data ব্যবহার করো (DB তে stored data)
             if not detail_raw:
                 detail_raw = raw
 
@@ -713,9 +706,6 @@ def live_score_detail(request, score_id):
                     game.away_team, away_entity_id
                 )
 
-                # Halftime score — দুটো ফরম্যাট সাপোর্ট করে:
-                # raw_data: {"home_goals": 2, "away_goals": 1}
-                # match-stats / live: {"home": 2, "away": 1}
                 ht = detail_raw.get('ht')
                 if ht and isinstance(ht, dict):
                     home_ht = ht.get('home') if ht.get('home') is not None else ht.get('home_goals')

@@ -19,11 +19,13 @@ import time
 
 
 class DetailedFeedItemUserThrottle(UserRateThrottle):
-    rate = '15/minute'
+    # rate = '15/minute'
+    pass
 
 
 class DetailedFeedItemAnonThrottle(AnonRateThrottle):
-    rate = '5/minute'
+    # rate = '5/minute'
+    pass
 
 
 class FeedPagination(PageNumberPagination):
