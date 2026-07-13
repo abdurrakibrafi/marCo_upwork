@@ -226,6 +226,20 @@ def update_soccer_live_scores_only():
 # MATCH DETAILS (deep stats for completed games)
 # ================================================================
 
+def _extract_minute(val) -> int:
+    import re
+    if not val:
+        return 0
+    val_str = str(val).strip()
+    match = re.search(r'\d+', val_str)
+    if match:
+        try:
+            return int(match.group(0))
+        except (ValueError, TypeError):
+            return 0
+    return 0
+
+
 def _populate_statpal_event_details(event):
     """
     Parse StatPal metadata to populate EventTimeline (goals, cards, subs)
@@ -278,22 +292,25 @@ def _populate_statpal_event_details(event):
                 for g in goals_list:
                     if not isinstance(g, dict):
                         continue
-                    minute = int(g.get('minute') or 0) if g.get('minute') else 0
-                    extra = int(g.get('extra_min') or 0) if g.get('extra_min') else 0
-                    player_name = g.get('player_name', '')
-                    assist_name = g.get('assist_player_name', '')
-                    desc = player_name
-                    if assist_name:
-                        desc += f" (Assist: {assist_name})"
-                    EventTimeline.objects.create(
-                        event=event,
-                        event_type='goal',
-                        minute=minute,
-                        extra_minute=extra,
-                        team=team_entity,
-                        description=desc,
-                        metadata=g
-                    )
+                    try:
+                        minute = _extract_minute(g.get('minute'))
+                        extra = _extract_minute(g.get('extra_min'))
+                        player_name = g.get('player_name', '')
+                        assist_name = g.get('assist_player_name', '')
+                        desc = player_name
+                        if assist_name:
+                            desc += f" (Assist: {assist_name})"
+                        EventTimeline.objects.create(
+                            event=event,
+                            event_type='goal',
+                            minute=minute,
+                            extra_minute=extra,
+                            team=team_entity,
+                            description=desc,
+                            metadata=g
+                        )
+                    except Exception as ex:
+                        logger.warning(f"Failed to parse or create goal timeline entry for event {event.id}: {ex}")
 
                 # Yellow Cards
                 yc = side_events.get('yellowcards', {})
@@ -303,18 +320,21 @@ def _populate_statpal_event_details(event):
                 for card in yc_list:
                     if not isinstance(card, dict):
                         continue
-                    minute = int(card.get('minute') or 0) if card.get('minute') else 0
-                    extra = int(card.get('extra_min') or 0) if card.get('extra_min') else 0
-                    player_name = card.get('player_name', '')
-                    EventTimeline.objects.create(
-                        event=event,
-                        event_type='yellow_card',
-                        minute=minute,
-                        extra_minute=extra,
-                        team=team_entity,
-                        description=player_name,
-                        metadata=card
-                    )
+                    try:
+                        minute = _extract_minute(card.get('minute'))
+                        extra = _extract_minute(card.get('extra_min'))
+                        player_name = card.get('player_name', '')
+                        EventTimeline.objects.create(
+                            event=event,
+                            event_type='yellow_card',
+                            minute=minute,
+                            extra_minute=extra,
+                            team=team_entity,
+                            description=player_name,
+                            metadata=card
+                        )
+                    except Exception as ex:
+                        logger.warning(f"Failed to parse or create yellow card timeline entry for event {event.id}: {ex}")
 
                 # Red Cards
                 rc = side_events.get('redcards', {})
@@ -324,18 +344,21 @@ def _populate_statpal_event_details(event):
                 for card in rc_list:
                     if not isinstance(card, dict):
                         continue
-                    minute = int(card.get('minute') or 0) if card.get('minute') else 0
-                    extra = int(card.get('extra_min') or 0) if card.get('extra_min') else 0
-                    player_name = card.get('player_name', '')
-                    EventTimeline.objects.create(
-                        event=event,
-                        event_type='red_card',
-                        minute=minute,
-                        extra_minute=extra,
-                        team=team_entity,
-                        description=player_name,
-                        metadata=card
-                    )
+                    try:
+                        minute = _extract_minute(card.get('minute'))
+                        extra = _extract_minute(card.get('extra_min'))
+                        player_name = card.get('player_name', '')
+                        EventTimeline.objects.create(
+                            event=event,
+                            event_type='red_card',
+                            minute=minute,
+                            extra_minute=extra,
+                            team=team_entity,
+                            description=player_name,
+                            metadata=card
+                        )
+                    except Exception as ex:
+                        logger.warning(f"Failed to parse or create red card timeline entry for event {event.id}: {ex}")
 
                 # Substitutions
                 subs = side_events.get('substitutions', {})
@@ -345,20 +368,23 @@ def _populate_statpal_event_details(event):
                 for sub in subs_list:
                     if not isinstance(sub, dict):
                         continue
-                    minute = int(sub.get('minute') or 0) if sub.get('minute') else 0
-                    extra = int(sub.get('extra_min') or 0) if sub.get('extra_min') else 0
-                    p_on = sub.get('player_on', '')
-                    p_off = sub.get('player_off', '')
-                    desc = f"IN: {p_on} — OUT: {p_off}"
-                    EventTimeline.objects.create(
-                        event=event,
-                        event_type='substitution',
-                        minute=minute,
-                        extra_minute=extra,
-                        team=team_entity,
-                        description=desc,
-                        metadata=sub
-                    )
+                    try:
+                        minute = _extract_minute(sub.get('minute'))
+                        extra = _extract_minute(sub.get('extra_min'))
+                        p_on = sub.get('player_on', '')
+                        p_off = sub.get('player_off', '')
+                        desc = f"IN: {p_on} — OUT: {p_off}"
+                        EventTimeline.objects.create(
+                            event=event,
+                            event_type='substitution',
+                            minute=minute,
+                            extra_minute=extra,
+                            team=team_entity,
+                            description=desc,
+                            metadata=sub
+                        )
+                    except Exception as ex:
+                        logger.warning(f"Failed to parse or create substitution timeline entry for event {event.id}: {ex}")
 
         # Populate EventStatistics
         team_stats = meta.get('team_stats', {})
@@ -414,7 +440,6 @@ def _populate_statpal_event_details(event):
                             jersey_number=int(player_number) if str(player_number).isdigit() else None
                         )
 
-        # Update scores from ft / et (Option B: sum ft + et)
         ft = meta.get('ft')
         et = meta.get('et')
         if isinstance(et, dict) and (et.get('home_goals') is not None or et.get('away_goals') is not None):
@@ -458,74 +483,69 @@ def _populate_statpal_event_details(event):
         if not isinstance(ev, dict):
             continue
 
-        ev_type_raw = ev.get('type', '').lower()
-        team_side = ev.get('team', '')  # 'home' or 'away'
-        minute = 0
-        extra_min = 0
         try:
-            minute = int(ev.get('minute', 0) or 0)
-        except (ValueError, TypeError):
-            pass
-        try:
-            extra_min = int(ev.get('extra_min', 0) or 0)
-        except (ValueError, TypeError):
-            pass
+            ev_type_raw = ev.get('type', '').lower()
+            team_side = ev.get('team', '')  # 'home' or 'away'
+            minute = _extract_minute(ev.get('minute'))
+            extra_min = _extract_minute(ev.get('extra_min'))
 
-        # Map StatPal event types to our model types
-        type_map = {
-            'goal': 'goal',
-            'yellowcard': 'yellow_card',
-            'yellow_card': 'yellow_card',
-            'redcard': 'red_card',
-            'red_card': 'red_card',
-            'yellowred': 'red_card',
-            'subst': 'substitution',
-            'substitution': 'substitution',
-            'penalty': 'penalty',
-            'var': 'var',
-        }
-        mapped_type = type_map.get(ev_type_raw, ev_type_raw)
+            # Map StatPal event types to our model types
+            type_map = {
+                'goal': 'goal',
+                'yellowcard': 'yellow_card',
+                'yellow_card': 'yellow_card',
+                'redcard': 'red_card',
+                'red_card': 'red_card',
+                'yellowred': 'red_card',
+                'subst': 'substitution',
+                'substitution': 'substitution',
+                'penalty': 'penalty',
+                'var': 'var',
+            }
+            mapped_type = type_map.get(ev_type_raw, ev_type_raw)
 
-        # Resolve team entity
-        team_entity = None
-        if team_side == 'home':
-            team_entity = event.home_entity
-        elif team_side == 'away':
-            team_entity = event.away_entity
+            # Resolve team entity
+            team_entity = None
+            if team_side == 'home':
+                team_entity = event.home_entity
+            elif team_side == 'away':
+                team_entity = event.away_entity
 
-        # Build description
-        player_name = ev.get('player', '')
-        result_text = ev.get('result', '')
-        assist = ev.get('assist_player', '')
-        description_parts = []
-        if player_name:
-            description_parts.append(player_name)
-        if result_text:
-            description_parts.append(result_text)
-        if assist and assist.lower() not in ('', 'none'):
-            description_parts.append(f"Assist: {assist}")
-        # For substitutions
-        player_on = ev.get('player_on', '')
-        player_off = ev.get('player_off', '')
-        if mapped_type == 'substitution':
+            # Build description
+            player_name = ev.get('player', '')
+            result_text = ev.get('result', '')
+            assist = ev.get('assist_player', '')
             description_parts = []
-            if player_on:
-                description_parts.append(f"IN: {player_on}")
-            if player_off:
-                description_parts.append(f"OUT: {player_off}")
+            if player_name:
+                description_parts.append(player_name)
+            if result_text:
+                description_parts.append(result_text)
+            if assist and assist.lower() not in ('', 'none'):
+                description_parts.append(f"Assist: {assist}")
+            # For substitutions
+            player_on = ev.get('player_on', '')
+            player_off = ev.get('player_off', '')
+            if mapped_type == 'substitution':
+                description_parts = []
+                if player_on:
+                    description_parts.append(f"IN: {player_on}")
+                if player_off:
+                    description_parts.append(f"OUT: {player_off}")
 
-        description = ' — '.join(description_parts).strip(' —')
+            description = ' — '.join(description_parts).strip(' —')
 
-        EventTimeline.objects.create(
-            event=event,
-            event_type=mapped_type,
-            minute=minute,
-            extra_minute=extra_min,
-            team=team_entity,
-            player=None,  # StatPal doesn't provide player entity IDs
-            description=description,
-            metadata=ev,
-        )
+            EventTimeline.objects.create(
+                event=event,
+                event_type=mapped_type,
+                minute=minute,
+                extra_minute=extra_min,
+                team=team_entity,
+                player=None,  # StatPal doesn't provide player entity IDs
+                description=description,
+                metadata=ev,
+            )
+        except Exception as ex:
+            logger.warning(f"Failed to parse or create timeline entry in flat list for event {event.id}: {ex}")
 
     # Update HT/FT/ET scores from metadata (Option B: sum ft + et)
     ht = meta.get('ht')
