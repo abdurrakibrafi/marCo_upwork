@@ -11,6 +11,10 @@ class Migration(migrations.Migration):
     ]
 
     operations = [
+        migrations.RemoveConstraint(
+            model_name='entitysource',
+            name='unique_user_nest_source',
+        ),
         migrations.RemoveField(
             model_name='entitysource',
             name='source',

@@ -61,7 +61,8 @@ INSTALLED_APPS = [
     "apps.nest",
     "apps.preference",
     "apps.score",
-    "apps.source"
+    "apps.source",
+    "apps.sports_apis"
 ]
 
 MIDDLEWARE = [
