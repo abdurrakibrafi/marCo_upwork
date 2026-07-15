@@ -6,6 +6,7 @@ from django.core.cache import cache
 from .models import LiveScore
 from .serializers import LiveScoreSerializer
 from apps.core.utils.mixins import BaseResponseMixin
+from apps.event.tasks import _extract_minute
 
 # @api_view(['GET'])
 # @permission_classes([IsAuthenticated])
@@ -259,8 +260,8 @@ def _convert_statpal_events_to_api_sports(match_data, home_team_name, home_team_
                         detail = "Own Goal"
                     events.append({
                         "time": {
-                            "elapsed": int(g.get("minute") or 0) if g.get("minute") else 0,
-                            "extra": int(g.get("extra_min") or 0) if g.get("extra_min") else None
+                            "elapsed": _extract_minute(g.get("minute")),
+                            "extra": _extract_minute(g.get("extra_min")) or None
                         },
                         "team": {"id": side_team_id, "name": side_team_name},
                         "player": {"id": g.get("player_id"), "name": g.get("player_name")},
@@ -275,8 +276,8 @@ def _convert_statpal_events_to_api_sports(match_data, home_team_name, home_team_
                 for yc in yc_list:
                     events.append({
                         "time": {
-                            "elapsed": int(yc.get("minute") or 0) if yc.get("minute") else 0,
-                            "extra": int(yc.get("extra_min") or 0) if yc.get("extra_min") else None
+                            "elapsed": _extract_minute(yc.get("minute")),
+                            "extra": _extract_minute(yc.get("extra_min")) or None
                         },
                         "team": {"id": side_team_id, "name": side_team_name},
                         "player": {"id": yc.get("player_id"), "name": yc.get("player_name")},
@@ -291,8 +292,8 @@ def _convert_statpal_events_to_api_sports(match_data, home_team_name, home_team_
                 for rc in rc_list:
                     events.append({
                         "time": {
-                            "elapsed": int(rc.get("minute") or 0) if rc.get("minute") else 0,
-                            "extra": int(rc.get("extra_min") or 0) if rc.get("extra_min") else None
+                            "elapsed": _extract_minute(rc.get("minute")),
+                            "extra": _extract_minute(rc.get("extra_min")) or None
                         },
                         "team": {"id": side_team_id, "name": side_team_name},
                         "player": {"id": rc.get("player_id"), "name": rc.get("player_name")},
@@ -307,8 +308,8 @@ def _convert_statpal_events_to_api_sports(match_data, home_team_name, home_team_
                 for var in var_list:
                     events.append({
                         "time": {
-                            "elapsed": int(var.get("minute") or 0) if var.get("minute") else 0,
-                            "extra": int(var.get("extra_min") or 0) if var.get("extra_min") else None
+                            "elapsed": _extract_minute(var.get("minute")),
+                            "extra": _extract_minute(var.get("extra_min")) or None
                         },
                         "team": {"id": side_team_id, "name": side_team_name},
                         "player": {"id": var.get("player_id"), "name": var.get("player_name")},
@@ -328,8 +329,8 @@ def _convert_statpal_events_to_api_sports(match_data, home_team_name, home_team_
                 for s in sub_list:
                     events.append({
                         "time": {
-                            "elapsed": int(s.get("minute") or 0) if s.get("minute") else 0,
-                            "extra": int(s.get("extra_min") or 0) if s.get("extra_min") else None
+                            "elapsed": _extract_minute(s.get("minute")),
+                            "extra": _extract_minute(s.get("extra_min")) or None
                         },
                         "team": {"id": side_team_id, "name": side_team_name},
                         "player": {"id": s.get("player_off_id"), "name": s.get("player_off")},
@@ -371,8 +372,8 @@ def _convert_statpal_events_to_api_sports(match_data, home_team_name, home_team_
                 
                 events.append({
                     "time": {
-                        "elapsed": int(ev.get("minute") or 0) if ev.get("minute") else 0,
-                        "extra": int(ev.get("extra_min") or 0) if ev.get("extra_min") else None
+                        "elapsed": _extract_minute(ev.get("minute")),
+                        "extra": _extract_minute(ev.get("extra_min")) or None
                     },
                     "team": {"id": side_team_id, "name": side_team_name},
                     "player": {"id": ev.get("player_id"), "name": ev.get("player")},
@@ -1104,6 +1105,37 @@ def live_score_detail(request, score_id):
 
         return mixin.success_response(data=data)
     except Exception as exc:
+        if 'game' in locals() and game:
+            import logging
+            logging.getLogger(__name__).error(f"Error in live_score_detail for game {game.id}: {exc}", exc_info=True)
+            fallback_data = {
+                'id': game.id,
+                'sport': getattr(game, 'sport', ''),
+                'home_team': getattr(game, 'home_team', ''),
+                'away_team': getattr(game, 'away_team', ''),
+                'home_logo': getattr(game, 'home_logo', ''),
+                'away_logo': getattr(game, 'away_logo', ''),
+                'status': getattr(game, 'status', ''),
+                'status_detail': getattr(game, 'status_detail', ''),
+                'start_time': getattr(game, 'start_time', None),
+                'match_type': locals().get('match_type', ''),
+                'toss': locals().get('toss_str', ''),
+                'status_info': locals().get('status_info', getattr(game, 'status_detail', '')),
+                'stadium': locals().get('stadium', ''),
+                'league': locals().get('league_name', ''),
+                'home_rr': locals().get('home_rr', None),
+                'away_rr': locals().get('away_rr', None),
+                'scorecard': locals().get('scorecard', {}),
+                'ball_by_ball': locals().get('ball_by_ball', []),
+                'wickets': locals().get('wickets', {}),
+                'lineups': locals().get('lineups', {}),
+                'home_score': getattr(game, 'home_score', None),
+                'away_score': getattr(game, 'away_score', None),
+                'halftime_score': locals().get('halftime_score', {"home": None, "away": None}),
+                'events': locals().get('events', []),
+                'statistics': locals().get('statistics', []),
+            }
+            return mixin.success_response(data=fallback_data)
         return mixin.handle_exception(exc)
     
 
