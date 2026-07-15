@@ -94,6 +94,64 @@ def seed_players_for_team(team_external_id: str, season: int = None):
     if not team_entity:
         return f"Team {team_external_id} not found in DB"
 
+    if team_entity.api_source == 'api_sports':
+        headers = {'x-apisports-key': settings.API_SPORTS_KEY}
+        try:
+            resp = req.get(
+                'https://v3.football.api-sports.io/players/squads',
+                headers=headers,
+                params={'team': team_external_id},
+                timeout=15,
+            )
+            if resp.status_code != 200:
+                return f"Failed to fetch team details from API-Sports: HTTP {resp.status_code}"
+
+            squads = resp.json().get('response', [])
+            if not squads:
+                return f"No squads returned from API-Sports for team {team_external_id}"
+
+            players = squads[0].get('players', [])
+            created_total = 0
+            for p in players:
+                player_id = str(p.get('id', ''))
+                if not player_id:
+                    continue
+
+                player_entity, _ = Entity.objects.get_or_create(
+                    api_source='api_sports',
+                    external_id=player_id,
+                    defaults={
+                        'type': 'athlete',
+                        'name': p.get('name', ''),
+                        'sport': team_entity.sport,
+                        'has_api_data': True,
+                        'logo_url': p.get('photo', '') or '',
+                    }
+                )
+
+                name = p.get('name', '').strip()
+                name_parts = name.split()
+                first_name = name_parts[0] if name_parts else ''
+                last_name = ' '.join(name_parts[1:]) if len(name_parts) > 1 else ''
+
+                athlete, was_created = Athlete.objects.get_or_create(
+                    entity=player_entity,
+                    defaults={
+                        'first_name': first_name,
+                        'last_name': last_name,
+                        'current_team': team_entity,
+                    }
+                )
+                athlete.position = p.get('position', '')
+                athlete.jersey_number = p.get('number') or None
+                athlete.save()
+                if was_created:
+                    created_total += 1
+
+            return f"Seeded {created_total} players for team {team_external_id} from API-Sports"
+        except Exception as e:
+            return f"Failed to fetch squad for {team_entity.name} from API-Sports: {e}"
+
     result = statpal_service.get_soccer_team(team_external_id)
     if not result['success']:
         return f"Failed to fetch team details from StatPal: {result.get('error')}"
