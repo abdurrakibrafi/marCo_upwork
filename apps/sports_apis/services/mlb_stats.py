@@ -16,6 +16,12 @@ class MLBStatsService:
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
         }
         try:
+            req = requests.Request('GET', url, params=params, headers=headers)
+            prepared = req.prepare()
+            print(f"[MLB DEBUG] Sending GET to: {prepared.url}")
+            print(f"[MLB DEBUG] Request Headers: {dict(prepared.headers)}")
+            logger.info(f"MLB Stats API debug request: URL={prepared.url} Headers={dict(prepared.headers)}")
+            
             resp = requests.get(url, params=params, headers=headers, timeout=15)
             if resp.status_code == 200:
                 return resp.json().get('roster', [])
