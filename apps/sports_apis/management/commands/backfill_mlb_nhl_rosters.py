@@ -109,6 +109,7 @@ class Command(BaseCommand):
                     continue
 
                 self.stdout.write(f"  Matched with MLB ID: {mlb_id}. Fetching roster...")
+                time.sleep(0.5)  # Rate limit safety delay before API call
                 roster = mlb_stats_service.get_team_roster(mlb_id)
                 self.stdout.write(f"  Found {len(roster)} players on roster.")
 
@@ -179,6 +180,7 @@ class Command(BaseCommand):
                     continue
 
                 self.stdout.write(f"  Matched with NHL abbreviation: {nhl_abbrev}. Fetching roster...")
+                time.sleep(0.5)  # Rate limit safety delay before API call
                 roster = nhl_api_service.get_team_roster(nhl_abbrev)
                 self.stdout.write(f"  Found {len(roster)} players on roster.")
 
