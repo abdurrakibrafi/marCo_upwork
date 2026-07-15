@@ -84,6 +84,10 @@ app.conf.beat_schedule = {
         'task': 'apps.sports_apis.tasks.fetch_highlights_for_recently_completed_events',
         'schedule': 1800.0,  # every 30 minutes
     },
+    'backfill-mlb-nhl-rosters-weekly': {
+        'task': 'apps.sports_apis.tasks.backfill_mlb_nhl_rosters_task',
+        'schedule': crontab(hour=5, minute=30, day_of_week=0),  # Sunday 5:30am
+    },
 }
 
 @app.task(bind=True)

@@ -433,3 +433,16 @@ def fetch_highlights_for_recently_completed_events():
     logger.info(
         f"fetch_highlights_for_recently_completed_events: triggered {count} tasks")
     return f"Triggered highlight checks for {count} completed events"
+
+
+@shared_task(bind=True, max_retries=3, default_retry_delay=600)
+def backfill_mlb_nhl_rosters_task(self):
+    """Weekly task to backfill MLB and NHL rosters using official free APIs"""
+    from django.core.management import call_command
+    try:
+        logger.info("Starting MLB/NHL rosters backfill task...")
+        call_command('backfill_mlb_nhl_rosters')
+        return "MLB/NHL rosters backfill completed successfully"
+    except Exception as exc:
+        logger.error(f"Error during MLB/NHL rosters backfill: {exc}")
+        raise self.retry(exc=exc)
