@@ -2,7 +2,7 @@ import time
 import re
 import requests
 import unicodedata
-from datetime import datetime
+import datetime
 from django.core.management.base import BaseCommand
 from apps.entity.models import Entity, Athlete
 from apps.sports_apis.services.mlb_stats import mlb_stats_service
@@ -49,7 +49,7 @@ class Command(BaseCommand):
         if not date_str:
             return None
         try:
-            return datetime.strptime(date_str, "%Y-%m-%d").date()
+            return datetime.datetime.strptime(date_str, "%Y-%m-%d").date()
         except Exception:
             return None
 
