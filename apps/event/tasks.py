@@ -151,10 +151,10 @@ def update_statpal_fixtures_for_dates(dates: list[str] = None):
 
 @shared_task
 def update_all_fixtures():
-    """Update fixtures for all sports — today + next 7 days"""
+    """Update fixtures for all sports — past 7 days to next 30 days"""
     dates = [
         (timezone.now().date() + timedelta(days=i)).isoformat()
-        for i in range(-7, 8)
+        for i in range(-7, 31)
     ]
     update_statpal_fixtures_for_dates.delay(dates)
     logger.info(f"update_all_fixtures: Triggered update_statpal_fixtures_for_dates for {len(dates)} days.")

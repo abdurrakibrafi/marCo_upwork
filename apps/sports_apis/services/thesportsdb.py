@@ -214,6 +214,24 @@ class TheSportsDBService:
         data = self._get('eventsday.php', params)
         return data.get('events') or []
 
+    # ── PLAYER ──────────────────────────────────────────────────────────
+
+    def search_player(self, player_name: str) -> dict | None:
+        """Search for a player by name. Returns best match or None."""
+        data = self._get('searchplayers.php', {'p': player_name})
+        players = data.get('player')
+        if not players:
+            return None
+        return players[0]
+
+    def get_player_headshot(self, player_name: str) -> str:
+        """Return transparent cutout/headshot URL for a player, or empty string."""
+        player = self.search_player(player_name)
+        if not player:
+            return ''
+        return player.get('strCutout', '') or player.get('strThumb', '') or ''
+
+
 
 # Global instance
 thesportsdb_service = TheSportsDBService()

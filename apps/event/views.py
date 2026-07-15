@@ -184,11 +184,31 @@ def get_nest_calendar(request):
             
         nest_entity_ids = list(nest_entity_ids)
 
+        # Classify nest entities by type to support leagues and athletes
+        resolved_entities = Entity.objects.filter(id__in=nest_entity_ids)
+        team_ids = set()
+        league_ids = set()
+        athlete_ids = set()
+        for ent in resolved_entities:
+            if ent.type == 'team':
+                team_ids.add(ent.id)
+            elif ent.type == 'league':
+                league_ids.add(ent.id)
+            elif ent.type == 'athlete':
+                athlete_ids.add(ent.id)
+
+        # For followed athletes, find their team IDs
+        if athlete_ids:
+            from apps.entity.models import Athlete
+            athlete_teams = Athlete.objects.filter(entity_id__in=athlete_ids).values_list('current_team_id', flat=True)
+            team_ids.update(athlete_teams)
+
         # 3. Queryset
         qs = (
             Event.objects.filter(
-                Q(home_entity_id__in=nest_entity_ids)
-                | Q(away_entity_id__in=nest_entity_ids)
+                Q(home_entity_id__in=team_ids)
+                | Q(away_entity_id__in=team_ids)
+                | Q(league_id__in=league_ids)
             )
         )
 
@@ -320,16 +340,57 @@ def get_matches_of_day(request):
                 status_code=status.HTTP_400_BAD_REQUEST
             )
 
-        nest_entities = UserNest.objects.filter(
+        nest_entities = list(UserNest.objects.filter(
             user=request.user
-        ).values_list('entity_id', flat=True)
+        ).values_list('entity_id', flat=True))
+
+        # Include duplicate / canonical entities to handle cross-source data variations robustly
+        from apps.entity.models import Entity
+        resolved_entities = Entity.objects.filter(id__in=nest_entities)
+        nest_entity_ids = set(nest_entities)
+        for ent in resolved_entities:
+            duplicates = Entity.objects.filter(
+                name__iexact=ent.name,
+                sport=ent.sport,
+                type=ent.type
+            ).values_list("id", flat=True)
+            nest_entity_ids.update(duplicates)
+            if ent.canonical_entity_id:
+                nest_entity_ids.add(ent.canonical_entity_id)
+                other_dups = Entity.objects.filter(
+                    canonical_entity_id=ent.canonical_entity_id
+                ).values_list("id", flat=True)
+                nest_entity_ids.update(other_dups)
+            child_dups = Entity.objects.filter(
+                canonical_entity_id=ent.id
+            ).values_list("id", flat=True)
+            nest_entity_ids.update(child_dups)
+
+        resolved_entities = Entity.objects.filter(id__in=nest_entity_ids)
+        team_ids = set()
+        league_ids = set()
+        athlete_ids = set()
+        for ent in resolved_entities:
+            if ent.type == 'team':
+                team_ids.add(ent.id)
+            elif ent.type == 'league':
+                league_ids.add(ent.id)
+            elif ent.type == 'athlete':
+                athlete_ids.add(ent.id)
+
+        # For followed athletes, find their team IDs
+        if athlete_ids:
+            from apps.entity.models import Athlete
+            athlete_teams = Athlete.objects.filter(entity_id__in=athlete_ids).values_list('current_team_id', flat=True)
+            team_ids.update(athlete_teams)
 
         # Get all matches on this date involving user's nest entities
         matches_qs = Event.objects.filter(
             start_time__date=query_date,
         ).filter(
-            Q(home_entity_id__in=nest_entities) |
-            Q(away_entity_id__in=nest_entities)
+            Q(home_entity_id__in=team_ids) |
+            Q(away_entity_id__in=team_ids) |
+            Q(league_id__in=league_ids)
         ).select_related(
             'home_entity', 'away_entity', 'league'
         ).order_by('start_time')

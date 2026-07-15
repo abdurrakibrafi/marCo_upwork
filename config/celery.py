@@ -72,9 +72,9 @@ app.conf.beat_schedule = {
     },
 
     # ── Logos + highlights ───────────────────────────────────────────────
-    'enrich-logos-weekly': {
+    'enrich-logos-daily': {
         'task': 'apps.sports_apis.tasks.enrich_missing_logos',
-        'schedule': crontab(hour=2, minute=0, day_of_week=1),  # Monday 2am
+        'schedule': crontab(hour=2, minute=0),  # Daily at 2am
     },
     'enrich-highlights-daily': {
         'task': 'apps.sports_apis.tasks.enrich_event_highlights_today',

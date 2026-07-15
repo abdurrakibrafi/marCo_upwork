@@ -109,6 +109,9 @@ def enrich_missing_logos(dry_run: bool = False):
                 logo_url = thesportsdb_service.get_league_badge(
                     name, entity.sport)
 
+        elif entity.type == 'athlete':
+            logo_url = thesportsdb_service.get_player_headshot(name)
+
         if logo_url:
             if not dry_run:
                 entity.logo_url = logo_url
@@ -149,6 +152,8 @@ def enrich_entity_logo(entity_id: int):
     elif entity.type == 'league':
         logo_url = thesportsdb_service.get_league_badge(
             entity.name, entity.sport)
+    elif entity.type == 'athlete':
+        logo_url = thesportsdb_service.get_player_headshot(entity.name)
 
     if logo_url:
         entity.logo_url = logo_url
