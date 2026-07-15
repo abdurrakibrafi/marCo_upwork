@@ -186,8 +186,8 @@ class BackfillRostersTestCase(TestCase):
 
         html_content = """
         <table class="wikitable">
-            <tr><th>#</th><th>Player</th><th>Criteria</th></tr>
-            <tr><th>1</th><td><span class="flagicon"><span class="mw-image-border"><a href="/wiki/Australia"><img alt="Australia" src="flag.png"></a></span></span><a href="/wiki/Jason_Day">Jason Day</a></td><td>Winner</td></tr>
+            <tr><th>Rank</th><th>Change</th><th>Player</th></tr>
+            <tr><td>1</td><td></td><td><span class="flagicon"><span class="mw-image-border"><a href="/wiki/Australia"><img alt="Australia" src="flag.png"></a></span></span><a href="/wiki/Jason_Day">Jason Day</a></td></tr>
         </table>
         """
         mock_get.return_value = MockResponse(html_content, 200)

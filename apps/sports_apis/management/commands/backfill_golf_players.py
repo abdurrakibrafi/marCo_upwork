@@ -20,16 +20,16 @@ class Command(BaseCommand):
         if dry_run:
             self.stdout.write(self.style.WARNING("=== DRY RUN MODE: Database changes will not be saved ==="))
 
-        url = "https://en.wikipedia.org/wiki/List_of_2019_PGA_Tour_card_holders"
+        url = "https://en.wikipedia.org/wiki/List_of_male_golfers_who_have_been_in_the_world_top_10"
         headers = {
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
         }
 
-        self.stdout.write(f"Fetching PGA Tour card holders from {url}...")
+        self.stdout.write(f"Fetching OWGR golfers from {url}...")
         try:
             resp = requests.get(url, headers=headers, timeout=15)
             if resp.status_code != 200:
-                self.stdout.write(self.style.ERROR(f"Failed to fetch card holders, HTTP status: {resp.status_code}"))
+                self.stdout.write(self.style.ERROR(f"Failed to fetch OWGR page, HTTP status: {resp.status_code}"))
                 return
             soup = BeautifulSoup(resp.text, 'html.parser')
         except Exception as e:
@@ -37,91 +37,138 @@ class Command(BaseCommand):
             return
 
         tables = soup.find_all('table', class_='wikitable')
-        if not tables:
-            self.stdout.write(self.style.ERROR("Could not find any tables on page."))
+        if not tables or len(tables) < 1:
+            self.stdout.write(self.style.ERROR("Could not find required ranking tables on page."))
             return
+
+        def extract_player_and_country(cell):
+            player_a = None
+            all_a = cell.find_all('a')
+            for a in all_a:
+                if not a.find_parent(class_='flagicon'):
+                    player_a = a
+                    break
+            if not player_a:
+                return None, None
+            
+            fullname = player_a.get_text().strip()
+            country = "Neutral"
+            flagicon = cell.find(class_='flagicon')
+            if not flagicon and cell.parent:
+                flagicon = cell.parent.find(class_='flagicon')
+                
+            if flagicon:
+                img = flagicon.find('img')
+                if img and 'alt' in img.attrs:
+                    country = img.attrs['alt'].strip()
+            return fullname, country
+
+        golfers = {}
+
+        # 1. Table 0: Current Top 10
+        if len(tables) > 0:
+            self.stdout.write("Parsing Current Top 10...")
+            for r in tables[0].find_all('tr')[1:]:
+                tds = r.find_all('td')
+                if len(tds) > 2:
+                    name, country = extract_player_and_country(tds[2])
+                    if name:
+                        golfers[name] = country
+
+        # 2. Table 1: World Number Ones
+        if len(tables) > 1:
+            self.stdout.write("Parsing World Number Ones...")
+            for r in tables[1].find_all('tr')[1:]:
+                tds = r.find_all('td')
+                if len(tds) > 0:
+                    name, country = extract_player_and_country(tds[0])
+                    if name:
+                        if name not in golfers or golfers[name] == "Neutral":
+                            golfers[name] = country
+
+        # 3. Table 13: 2025 Top 10
+        if len(tables) > 13:
+            self.stdout.write("Parsing 2025 rankings...")
+            for r in tables[13].find_all('tr')[1:]:
+                tds = r.find_all('td')
+                if len(tds) > 1:
+                    name, country = extract_player_and_country(tds[1])
+                    if name:
+                        if name not in golfers or golfers[name] == "Neutral":
+                            golfers[name] = country
+
+        # 4. Tables 14-16 (Year-end Top 10s: 2016-2024)
+        for idx in range(14, 17):
+            if len(tables) > idx:
+                self.stdout.write(f"Parsing year-end table {idx}...")
+                for r in tables[idx].find_all('tr')[1:]:
+                    tds = r.find_all('td')
+                    for p_col in [1, 3, 5]:
+                        if len(tds) > p_col:
+                            name, country = extract_player_and_country(tds[p_col])
+                            if name:
+                                if name not in golfers or golfers[name] == "Neutral":
+                                    golfers[name] = country
+
+        self.stdout.write(f"Found {len(golfers)} unique golfers from OWGR.")
 
         created_count = 0
         updated_count = 0
-        global_count = 0
 
-        # We will parse Table 0 and Table 1 which contain the primary card holders lists
-        for idx, table in enumerate(tables[:2]):
-            self.stdout.write(f"\nProcessing Table {idx}...")
-            rows = table.find_all('tr')
-            for r in rows:
-                tds = r.find_all('td')
-                if not tds:
-                    continue
+        for idx, (fullname, country) in enumerate(sorted(golfers.items())):
+            # Parse first/last name
+            parts = fullname.split(' ')
+            first_name = parts[0]
+            last_name = " ".join(parts[1:]) if len(parts) > 1 else ""
 
-                player_td = tds[0]
-                all_a = player_td.find_all('a')
-                player_a = None
-                for a in all_a:
-                    if not a.find_parent(class_='flagicon'):
-                        player_a = a
-                        break
+            slug = re.sub(r'[^a-z0-9]', '', fullname.lower())
+            
+            if dry_run:
+                self.stdout.write(f"  [Dry-run] Golfer {idx+1}: {fullname} ({country})")
+                continue
 
-                if not player_a:
-                    continue
-
-                fullname = player_a.get_text().strip()
+            try:
+                # Athlete entity
+                ae, created = Entity.objects.update_or_create(
+                    api_source='wikipedia',
+                    external_id=f"golf_owgr_{slug}",
+                    defaults={
+                        'type': 'athlete',
+                        'name': fullname,
+                        'sport': 'golf',
+                        'has_api_data': True,
+                        'is_active': True,
+                    }
+                )
                 
-                # Extract country/nationality from flagicon
-                country = None
-                flagicon = player_td.find(class_='flagicon')
-                if flagicon:
-                    img = flagicon.find('img')
-                    if img and 'alt' in img.attrs:
-                        country = img.attrs['alt'].strip()
+                # Athlete details
+                defaults = {
+                    'first_name': first_name,
+                    'last_name': last_name,
+                    'position': 'Golfer',
+                }
+                if country != "Neutral":
+                    defaults['nationality'] = country
 
-                if not country:
-                    country = "Neutral"
+                ath, ath_created = Athlete.objects.get_or_create(
+                    entity=ae,
+                    defaults=defaults
+                )
+                if not ath_created:
+                    ath.first_name = first_name
+                    ath.last_name = last_name
+                    if country != "Neutral":
+                        ath.nationality = country
+                    ath.save()
 
-                global_count += 1
-                self.stdout.write(f"  Golfer {global_count}: {fullname} ({country})")
+                if created:
+                    created_count += 1
+                else:
+                    updated_count += 1
+            except Exception as save_err:
+                self.stdout.write(self.style.ERROR(f"    Failed to save athlete {fullname}: {save_err}"))
 
-                # Parse first/last name
-                parts = fullname.split(' ')
-                first_name = parts[0]
-                last_name = " ".join(parts[1:]) if len(parts) > 1 else ""
-
-                if dry_run:
-                    self.stdout.write(f"    [Dry-run] Would create/update Athlete: {fullname} (Country: {country})")
-                    continue
-
-                try:
-                    # Athlete entity
-                    ae, created = Entity.objects.update_or_create(
-                        api_source='wikipedia',
-                        external_id=f"golf_pga_{global_count}",
-                        defaults={
-                            'type': 'athlete',
-                            'name': fullname,
-                            'sport': 'golf',
-                            'has_api_data': True,
-                            'is_active': True,
-                        }
-                    )
-                    # Athlete details
-                    Athlete.objects.update_or_create(
-                        entity=ae,
-                        defaults={
-                            'first_name': first_name,
-                            'last_name': last_name,
-                            'nationality': country,
-                            'position': 'Golfer',
-                        }
-                    )
-                    if created:
-                        created_count += 1
-                    else:
-                        updated_count += 1
-                except Exception as save_err:
-                    self.stdout.write(self.style.ERROR(f"    Failed to save athlete: {save_err}"))
-
-                # Slight throttle
-                time.sleep(0.05)
+            time.sleep(0.02)
 
         if not dry_run:
             self.stdout.write(self.style.SUCCESS(f"\nGolf backfill completed! Created {created_count} athletes, updated {updated_count} athletes."))
