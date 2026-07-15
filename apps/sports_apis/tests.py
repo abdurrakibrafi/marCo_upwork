@@ -185,33 +185,27 @@ class BackfillRostersTestCase(TestCase):
                 self.text = text
                 self.status_code = status_code
 
-        json_data = {
-            "props": {
-                "pageProps": {
-                    "dehydratedState": {
-                        "queries": [
-                          {
-                            "queryKey": ["statDetails", {"statId": "186"}],
-                            "state": {
-                              "data": {
-                                "rows": [
-                                  {
-                                    "playerId": "12345",
-                                    "playerName": "Jason Day",
-                                    "country": "Australia",
-                                    "rank": 1
-                                  }
-                                ]
-                              }
-                            }
-                          }
-                        ]
+        mock_json = {
+            "rankingsList": [
+                {
+                    "rank": 1,
+                    "player": {
+                        "id": 18417,
+                        "firstName": "Jason",
+                        "lastName": "Day",
+                        "fullName": "Jason Day",
+                        "country": {
+                            "id": 14,
+                            "name": "Australia",
+                            "iocCode": "AUS"
+                        }
                     }
                 }
-            }
+            ]
         }
-        html_content = f'<script id="__NEXT_DATA__" type="application/json">{json.dumps(json_data)}</script>'
-        mock_get.return_value = MockResponse(html_content, 200)
+        mock_resp = MockResponse(json.dumps(mock_json), 200)
+        mock_resp.json = lambda: mock_json
+        mock_get.return_value = mock_resp
 
         Athlete.objects.all().delete()
         Entity.objects.filter(sport='golf').delete()
