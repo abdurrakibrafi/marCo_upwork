@@ -1,6 +1,7 @@
 from django.test import TestCase
 from django.core.management import call_command
 from unittest.mock import patch
+import json
 from apps.entity.models import Entity, Athlete
 
 class BackfillRostersTestCase(TestCase):
@@ -184,12 +185,32 @@ class BackfillRostersTestCase(TestCase):
                 self.text = text
                 self.status_code = status_code
 
-        html_content = """
-        <table class="wikitable">
-            <tr><th>Rank</th><th>Change</th><th>Player</th></tr>
-            <tr><td>1</td><td></td><td><span class="flagicon"><span class="mw-image-border"><a href="/wiki/Australia"><img alt="Australia" src="flag.png"></a></span></span><a href="/wiki/Jason_Day">Jason Day</a></td></tr>
-        </table>
-        """
+        json_data = {
+            "props": {
+                "pageProps": {
+                    "dehydratedState": {
+                        "queries": [
+                          {
+                            "queryKey": ["statDetails", {"statId": "186"}],
+                            "state": {
+                              "data": {
+                                "rows": [
+                                  {
+                                    "playerId": "12345",
+                                    "playerName": "Jason Day",
+                                    "country": "Australia",
+                                    "rank": 1
+                                  }
+                                ]
+                              }
+                            }
+                          }
+                        ]
+                    }
+                }
+            }
+        }
+        html_content = f'<script id="__NEXT_DATA__" type="application/json">{json.dumps(json_data)}</script>'
         mock_get.return_value = MockResponse(html_content, 200)
 
         Athlete.objects.all().delete()

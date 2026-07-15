@@ -1,12 +1,13 @@
 import requests
 import time
 import re
+import json
 from bs4 import BeautifulSoup
 from django.core.management.base import BaseCommand
 from apps.entity.models import Entity, Athlete
 
 class Command(BaseCommand):
-    help = "Scrape and seed top golf players (PGA Tour card holders) from Wikipedia"
+    help = "Scrape and seed top 100 golf players from PGA Tour OWGR stats page"
 
     def add_arguments(self, parser):
         parser.add_argument(
@@ -20,7 +21,7 @@ class Command(BaseCommand):
         if dry_run:
             self.stdout.write(self.style.WARNING("=== DRY RUN MODE: Database changes will not be saved ==="))
 
-        url = "https://en.wikipedia.org/wiki/List_of_male_golfers_who_have_been_in_the_world_top_10"
+        url = "https://www.pgatour.com/stats/detail/186"
         headers = {
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
         }
@@ -36,102 +37,65 @@ class Command(BaseCommand):
             self.stdout.write(self.style.ERROR(f"Failed to make request: {e}"))
             return
 
-        tables = soup.find_all('table', class_='wikitable')
-        if not tables or len(tables) < 1:
-            self.stdout.write(self.style.ERROR("Could not find required ranking tables on page."))
+        next_data_tag = soup.find('script', id='__NEXT_DATA__')
+        if not next_data_tag:
+            self.stdout.write(self.style.ERROR("Could not find __NEXT_DATA__ script tag on page."))
             return
 
-        def extract_player_and_country(cell):
-            player_a = None
-            all_a = cell.find_all('a')
-            for a in all_a:
-                if not a.find_parent(class_='flagicon'):
-                    player_a = a
+        try:
+            next_data = json.loads(next_data_tag.get_text())
+        except Exception as e:
+            self.stdout.write(self.style.ERROR(f"Failed to parse __NEXT_DATA__ JSON: {e}"))
+            return
+
+        queries = next_data.get('props', {}).get('pageProps', {}).get('dehydratedState', {}).get('queries', [])
+        target_rows = None
+        for q in queries:
+            query_key = q.get('queryKey', [])
+            if len(query_key) > 1 and isinstance(query_key[1], dict):
+                if query_key[1].get('statId') == '186':
+                    target_rows = q.get('state', {}).get('data', {}).get('rows', [])
                     break
-            if not player_a:
-                return None, None
-            
-            fullname = player_a.get_text().strip()
-            country = "Neutral"
-            flagicon = cell.find(class_='flagicon')
-            if not flagicon and cell.parent:
-                flagicon = cell.parent.find(class_='flagicon')
-                
-            if flagicon:
-                img = flagicon.find('img')
-                if img and 'alt' in img.attrs:
-                    country = img.attrs['alt'].strip()
-            return fullname, country
 
-        golfers = {}
+        if not target_rows:
+            self.stdout.write(self.style.ERROR("Could not find OWGR stats data (statId=186) on the page."))
+            return
 
-        # 1. Table 0: Current Top 10
-        if len(tables) > 0:
-            self.stdout.write("Parsing Current Top 10...")
-            for r in tables[0].find_all('tr')[1:]:
-                tds = r.find_all('td')
-                if len(tds) > 2:
-                    name, country = extract_player_and_country(tds[2])
-                    if name:
-                        golfers[name] = country
+        # Filter top 100 golfers
+        golfers = []
+        for row in target_rows:
+            rank = row.get('rank')
+            if rank and rank <= 100:
+                golfers.append(row)
 
-        # 2. Table 1: World Number Ones
-        if len(tables) > 1:
-            self.stdout.write("Parsing World Number Ones...")
-            for r in tables[1].find_all('tr')[1:]:
-                tds = r.find_all('td')
-                if len(tds) > 0:
-                    name, country = extract_player_and_country(tds[0])
-                    if name:
-                        if name not in golfers or golfers[name] == "Neutral":
-                            golfers[name] = country
-
-        # 3. Table 13: 2025 Top 10
-        if len(tables) > 13:
-            self.stdout.write("Parsing 2025 rankings...")
-            for r in tables[13].find_all('tr')[1:]:
-                tds = r.find_all('td')
-                if len(tds) > 1:
-                    name, country = extract_player_and_country(tds[1])
-                    if name:
-                        if name not in golfers or golfers[name] == "Neutral":
-                            golfers[name] = country
-
-        # 4. Tables 14-16 (Year-end Top 10s: 2016-2024)
-        for idx in range(14, 17):
-            if len(tables) > idx:
-                self.stdout.write(f"Parsing year-end table {idx}...")
-                for r in tables[idx].find_all('tr')[1:]:
-                    tds = r.find_all('td')
-                    for p_col in [1, 3, 5]:
-                        if len(tds) > p_col:
-                            name, country = extract_player_and_country(tds[p_col])
-                            if name:
-                                if name not in golfers or golfers[name] == "Neutral":
-                                    golfers[name] = country
-
-        self.stdout.write(f"Found {len(golfers)} unique golfers from OWGR.")
+        self.stdout.write(f"Found {len(golfers)} golfers in the OWGR top 100.")
 
         created_count = 0
         updated_count = 0
 
-        for idx, (fullname, country) in enumerate(sorted(golfers.items())):
+        for row in golfers:
+            fullname = row.get('playerName', '').strip()
+            country = row.get('country', 'Neutral').strip()
+            player_id = row.get('playerId', '').strip()
+            rank = row.get('rank')
+
+            if not fullname:
+                continue
+
             # Parse first/last name
             parts = fullname.split(' ')
             first_name = parts[0]
             last_name = " ".join(parts[1:]) if len(parts) > 1 else ""
 
-            slug = re.sub(r'[^a-z0-9]', '', fullname.lower())
-            
             if dry_run:
-                self.stdout.write(f"  [Dry-run] Golfer {idx+1}: {fullname} ({country})")
+                self.stdout.write(f"  [Dry-run] Golfer Rank {rank}: {fullname} ({country}, ID: {player_id})")
                 continue
 
             try:
                 # Athlete entity
                 ae, created = Entity.objects.update_or_create(
-                    api_source='wikipedia',
-                    external_id=f"golf_owgr_{slug}",
+                    api_source='pgatour',
+                    external_id=f"golf_pgatour_{player_id}",
                     defaults={
                         'type': 'athlete',
                         'name': fullname,
@@ -168,7 +132,7 @@ class Command(BaseCommand):
             except Exception as save_err:
                 self.stdout.write(self.style.ERROR(f"    Failed to save athlete {fullname}: {save_err}"))
 
-            time.sleep(0.02)
+            time.sleep(0.01)
 
         if not dry_run:
             self.stdout.write(self.style.SUCCESS(f"\nGolf backfill completed! Created {created_count} athletes, updated {updated_count} athletes."))
