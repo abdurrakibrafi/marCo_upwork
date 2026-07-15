@@ -133,3 +133,125 @@ class BackfillRostersTestCase(TestCase):
         self.assertEqual(hockey_athlete.height_cm, 183)
         self.assertEqual(hockey_athlete.weight_kg, 84)
         self.assertEqual(hockey_athlete.current_team, self.hockey_team)
+
+    @patch('requests.get')
+    def test_tennis_backfill(self, mock_get):
+        class MockResponse:
+            def __init__(self, text, status_code):
+                self.text = text
+                self.status_code = status_code
+            def json(self):
+                return [
+                    "test",
+                    ["test"],
+                    ["description"],
+                    ["https://en.wikipedia.org/wiki/Test"]
+                ]
+
+        html_content = """
+        <table class="wikitable">
+            <tr><th>No.</th><th>Player</th><th>Points</th><th>Move</th></tr>
+            <tr><td>1</td><td><span class="flagicon"><img alt="ITA" src="flag.png"></span><a href="/wiki/Jannik_Sinner">Jannik Sinner</a> (ITA)</td><td>13,450</td><td></td></tr>
+        </table>
+        <table class="wikitable"><tr><th>Header</th></tr></table>
+        <table class="wikitable"><tr><th>Header</th></tr></table>
+        <table class="wikitable"><tr><th>Header</th></tr></table>
+        <table class="wikitable">
+            <tr><th>No.</th><th>Player</th><th>Points</th><th>Move</th></tr>
+            <tr><td>1</td><td><span class="flagicon"><img alt="USA" src="flag.png"></span><a href="/wiki/Coco_Gauff">Coco Gauff</a></td><td>6,000</td><td></td></tr>
+        </table>
+        """
+        mock_get.return_value = MockResponse(html_content, 200)
+
+        # Clear existing athletes
+        Athlete.objects.all().delete()
+        Entity.objects.filter(sport='tennis').delete()
+
+        # Run command
+        call_command('backfill_tennis_players')
+
+        # Check seeded tennis athletes
+        self.assertEqual(Athlete.objects.filter(entity__sport='tennis').count(), 2)
+        sinner = Athlete.objects.filter(first_name='Jannik').first()
+        self.assertIsNotNone(sinner)
+        self.assertEqual(sinner.last_name, 'Sinner')
+        self.assertEqual(sinner.nationality, 'ITA')
+
+    @patch('requests.get')
+    def test_golf_backfill(self, mock_get):
+        class MockResponse:
+            def __init__(self, text, status_code):
+                self.text = text
+                self.status_code = status_code
+
+        html_content = """
+        <table class="wikitable">
+            <tr><th>#</th><th>Player</th><th>Criteria</th></tr>
+            <tr><th>1</th><td><span class="flagicon"><span class="mw-image-border"><a href="/wiki/Australia"><img alt="Australia" src="flag.png"></a></span></span><a href="/wiki/Jason_Day">Jason Day</a></td><td>Winner</td></tr>
+        </table>
+        """
+        mock_get.return_value = MockResponse(html_content, 200)
+
+        Athlete.objects.all().delete()
+        Entity.objects.filter(sport='golf').delete()
+
+        call_command('backfill_golf_players')
+
+        self.assertEqual(Athlete.objects.filter(entity__sport='golf').count(), 1)
+        jason = Athlete.objects.filter(first_name='Jason').first()
+        self.assertIsNotNone(jason)
+        self.assertEqual(jason.last_name, 'Day')
+        self.assertEqual(jason.nationality, 'Australia')
+
+    @patch('requests.get')
+    def test_team_sports_backfill(self, mock_get):
+        # Create dummy handball and volleyball teams
+        handball_team = Entity.objects.create(
+            type='team',
+            name='FC Barcelona',
+            sport='handball',
+            has_api_data=True
+        )
+        volleyball_team = Entity.objects.create(
+            type='team',
+            name='Zenit Kazan',
+            sport='volleyball',
+            has_api_data=True
+        )
+
+        def mock_requests_get(url, *args, **kwargs):
+            class MockResponse:
+                def __init__(self, data, status_code, is_json=False):
+                    self.data = data
+                    self.status_code = status_code
+                    self.is_json = is_json
+                def json(self):
+                    return self.data
+                @property
+                def text(self):
+                    return self.data
+
+            if "action=opensearch" in url:
+                return MockResponse(["search", ["Barcelona"], ["desc"], ["https://en.wikipedia.org/wiki/FC_Barcelona_Handbol"]], 200, is_json=True)
+            elif "FC_Barcelona_Handbol" in url or "Zenit" in url:
+                html = """
+                <table>
+                    <tr><th>No.</th><th>Player</th><th>Position</th><th>Nat.</th></tr>
+                    <tr><td>10</td><td><span class="flagicon"><img alt="ESP"></span><a href="/wiki/Dika_Mem">Dika Mem</a></td><td>Right Back</td><td>ESP</td></tr>
+                </table>
+                """
+                return MockResponse(html, 200)
+            return MockResponse("Not Found", 404)
+
+        mock_get.side_effect = mock_requests_get
+
+        Athlete.objects.all().delete()
+
+        call_command('backfill_handball_players')
+        self.assertEqual(Athlete.objects.filter(entity__sport='handball').count(), 1)
+        mem = Athlete.objects.filter(first_name='Dika').first()
+        self.assertIsNotNone(mem)
+        self.assertEqual(mem.last_name, 'Mem')
+        self.assertEqual(mem.jersey_number, 10)
+        self.assertEqual(mem.current_team, handball_team)
+
