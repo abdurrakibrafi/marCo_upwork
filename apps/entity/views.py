@@ -361,6 +361,33 @@ def _fetch_soccer_team_stats(external_id, season):
                 pass
  
         if not league_id:
+            # Fallback 1: Try to find a league from the team's events in DB
+            from django.db.models import Q
+            from apps.event.models import Event
+            event = Event.objects.filter(
+                Q(home_entity=team_entity) | Q(away_entity=team_entity),
+                league__isnull=False
+            ).select_related('league').first()
+            if event:
+                league_id = event.league.external_id
+
+        if not league_id:
+            # Fallback 2: Query API-Sports leagues endpoint directly
+            try:
+                resp = req.get(
+                    'https://v3.football.api-sports.io/leagues',
+                    headers=HEADERS_SPORTS,
+                    params={'team': external_id, 'season': season},
+                    timeout=10,
+                )
+                if resp.status_code == 200:
+                    leagues_data = resp.json().get('response', [])
+                    if leagues_data:
+                        league_id = leagues_data[0].get('league', {}).get('id')
+            except Exception:
+                pass
+
+        if not league_id:
             return {}
  
         resp = req.get(
@@ -601,6 +628,50 @@ def get_team_standings(request, team_id):
     except Exception:
         league = None
  
+    if not league:
+        # Fallback 1: Try to find a league from the team's events in DB
+        from django.db.models import Q
+        from apps.event.models import Event
+        event = Event.objects.filter(
+            Q(home_entity=team_entity) | Q(away_entity=team_entity),
+            league__isnull=False
+        ).select_related('league').first()
+        if event:
+            league = event.league
+
+    if not league:
+        # Fallback 2: Query API-Sports leagues endpoint to find a league entity
+        if team_entity.api_source == 'api_sports':
+            try:
+                resp = req.get(
+                    'https://v3.football.api-sports.io/leagues',
+                    headers=HEADERS_SPORTS,
+                    params={'team': team_entity.external_id, 'season': season},
+                    timeout=10,
+                )
+                if resp.status_code == 200:
+                    leagues_data = resp.json().get('response', [])
+                    if leagues_data:
+                        first_league = leagues_data[0]
+                        lg_id = first_league.get('league', {}).get('id')
+                        lg_name = first_league.get('league', {}).get('name')
+                        # Check if League Entity exists
+                        league = Entity.objects.filter(api_source='api_sports', external_id=str(lg_id)).first()
+                        if not league:
+                            # Create a temporary/mock League Entity so we can fetch standings
+                            league = Entity.objects.create(
+                                name=lg_name,
+                                type='league',
+                                sport='soccer',
+                                api_source='api_sports',
+                                external_id=str(lg_id),
+                                has_api_data=True
+                            )
+                            from apps.entity.models import League
+                            League.objects.get_or_create(entity=league)
+            except Exception:
+                pass
+
     if not league:
         return Response({
             'team':     EntitySerializer(team_entity, context={'request': request}).data,
