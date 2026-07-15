@@ -26,8 +26,9 @@ class EntitySerializer(serializers.ModelSerializer):
     
     def get_in_nest(self, obj):
         request = self.context.get('request')
-        if request and request.user.is_authenticated:
-            return obj.usernest_set.filter(user=request.user).exists()
+        user = getattr(request, 'user', None)
+        if request and user and user.is_authenticated:
+            return obj.usernest_set.filter(user=user).exists()
         return False
 
 

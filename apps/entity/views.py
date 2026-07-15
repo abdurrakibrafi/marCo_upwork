@@ -104,21 +104,25 @@ def get_trending(request):
 @permission_classes([AllowAny])
 def get_entity_detail(request, entity_id):
     entity = get_object_or_404(Entity, id=entity_id)
+    entity = entity.canonical_entity or entity
     if entity.type == 'team':
         try:
             serializer = TeamDetailSerializer(entity.team_details, context={'request': request})
         except Team.DoesNotExist:
-            serializer = EntitySerializer(entity, context={'request': request})
+            mock_team = Team(entity=entity)
+            serializer = TeamDetailSerializer(mock_team, context={'request': request})
     elif entity.type == 'athlete':
         try:
             serializer = AthleteDetailSerializer(entity.athlete_details, context={'request': request})
         except Athlete.DoesNotExist:
-            serializer = EntitySerializer(entity, context={'request': request})
+            mock_athlete = Athlete(entity=entity)
+            serializer = AthleteDetailSerializer(mock_athlete, context={'request': request})
     elif entity.type == 'league':
         try:
             serializer = LeagueDetailSerializer(entity.league_details, context={'request': request})
         except League.DoesNotExist:
-            serializer = EntitySerializer(entity, context={'request': request})
+            mock_league = League(entity=entity)
+            serializer = LeagueDetailSerializer(mock_league, context={'request': request})
     else:
         serializer = EntitySerializer(entity, context={'request': request})
     return Response(serializer.data)
@@ -128,21 +132,25 @@ def get_entity_detail(request, entity_id):
 @permission_classes([AllowAny])
 def get_entity_by_slug(request, slug):
     entity = get_object_or_404(Entity, slug=slug)
+    entity = entity.canonical_entity or entity
     if entity.type == 'team':
         try:
             serializer = TeamDetailSerializer(entity.team_details, context={'request': request})
         except Team.DoesNotExist:
-            serializer = EntitySerializer(entity, context={'request': request})
+            mock_team = Team(entity=entity)
+            serializer = TeamDetailSerializer(mock_team, context={'request': request})
     elif entity.type == 'athlete':
         try:
             serializer = AthleteDetailSerializer(entity.athlete_details, context={'request': request})
         except Athlete.DoesNotExist:
-            serializer = EntitySerializer(entity, context={'request': request})
+            mock_athlete = Athlete(entity=entity)
+            serializer = AthleteDetailSerializer(mock_athlete, context={'request': request})
     elif entity.type == 'league':
         try:
             serializer = LeagueDetailSerializer(entity.league_details, context={'request': request})
         except League.DoesNotExist:
-            serializer = EntitySerializer(entity, context={'request': request})
+            mock_league = League(entity=entity)
+            serializer = LeagueDetailSerializer(mock_league, context={'request': request})
     else:
         serializer = EntitySerializer(entity, context={'request': request})
     return Response(serializer.data)
@@ -164,16 +172,17 @@ def get_entity_stats(request, entity_id):
     - athlete → player stats (goals/assists/appearances)
     """
     entity = get_object_or_404(Entity, id=entity_id)
+    entity = entity.canonical_entity or entity
 
     if entity.type == 'team':
-        return get_team_stats(request._request, entity_id)
+        return get_team_stats(request._request, entity.id)
 
     elif entity.type == 'league':
         season = request.GET.get('season') or str(_current_season('soccer'))
         return _get_standings_for_league(request, entity, season)
 
     elif entity.type == 'athlete':
-        return get_athlete_stats(request._request, entity_id)
+        return get_athlete_stats(request._request, entity.id)
 
     return Response({
         'entity': EntitySerializer(entity, context={'request': request}).data,
@@ -196,6 +205,7 @@ def get_entity_fixtures(request, entity_id):
     from apps.event.serializers import EventSerializer as EvSerializer
 
     entity = get_object_or_404(Entity, id=entity_id)
+    entity = entity.canonical_entity or entity
 
     if entity.type == 'team':
         events = Event.objects.filter(
@@ -233,12 +243,13 @@ def get_entity_roster(request, entity_id):
     - athlete → just that athlete's bio/details
     """
     entity = get_object_or_404(Entity, id=entity_id)
+    entity = entity.canonical_entity or entity
 
     if entity.type == 'team':
-        return get_team_roster(request._request, entity_id)
+        return get_team_roster(request._request, entity.id)
 
     elif entity.type == 'athlete':
-        return get_athlete_bio(request._request, entity_id)
+        return get_athlete_bio(request._request, entity.id)
 
     return Response({
         'entity':  EntitySerializer(entity, context={'request': request}).data,
@@ -258,10 +269,11 @@ def get_entity_standings(request, entity_id):
     - league → full league table
     """
     entity = get_object_or_404(Entity, id=entity_id)
+    entity = entity.canonical_entity or entity
     season = request.GET.get('season') or str(_current_season('soccer'))
 
     if entity.type == 'team':
-        return get_team_standings(request._request, entity_id)
+        return get_team_standings(request._request, entity.id)
 
     elif entity.type == 'league':
         return _get_standings_for_league(request, entity, season)
@@ -284,6 +296,7 @@ def get_team_stats(request, team_id):
     GET /api/entities/team/{team_id}/stats/?season=2024
     """
     team_entity = get_object_or_404(Entity, id=team_id, type='team')
+    team_entity = team_entity.canonical_entity or team_entity
     season = request.GET.get('season') or str(_current_season(team_entity.sport))
  
     # 1 — try DB first
@@ -528,6 +541,7 @@ def _fetch_nba_team_stats_statpal(external_id, season):
 @permission_classes([AllowAny])
 def get_team_roster(request, team_id):
     team_entity = get_object_or_404(Entity, id=team_id, type='team')
+    team_entity = team_entity.canonical_entity or team_entity
  
     athletes = Athlete.objects.filter(
         current_team__api_source=team_entity.api_source,
@@ -579,6 +593,7 @@ def get_team_standings(request, team_id):
     Returns the full league table so the app can highlight this team's row.
     """
     team_entity = get_object_or_404(Entity, id=team_id, type='team')
+    team_entity = team_entity.canonical_entity or team_entity
     season = request.GET.get('season') or str(_current_season(team_entity.sport))
  
     try:
@@ -609,6 +624,7 @@ def get_athlete_stats(request, athlete_id):
     GET /api/entities/athlete/{athlete_id}/stats/?season=2024
     """
     athlete_entity = get_object_or_404(Entity, id=athlete_id, type='athlete')
+    athlete_entity = athlete_entity.canonical_entity or athlete_entity
     season = request.GET.get('season') or str(_current_season(athlete_entity.sport))
  
     # 1 — try DB first
@@ -710,6 +726,7 @@ def _fetch_soccer_player_stats(external_id, season):
 @permission_classes([AllowAny])
 def get_athlete_bio(request, athlete_id):
     athlete_entity = get_object_or_404(Entity, id=athlete_id, type='athlete')
+    athlete_entity = athlete_entity.canonical_entity or athlete_entity
     try:
         athlete = athlete_entity.athlete_details
     except Athlete.DoesNotExist:
@@ -744,6 +761,7 @@ def get_league_standings(request, league_id):
     GET /api/entities/league/{league_id}/standings/?season=2024
     """
     league_entity = get_object_or_404(Entity, id=league_id, type='league')
+    league_entity = league_entity.canonical_entity or league_entity
     season = request.GET.get('season') or str(_current_season('soccer'))
     return _get_standings_for_league(request, league_entity, season)
  
@@ -924,6 +942,7 @@ def get_league_leaders(request, league_id):
     GET /api/entities/league/{league_id}/leaders/?season=2024&stat=goals
     """
     league_entity = get_object_or_404(Entity, id=league_id, type='league')
+    league_entity = league_entity.canonical_entity or league_entity
     season    = request.GET.get('season') or str(_current_season('soccer'))
     stat_type = request.GET.get('stat', 'goals')
  
@@ -1061,6 +1080,7 @@ def get_league_fixtures(request, league_id):
     from apps.event.serializers import EventSerializer as EvSerializer
  
     league_entity = get_object_or_404(Entity, id=league_id, type='league')
+    league_entity = league_entity.canonical_entity or league_entity
     canonical = Entity.objects.filter(
         type='league',
         api_source=league_entity.api_source,
@@ -1117,6 +1137,7 @@ def get_team_fixtures(request, team_id):
     from apps.event.serializers import EventSerializer as EvSerializer
 
     team_entity = get_object_or_404(Entity, id=team_id, type='team')
+    team_entity = team_entity.canonical_entity or team_entity
 
     events = Event.objects.filter(
         Q(home_entity=team_entity) | Q(away_entity=team_entity)
