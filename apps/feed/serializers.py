@@ -94,6 +94,8 @@ class FeedItemCompactSerializer(serializers.ModelSerializer):
     source_logo = serializers.SerializerMethodField()
     publisher_name = serializers.SerializerMethodField()
     publisher_logo = serializers.SerializerMethodField()
+    entity_name = serializers.SerializerMethodField()
+    entity_logo = serializers.SerializerMethodField()
     entity_names = serializers.SerializerMethodField()
     entities = EntitySerializer(many=True, read_only=True)
     is_bookmarked = serializers.SerializerMethodField()
@@ -103,9 +105,17 @@ class FeedItemCompactSerializer(serializers.ModelSerializer):
         model = FeedItem
         fields = [
             'id', 'source_name', 'source_logo', 'publisher_name', 'publisher_logo',
-            'entity_names', 'entities', 'title', 'summary', 'thumbnail_url', 'url',
+            'entity_name', 'entity_logo', 'entity_names', 'entities', 'title', 'summary', 'thumbnail_url', 'url',
             'published_at', 'is_breaking', 'is_trending', 'views', 'is_bookmarked', 'is_liked'
         ]
+
+    def get_entity_name(self, obj):
+        entity = obj.entities.first()
+        return entity.name if entity else ''
+
+    def get_entity_logo(self, obj):
+        entity = obj.entities.first()
+        return entity.logo_url if entity else ''
 
     def get_entity_names(self, obj):
         return [e.name for e in obj.entities.all()]
