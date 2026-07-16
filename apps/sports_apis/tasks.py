@@ -427,7 +427,7 @@ def fetch_highlights_for_recently_completed_events():
 
     count = 0
     for event in events:
-        fetch_highlight_for_event.delay(event.id)
+        fetch_highlight_for_event.apply_async(args=[event.id], countdown=count * 5)
         count += 1
 
     logger.info(
