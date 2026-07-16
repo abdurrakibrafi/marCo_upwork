@@ -48,6 +48,8 @@ class Command(BaseCommand):
             team_info = data.get('team') or {}
             squad_info = team_info.get('squad') or {}
             players = squad_info.get('player') or []
+            if isinstance(players, dict):
+                players = [players]
 
             if not players:
                 self.stdout.write(self.style.WARNING(f"  No players found in the squad for {team.name}."))
@@ -56,7 +58,7 @@ class Command(BaseCommand):
             self.stdout.write(f"  Found {len(players)} players in squad.")
 
             for player in players:
-                if not player:
+                if not isinstance(player, dict):
                     continue
                 player_id = player.get('id')
                 fullname = player.get('name', '').strip()
