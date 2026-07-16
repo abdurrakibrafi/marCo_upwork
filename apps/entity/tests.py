@@ -161,3 +161,35 @@ class StandingsTieBreakerTestCase(TestCase):
         # Inter should rank 2nd
         self.assertEqual(standings[1]["team_name"], "Inter")
         self.assertEqual(standings[1]["rank"], 2)
+
+
+class LogoRestoreCommandTestCase(TestCase):
+    def setUp(self):
+        # Target Entity: basketball team with a broken StatPal logo
+        self.target_team = Entity.objects.create(
+            name="Los Angeles Lakers",
+            sport="basketball",
+            type="team",
+            logo_url="https://statpal.io/images/bad-url.png",
+            api_source="statpal",
+            external_id="123"
+        )
+        # Source Entity: duplicate lakers team with correct logo from api_sports
+        self.source_team = Entity.objects.create(
+            name="Lakers", # different name for fuzzy matching testing
+            sport="basketball",
+            type="team",
+            logo_url="https://images.nba.com/lakers-logo.png",
+            api_source="api_sports",
+            external_id="456"
+        )
+
+    def test_dry_run_does_not_modify(self):
+        call_command("restore_logos_from_duplicates", "--dry-run")
+        self.target_team.refresh_from_db()
+        self.assertEqual(self.target_team.logo_url, "https://statpal.io/images/bad-url.png")
+
+    def test_command_restores_logo(self):
+        call_command("restore_logos_from_duplicates")
+        self.target_team.refresh_from_db()
+        self.assertEqual(self.target_team.logo_url, "https://images.nba.com/lakers-logo.png")
