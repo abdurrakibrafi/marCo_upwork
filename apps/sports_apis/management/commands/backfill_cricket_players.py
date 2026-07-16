@@ -70,8 +70,10 @@ class Command(BaseCommand):
                 name_cell = None
                 for td in tds[:3]:
                     a = td.find('a')
+                    if not a:
+                        continue
                     href = a.get('href', '')
-                    if a and '/wiki/' in href and ':' not in href.split('/wiki/', 1)[1]:
+                    if '/wiki/' in href and ':' not in href.split('/wiki/', 1)[1]:
                         name_cell = td
                         break
                 if not name_cell:
