@@ -10,88 +10,55 @@ class Command(BaseCommand):
     help = "Scrape and seed cricket player rosters from Wikipedia"
 
     def add_arguments(self, parser):
-        parser.add_argument(
-            '--dry-run',
-            action='store_true',
-            help='Run the command without saving anything to the database'
-        )
+        parser.add_argument('--dry-run', action='store_true')
 
     def handle(self, *args, **options):
         dry_run = options['dry_run']
         if dry_run:
-            self.stdout.write(self.style.WARNING("=== DRY RUN MODE: Database changes will not be saved ==="))
+            self.stdout.write(self.style.WARNING("=== DRY RUN MODE ==="))
 
         teams = Entity.objects.filter(type='team', sport='cricket')
         self.stdout.write(f"Found {teams.count()} cricket teams in the database.")
-
         if teams.count() == 0:
-            self.stdout.write(self.style.WARNING("No cricket teams found in database. Seeding will be skipped."))
             return
 
-        headers = {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-        }
-
+        headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
         created_count = 0
         updated_count = 0
 
         for team in teams:
             self.stdout.write(f"\nProcessing Team: {team.name}")
-            
-            # 1. Search Wikipedia using OpenSearch API
             search_query = f"{team.name} cricket team"
-            encoded_query = urllib.parse.quote(search_query)
-            search_url = f"https://en.wikipedia.org/w/api.php?action=opensearch&search={encoded_query}&limit=1&namespace=0&format=json"
+            search_url = f"https://en.wikipedia.org/w/api.php?action=opensearch&search={urllib.parse.quote(search_query)}&limit=1&namespace=0&format=json"
 
-            time.sleep(0.5)  # Rate limiting safety
+            time.sleep(0.5)
             try:
-                search_resp = requests.get(search_url, headers=headers, timeout=10)
-                if search_resp.status_code != 200:
-                    self.stdout.write(self.style.WARNING(f"  Wikipedia search failed (HTTP {search_resp.status_code})"))
-                    continue
-                search_data = search_resp.json()
-                links = search_data[3]
+                r = requests.get(search_url, headers=headers, timeout=10)
+                links = r.json()[3] if r.status_code == 200 else []
                 if not links:
-                    # Retry search with just name
-                    self.stdout.write(f"  Could not find article for '{search_query}'. Retrying with '{team.name}'...")
-                    search_url = f"https://en.wikipedia.org/w/api.php?action=opensearch&search={urllib.parse.quote(team.name)}&limit=1&namespace=0&format=json"
-                    time.sleep(0.5)
-                    search_resp = requests.get(search_url, headers=headers, timeout=10)
-                    search_data = search_resp.json()
-                    links = search_data[3]
-
-                if not links:
-                    self.stdout.write(self.style.WARNING(f"  No Wikipedia page found for team '{team.name}'"))
                     continue
-
                 wiki_url = links[0]
-                self.stdout.write(f"  Matched Wikipedia page: {wiki_url}")
-                
-                # 2. Fetch page HTML
-                page_resp = requests.get(wiki_url, headers=headers, timeout=15)
-                if page_resp.status_code != 200:
-                    self.stdout.write(self.style.WARNING(f"  Failed to fetch Wikipedia page (HTTP {page_resp.status_code})"))
-                    continue
-                soup = BeautifulSoup(page_resp.text, 'html.parser')
+                page = requests.get(wiki_url, headers=headers, timeout=15)
+                soup = BeautifulSoup(page.text, 'html.parser')
             except Exception as e:
-                self.stdout.write(self.style.ERROR(f"  Error fetching Wikipedia data: {e}"))
+                self.stdout.write(self.style.ERROR(f"  Error: {e}"))
                 continue
 
-            # 3. Locate squad table
-            tables = soup.find_all('table')
+            # STRICT squad table detection: needs role AND (batting or bowling) headers
             squad_table = None
-            for table in tables:
-                headers_text = "".join(th.get_text().lower() for th in table.find_all('th'))
-                if "player" in headers_text or "name" in headers_text:
-                    if "role" in headers_text or "batting" in headers_text or "bowling" in headers_text or "age" in headers_text:
-                        squad_table = table
-                        break
+            for table in soup.find_all('table', class_=re.compile(r'wikitable')):
+                headers_text = " ".join(th.get_text().lower() for th in table.find_all('th'))
+                has_player = "player" in headers_text or "name" in headers_text
+                has_role = "role" in headers_text
+                has_style = "batting" in headers_text or "bowling" in headers_text
+                if has_player and has_role and has_style:
+                    squad_table = table
+                    break
 
             if not squad_table:
-                self.stdout.write(self.style.WARNING("  Could not find squad/roster table in Wikipedia page."))
+                self.stdout.write(self.style.WARNING("  No valid squad table found."))
                 continue
 
-            # 4. Parse squad table rows
             rows = squad_table.find_all('tr')
             players_found = 0
             for r in rows:
@@ -99,68 +66,40 @@ class Command(BaseCommand):
                 if len(tds) < 2:
                     continue
 
-                th_elements = r.find_parent('table').find_all('tr')[0].find_all(['th', 'td'])
-                headers_list = [th.get_text().strip().lower() for th in th_elements]
-
-                if not any(headers_list) and len(r.find_parent('table').find_all('tr')) > 1:
-                    th_elements = r.find_parent('table').find_all('tr')[1].find_all(['th', 'td'])
-                    headers_list = [th.get_text().strip().lower() for th in th_elements]
-
-                player_idx = 1
-                pos_idx = -1
-                num_idx = 0
-                nat_idx = -1
-
-                for idx, h in enumerate(headers_list):
-                    if "player" in h or "name" in h:
-                        player_idx = idx
-                    elif "role" in h or "style" in h or "position" in h:
-                        pos_idx = idx
-                    elif "no" in h or "number" in h or "#" in h:
-                        num_idx = idx
-                    elif "nat" in h or "nationality" in h or "country" in h:
-                        nat_idx = idx
-
-                if player_idx >= len(tds):
-                    player_idx = min(1, len(tds) - 1)
-
-                player_td = tds[player_idx]
-                player_a = player_td.find('a')
-                fullname = None
-                if player_a:
-                    fullname = player_a.get_text().strip()
-                else:
-                    fullname = re.sub(r'\[\d+\]', '', player_td.get_text()).strip()
-
-                if not fullname or len(fullname) < 3 or fullname.lower() in ("player", "name", "position"):
+                # Name cell: must contain a real <a> link to a person page
+                name_cell = None
+                for td in tds[:3]:
+                    a = td.find('a')
+                    if a and a.get('href', '').startswith('/wiki/') and ':' not in a['href'].split('/wiki/')[1]:
+                        name_cell = td
+                        break
+                if not name_cell:
                     continue
 
-                fullname = re.sub(r'\s*\([^)]*\)', '', fullname)
-                fullname = re.sub(r'\s*\(c\)', '', fullname, flags=re.I)
-                fullname = fullname.strip()
+                a_tag = name_cell.find('a')
+                fullname = a_tag.get_text().strip()
+                fullname = re.sub(r'\s*\([^)]*\)', '', fullname).strip()
 
-                # Jersey number
+                # Reject non-name garbage: must look like "Firstname Lastname"
+                if not re.match(r'^[A-Za-z][A-Za-z\.\'\-]*(\s+[A-Za-z][A-Za-z\.\'\-]*)+$', fullname):
+                    continue
+                if len(fullname) < 4:
+                    continue
+
                 jersey_number = None
-                if num_idx >= 0 and num_idx < len(tds):
-                    num_text = tds[num_idx].get_text().strip()
-                    num_match = re.search(r'\d+', num_text)
-                    if num_match:
-                        jersey_number = int(num_match.group(0))
+                num_match = re.search(r'\b\d{1,3}\b', tds[0].get_text().strip())
+                if num_match:
+                    jersey_number = int(num_match.group(0))
 
-                # Position/Role
                 position = "All-rounder"
-                if pos_idx >= 0 and pos_idx < len(tds):
-                    pos_text = tds[pos_idx].get_text().strip()
-                    if pos_text:
-                        position = pos_text
-
-                # Nationality/Country
-                country = "Neutral"
-                flagicon = None
-                for cell in tds:
-                    flagicon = cell.find(class_='flagicon')
-                    if flagicon:
+                for td in tds:
+                    txt = td.get_text().strip().lower()
+                    if txt in ("batsman", "bowler", "wicket-keeper", "all-rounder", "wicketkeeper batter", "batter", "bowling all-rounder", "batting all-rounder"):
+                        position = td.get_text().strip()
                         break
+
+                country = "Neutral"
+                flagicon = name_cell.find(class_='flagicon') or r.find(class_='flagicon')
                 if flagicon:
                     img = flagicon.find('img')
                     if img and 'alt' in img.attrs:
@@ -169,54 +108,39 @@ class Command(BaseCommand):
                 players_found += 1
                 self.stdout.write(f"    Player: {fullname} (Jersey: {jersey_number}, Role: {position}, Nat: {country})")
 
-                # Parse first/last name
+                if dry_run:
+                    continue
+
                 parts = fullname.split(' ')
                 first_name = parts[0]
                 last_name = " ".join(parts[1:]) if len(parts) > 1 else ""
 
-                if dry_run:
-                    continue
-
                 try:
-                    # Athlete entity
                     ae, created = Entity.objects.update_or_create(
                         api_source='wikipedia',
                         external_id=f"cricket_wp_{team.id}_{self.normalize_string(fullname)}",
-                        defaults={
-                            'type': 'athlete',
-                            'name': fullname,
-                            'sport': 'cricket',
-                            'has_api_data': True,
-                            'is_active': True,
-                        }
+                        defaults={'type': 'athlete', 'name': fullname, 'sport': 'cricket',
+                                  'has_api_data': True, 'is_active': True}
                     )
-                    # Athlete details
                     Athlete.objects.update_or_create(
                         entity=ae,
-                        defaults={
-                            'first_name': first_name,
-                            'last_name': last_name,
-                            'nationality': country,
-                            'position': position,
-                            'jersey_number': jersey_number,
-                            'current_team': team,
-                        }
+                        defaults={'first_name': first_name, 'last_name': last_name,
+                                  'nationality': country, 'position': position,
+                                  'jersey_number': jersey_number, 'current_team': team}
                     )
                     if created:
                         created_count += 1
                     else:
                         updated_count += 1
-                except Exception as save_err:
-                    self.stdout.write(self.style.ERROR(f"      Failed to save athlete {fullname}: {save_err}"))
+                except Exception as e:
+                    self.stdout.write(self.style.ERROR(f"      Failed: {e}"))
 
-            self.stdout.write(f"  Processed {players_found} players for {team.name}")
+            self.stdout.write(f"  Processed {players_found} valid players for {team.name}")
 
         if not dry_run:
-            self.stdout.write(self.style.SUCCESS(f"\nCricket backfill completed! Created {created_count} athletes, updated {updated_count} athletes."))
+            self.stdout.write(self.style.SUCCESS(f"\nCricket backfill completed! Created {created_count}, updated {updated_count}."))
         else:
-            self.stdout.write(self.style.SUCCESS("\nCricket backfill dry-run completed successfully!"))
+            self.stdout.write(self.style.SUCCESS("\nDry-run completed."))
 
     def normalize_string(self, val: str) -> str:
-        val = val.lower()
-        val = re.sub(r'[^a-z0-9]', '', val)
-        return val
+        return re.sub(r'[^a-z0-9]', '', val.lower())
