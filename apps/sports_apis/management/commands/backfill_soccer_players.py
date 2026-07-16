@@ -44,10 +44,10 @@ class Command(BaseCommand):
                 self.stdout.write(self.style.ERROR(f"  Failed to fetch squad for {team.name} (ID: {team.external_id}): {response.get('error')}"))
                 continue
 
-            data = response.get('data', {})
-            team_info = data.get('team', {})
-            squad_info = team_info.get('squad', {})
-            players = squad_info.get('player', [])
+            data = response.get('data') or {}
+            team_info = data.get('team') or {}
+            squad_info = team_info.get('squad') or {}
+            players = squad_info.get('player') or []
 
             if not players:
                 self.stdout.write(self.style.WARNING(f"  No players found in the squad for {team.name}."))
@@ -56,6 +56,8 @@ class Command(BaseCommand):
             self.stdout.write(f"  Found {len(players)} players in squad.")
 
             for player in players:
+                if not player:
+                    continue
                 player_id = player.get('id')
                 fullname = player.get('name', '').strip()
                 if not player_id or not fullname:
