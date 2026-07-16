@@ -38,30 +38,55 @@ class EntityMatcherTestCase(TestCase):
 
 class EntityTypeFixCommandTestCase(TestCase):
     def setUp(self):
-        # Entity set as team but actually linked to Athlete (type mismatch)
+        # Case A: Entity set as team but actually linked to Athlete (type mismatch)
         self.athlete_entity = Entity.objects.create(
             name="David Alaba",
             sport="soccer",
             type="team"  # Wrong type
         )
-        self.team_record = Team.objects.create(entity=self.athlete_entity)
-        self.athlete_record = Athlete.objects.create(
+        self.team_record_a = Team.objects.create(entity=self.athlete_entity)
+        self.athlete_record_a = Athlete.objects.create(
             entity=self.athlete_entity,
             first_name="David",
             last_name="Alaba"
         )
 
+        # Case B: Real team with collided Athlete record (names differ)
+        self.team_entity = Entity.objects.create(
+            name="Boston Celtics",
+            sport="basketball",
+            type="team"  # Correct type
+        )
+        self.team_record_b = Team.objects.create(entity=self.team_entity)
+        self.athlete_record_b = Athlete.objects.create(
+            entity=self.team_entity,  # Collided link
+            first_name="Jayson",
+            last_name="Tatum"
+        )
+
     def test_dry_run_does_not_modify(self):
         call_command("fix_entity_types", "--dry-run")
         self.athlete_entity.refresh_from_db()
+        self.team_entity.refresh_from_db()
+        
         self.assertEqual(self.athlete_entity.type, "team")
+        self.assertEqual(self.team_entity.type, "team")
         self.assertTrue(Team.objects.filter(entity=self.athlete_entity).exists())
+        self.assertTrue(Athlete.objects.filter(entity=self.team_entity).exists())
 
-    def test_command_corrects_type_and_removes_team_record(self):
+    def test_command_execution(self):
         call_command("fix_entity_types")
         self.athlete_entity.refresh_from_db()
+        self.team_entity.refresh_from_db()
+
+        # Case A corrected
         self.assertEqual(self.athlete_entity.type, "athlete")
         self.assertFalse(Team.objects.filter(entity=self.athlete_entity).exists())
+
+        # Case B cleaned (team type kept, incorrect athlete record deleted)
+        self.assertEqual(self.team_entity.type, "team")
+        self.assertTrue(Team.objects.filter(entity=self.team_entity).exists())
+        self.assertFalse(Athlete.objects.filter(entity=self.team_entity).exists())
 
 
 class StandingsTieBreakerTestCase(TestCase):

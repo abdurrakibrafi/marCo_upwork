@@ -89,8 +89,8 @@ class Command(BaseCommand):
                         ae, created = Entity.objects.update_or_create(
                             api_source='statpal',
                             external_id=str(player_id),
+                            type='athlete',
                             defaults={
-                                'type': 'athlete',
                                 'name': fullname,
                                 'sport': 'soccer',
                                 'logo_url': logo_url,
