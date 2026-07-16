@@ -35,6 +35,16 @@ class EntityMatcherTestCase(TestCase):
         self.assertEqual(canonical.external_ids.get("statpal"), "817")
         self.assertIn("Real Madrid", canonical.name_variations)
 
+    def test_empty_name_handling(self):
+        # Should return placeholder name if empty and doesn't exist by ID
+        entity = get_or_create_precise_entity("9999", "", "soccer", "team")
+        self.assertEqual(entity.name, "Unknown Team")
+
+        # If it exists, should reuse and return the existing entity instead of overwriting/using placeholder
+        entity_2 = get_or_create_precise_entity("9999", "", "soccer", "team")
+        self.assertEqual(entity_2.id, entity.id)
+        self.assertEqual(entity_2.name, "Unknown Team")
+
 
 class EntityTypeFixCommandTestCase(TestCase):
     def setUp(self):

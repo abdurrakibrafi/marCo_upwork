@@ -64,6 +64,19 @@ def get_or_create_precise_entity(
     entity_sport = _SPORT_MAP.get(sport, sport)   # 'nba' → 'basketball'
     logo         = _logo_url(entity_type, statpal_id, sport) 
 
+    # Guard against empty/blank names
+    if not name or not str(name).strip():
+        # Try to find existing entity by ID to reuse it (avoiding overwrite/placeholder name)
+        existing = Entity.objects.filter(
+            api_source="statpal",
+            external_id=statpal_id,
+            type=entity_type
+        ).first()
+        if existing:
+            return existing
+        # Fallback to placeholder name if it does not exist
+        name = f"Unknown {entity_type.capitalize()}"
+
     # 1 — exact StatPal ID match
     entity = Entity.objects.filter(
         api_source="statpal", 
