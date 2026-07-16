@@ -327,7 +327,7 @@ def get_team_stats(request, team_id):
         stats_data = _fetch_nfl_team_stats(team_entity.external_id, int(season))
  
     elif team_entity.sport == 'hockey':
-        stats_data = _fetch_nhl_team_stats(team_entity.external_id, int(season))
+        stats_data = _fetch_nhl_team_stats(team_entity.name, int(season))
  
     elif team_entity.sport == 'baseball':
         stats_data = _fetch_mlb_team_stats(team_entity.external_id, int(season))
@@ -528,13 +528,15 @@ def _fetch_nfl_team_stats(external_id, season):
         return {}
 
 
-def _fetch_nhl_team_stats(external_id, season):
+def _fetch_nhl_team_stats(team_name, season):
     """
     NHL stats from StatPal /nhl/standings.
     Standings structure: standings → tournament → league[] → division[] → team[]
+    Matches by team name (case-insensitive) because StatPal's team id is a
+    numeric internal id that differs from the abbreviation stored in external_id.
     Fields: won, lost, ot_losses, points, games_played, goals_for, goals_against.
     """
-    cache_key = f'team_stats:hockey:{external_id}:{season}:statpal'
+    cache_key = f'team_stats:hockey:{team_name}:{season}:statpal'
     cached = cache.get(cache_key)
     if cached:
         return cached
@@ -559,7 +561,7 @@ def _fetch_nhl_team_stats(external_id, season):
                 if isinstance(teams, dict):
                     teams = [teams]
                 for t in teams:
-                    if str(t.get('id', '')) == str(external_id):
+                    if str(t.get('name', '')).lower() == str(team_name).lower():
                         wins      = int(t.get('won') or t.get('regular_ot_wins') or 0)
                         losses    = int(t.get('lost') or 0)
                         ot_losses = int(t.get('ot_losses') or 0)
@@ -574,7 +576,7 @@ def _fetch_nhl_team_stats(external_id, season):
                             'goals_against':  int(t.get('goals_against') or 0),
                             'difference':     t.get('difference', ''),
                             'conference':     lg.get('name', ''),
-                            'division':       div.get('name', ''),  # if available
+                            'division':       div.get('name', ''),
                             'rank':           int(t.get('position') or 0),
                             'streak':         t.get('streak', ''),
                             'home_record':    t.get('home_record', ''),
