@@ -88,9 +88,10 @@ class Command(BaseCommand):
                     continue
 
                 jersey_number = None
-                num_match = re.search(r'\b\d{1,3}\b', tds[0].get_text().strip())
-                if num_match:
-                    jersey_number = int(num_match.group(0))
+                if len(tds) > 1:
+                    num_match = re.search(r'\b\d{1,3}\b', tds[1].get_text().strip())
+                    if num_match:
+                        jersey_number = int(num_match.group(0))
 
                 position = "All-rounder"
                 for td in tds:
