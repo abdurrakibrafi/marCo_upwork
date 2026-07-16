@@ -437,7 +437,7 @@ def fetch_highlights_for_recently_completed_events():
 
 @shared_task(bind=True, max_retries=3, default_retry_delay=600)
 def backfill_mlb_nhl_rosters_task(self):
-    """Weekly task to backfill MLB and NHL rosters using official free APIs"""
+    """Season-start task to backfill MLB and NHL rosters using official free APIs"""
     from django.core.management import call_command
     try:
         logger.info("Starting MLB/NHL rosters backfill task...")
@@ -446,3 +446,108 @@ def backfill_mlb_nhl_rosters_task(self):
     except Exception as exc:
         logger.error(f"Error during MLB/NHL rosters backfill: {exc}")
         raise self.retry(exc=exc)
+
+
+@shared_task(bind=True, max_retries=3, default_retry_delay=600)
+def backfill_basketball_players_task(self):
+    """Season-start task to backfill NBA basketball rosters using StatPal API"""
+    from django.core.management import call_command
+    try:
+        logger.info("Starting basketball players backfill task...")
+        call_command('backfill_basketball_players')
+        return "Basketball players backfill completed successfully"
+    except Exception as exc:
+        logger.error(f"Error during basketball players backfill: {exc}")
+        raise self.retry(exc=exc)
+
+
+@shared_task(bind=True, max_retries=3, default_retry_delay=600)
+def backfill_cricket_players_task(self):
+    """Season-start task to backfill cricket rosters using StatPal + Wikipedia"""
+    from django.core.management import call_command
+    try:
+        logger.info("Starting cricket players backfill task...")
+        call_command('backfill_cricket_players')
+        return "Cricket players backfill completed successfully"
+    except Exception as exc:
+        logger.error(f"Error during cricket players backfill: {exc}")
+        raise self.retry(exc=exc)
+
+
+@shared_task(bind=True, max_retries=3, default_retry_delay=600)
+def backfill_soccer_players_task(self):
+    """Season-start task to backfill soccer rosters using StatPal API"""
+    from django.core.management import call_command
+    try:
+        logger.info("Starting soccer players backfill task...")
+        call_command('backfill_soccer_players')
+        return "Soccer players backfill completed successfully"
+    except Exception as exc:
+        logger.error(f"Error during soccer players backfill: {exc}")
+        raise self.retry(exc=exc)
+
+
+@shared_task(bind=True, max_retries=3, default_retry_delay=600)
+def backfill_tennis_players_task(self):
+    """Season-start task to backfill tennis players using StatPal API"""
+    from django.core.management import call_command
+    try:
+        logger.info("Starting tennis players backfill task...")
+        call_command('backfill_tennis_players')
+        return "Tennis players backfill completed successfully"
+    except Exception as exc:
+        logger.error(f"Error during tennis players backfill: {exc}")
+        raise self.retry(exc=exc)
+
+
+@shared_task(bind=True, max_retries=3, default_retry_delay=600)
+def backfill_golf_players_task(self):
+    """Season-start task to backfill golf players using StatPal API"""
+    from django.core.management import call_command
+    try:
+        logger.info("Starting golf players backfill task...")
+        call_command('backfill_golf_players')
+        return "Golf players backfill completed successfully"
+    except Exception as exc:
+        logger.error(f"Error during golf players backfill: {exc}")
+        raise self.retry(exc=exc)
+
+
+@shared_task(bind=True, max_retries=3, default_retry_delay=600)
+def backfill_handball_players_task(self):
+    """Season-start task to backfill handball players using StatPal API"""
+    from django.core.management import call_command
+    try:
+        logger.info("Starting handball players backfill task...")
+        call_command('backfill_handball_players')
+        return "Handball players backfill completed successfully"
+    except Exception as exc:
+        logger.error(f"Error during handball players backfill: {exc}")
+        raise self.retry(exc=exc)
+
+
+@shared_task(bind=True, max_retries=3, default_retry_delay=600)
+def backfill_volleyball_players_task(self):
+    """Season-start task to backfill volleyball players using StatPal API"""
+    from django.core.management import call_command
+    try:
+        logger.info("Starting volleyball players backfill task...")
+        call_command('backfill_volleyball_players')
+        return "Volleyball players backfill completed successfully"
+    except Exception as exc:
+        logger.error(f"Error during volleyball players backfill: {exc}")
+        raise self.retry(exc=exc)
+
+
+@shared_task(bind=True, max_retries=3, default_retry_delay=600)
+def cleanup_broken_logos_task(self):
+    """Periodic task to clear broken StatPal logo URLs from non-soccer teams"""
+    from django.core.management import call_command
+    try:
+        logger.info("Starting broken logos cleanup task...")
+        call_command('cleanup_broken_logos')
+        return "Broken logos cleanup completed successfully"
+    except Exception as exc:
+        logger.error(f"Error during broken logos cleanup: {exc}")
+        raise self.retry(exc=exc)
+

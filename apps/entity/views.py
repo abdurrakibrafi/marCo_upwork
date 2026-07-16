@@ -889,13 +889,11 @@ def get_team_roster(request, team_id):
     team_entity = get_object_or_404(Entity, id=team_id, type='team')
     team_entity = team_entity.canonical_entity or team_entity
  
+    from django.db.models import Q
     athletes = Athlete.objects.filter(
-        current_team__api_source=team_entity.api_source,
-        current_team__external_id=team_entity.external_id,
-    ).select_related('entity')
- 
-    if not athletes.exists():
-        athletes = Athlete.objects.filter(current_team=team_entity).select_related('entity')
+        Q(current_team=team_entity)
+        | Q(current_team__external_id=team_entity.external_id, current_team__sport=team_entity.sport)
+    ).select_related('entity').distinct()
  
     if not athletes.exists() and team_entity.api_source == 'api_sports':
         from apps.entity.tasks import seed_players_for_team
@@ -1172,6 +1170,7 @@ def _get_standings_for_league(request, league_entity, season, highlight_team_id=
     teams_in_league = Team.objects.filter(
         league__api_source=canonical.api_source,
         league__external_id=canonical.external_id,
+        entity__type='team',
     ).select_related('entity')
  
     standings = []
@@ -1202,7 +1201,14 @@ def _get_standings_for_league(request, league_entity, season, highlight_team_id=
         })
  
     if has_db_data:
-        standings.sort(key=lambda x: x['rank'] if x['rank'] > 0 else 999)
+        standings.sort(key=lambda x: (
+            -x['points'],
+            -x['goal_diff'],
+            -x['goals_for'],
+            x['team_name'].lower(),
+        ))
+        for i, item in enumerate(standings, 1):
+            item['rank'] = i
         return Response({
             'league':   EntitySerializer(league_entity, context={'request': request}).data,
             'season':   season,
@@ -1256,7 +1262,14 @@ def _get_standings_for_league(request, league_entity, season, highlight_team_id=
                     'form':      row.get('form', ''),
                     'is_highlighted': str(row.get('team_external_id')) == str(highlight_team_id),
                 })
-            live_response.sort(key=lambda x: x['rank'])
+            live_response.sort(key=lambda x: (
+                -x['points'],
+                -x['goal_diff'],
+                -x['goals_for'],
+                x['team_name'].lower(),
+            ))
+            for i, item in enumerate(live_response, 1):
+                item['rank'] = i
             return Response({
                 'league':    EntitySerializer(league_entity, context={'request': request}).data,
                 'season':    season,
@@ -1529,9 +1542,13 @@ def get_team_fixtures(request, team_id):
     team_entity = get_object_or_404(Entity, id=team_id, type='team')
     team_entity = team_entity.canonical_entity or team_entity
 
+    from django.db.models import Q
     events = Event.objects.filter(
-        Q(home_entity=team_entity) | Q(away_entity=team_entity)
-    ).select_related(
+        Q(home_entity=team_entity)
+        | Q(away_entity=team_entity)
+        | Q(home_entity__external_id=team_entity.external_id, home_entity__sport=team_entity.sport)
+        | Q(away_entity__external_id=team_entity.external_id, away_entity__sport=team_entity.sport)
+    ).distinct().select_related(
         'home_entity', 'away_entity', 'league'
     ).order_by('-start_time')[:50]
 

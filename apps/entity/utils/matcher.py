@@ -76,7 +76,62 @@ def get_or_create_precise_entity(
             entity.save(update_fields=["logo_url"])
         return entity
 
-    # 2 — name + sport + type match
+    # 1.1 — Try matching through CanonicalEntity mappings
+    from apps.entity.models import CanonicalEntity
+
+    # Check by StatPal external_id mapping
+    canonical = CanonicalEntity.objects.filter(
+        sport=entity_sport,
+        entity_type=entity_type,
+        external_ids__statpal=statpal_id
+    ).first()
+
+    if not canonical:
+        # Check by canonical name
+        canonical = CanonicalEntity.objects.filter(
+            sport=entity_sport,
+            entity_type=entity_type,
+            canonical_name__iexact=name
+        ).first()
+
+    if not canonical:
+        # Check by name variations
+        try:
+            canonical = CanonicalEntity.objects.filter(
+                sport=entity_sport,
+                entity_type=entity_type,
+                name_variations__contains=name
+            ).first()
+        except Exception:
+            # Fallback for SQLite in local unit tests which doesn't support JSON contains lookup
+            all_canonicals = CanonicalEntity.objects.filter(
+                sport=entity_sport,
+                entity_type=entity_type
+            )
+            for c in all_canonicals:
+                if name in (c.name_variations or []):
+                    canonical = c
+                    break
+
+    if canonical:
+        entity = canonical.entity
+        update_fields = []
+        if entity.api_source != "statpal" or entity.external_id != statpal_id:
+            entity.api_source = "statpal"
+            entity.external_id = statpal_id
+            update_fields.extend(["api_source", "external_id"])
+        if _needs_logo(entity, sport):
+            entity.logo_url = logo
+            update_fields.append("logo_url")
+        if update_fields:
+            entity.save(update_fields=update_fields)
+
+        if canonical.external_ids.get("statpal") != statpal_id:
+            canonical.external_ids["statpal"] = statpal_id
+            canonical.save(update_fields=["external_ids"])
+        return entity
+
+    # 2 — name + sport + type match (exact)
     entity = Entity.objects.filter(
         name__iexact=name,
         sport=entity_sport,
@@ -91,7 +146,58 @@ def get_or_create_precise_entity(
             update_fields.append("logo_url")
         entity.save(update_fields=update_fields)
         logger.debug("Linked existing entity '%s' → StatPal id=%s", name, statpal_id)
+        
+        # Link or create CanonicalEntity for it
+        CanonicalEntity.objects.get_or_create(
+            entity=entity,
+            defaults={
+                'sport': entity_sport,
+                'entity_type': entity_type,
+                'canonical_name': entity.name,
+                'name_variations': [entity.name],
+                'external_ids': {'statpal': statpal_id}
+            }
+        )
         return entity
+
+    # 2.5 — name similarity fallback (fuzzy matching)
+    similar_entities = Entity.objects.filter(
+        type=entity_type,
+        sport=entity_sport,
+    ).exclude(api_source="statpal")
+
+    from apps.entity.utils.normalizers import find_similar_entity
+    similar_entity, score = find_similar_entity(name, similar_entities, threshold=0.85)
+    if similar_entity:
+        similar_entity.api_source = "statpal"
+        similar_entity.external_id = statpal_id
+        update_fields = ["api_source", "external_id"]
+        if _needs_logo(similar_entity, sport):
+            similar_entity.logo_url = logo
+            update_fields.append("logo_url")
+        similar_entity.save(update_fields=update_fields)
+
+        # Ensure CanonicalEntity exists
+        canonical, created = CanonicalEntity.objects.get_or_create(
+            entity=similar_entity,
+            defaults={
+                'sport': entity_sport,
+                'entity_type': entity_type,
+                'canonical_name': similar_entity.name,
+                'name_variations': [similar_entity.name, name],
+                'external_ids': {'statpal': statpal_id}
+            }
+        )
+        if not created:
+            if name not in canonical.name_variations:
+                canonical.name_variations.append(name)
+                canonical.save(update_fields=['name_variations'])
+            if canonical.external_ids.get('statpal') != statpal_id:
+                canonical.external_ids['statpal'] = statpal_id
+                canonical.save(update_fields=['external_ids'])
+
+        logger.info("Linked existing similar entity '%s' to StatPal id=%s (score: %.2f)", similar_entity.name, statpal_id, score)
+        return similar_entity
 
     # 3 — create
     try:

@@ -84,9 +84,56 @@ app.conf.beat_schedule = {
         'task': 'apps.sports_apis.tasks.fetch_highlights_for_recently_completed_events',
         'schedule': 1800.0,  # every 30 minutes
     },
-    'backfill-mlb-nhl-rosters-weekly': {
+    # ── Season-start roster backfills ────────────────────────────────────
+    # Each runs once at the start of that sport's new season.
+    # Timings are approximate — shift ±1 week as needed.
+
+    # NBA season starts early October → run Oct 1 at 4am
+    'backfill-basketball-players-season-start': {
+        'task': 'apps.sports_apis.tasks.backfill_basketball_players_task',
+        'schedule': crontab(hour=4, minute=0, day_of_month=1, month_of_year=10),
+    },
+    # NFL season starts early September → run Sep 1 at 4am
+    'backfill-mlb-nhl-rosters-season-start': {
         'task': 'apps.sports_apis.tasks.backfill_mlb_nhl_rosters_task',
-        'schedule': crontab(hour=5, minute=30, day_of_week=0),  # Sunday 5:30am
+        'schedule': crontab(hour=4, minute=30, day_of_month=1, month_of_year=9),
+    },
+    # NHL season starts October → run Oct 2 at 4am (offset from NBA)
+    # (MLB/NHL share the same command, NHL portion runs here)
+    # Soccer season starts August → run Aug 1 at 4am
+    'backfill-soccer-players-season-start': {
+        'task': 'apps.sports_apis.tasks.backfill_soccer_players_task',
+        'schedule': crontab(hour=4, minute=0, day_of_month=1, month_of_year=8),
+    },
+    # Cricket is year-round, refresh monthly on the 1st at 5am
+    'backfill-cricket-players-monthly': {
+        'task': 'apps.sports_apis.tasks.backfill_cricket_players_task',
+        'schedule': crontab(hour=5, minute=0, day_of_month=1),
+    },
+    # Tennis season starts January → run Jan 1 at 5am
+    'backfill-tennis-players-season-start': {
+        'task': 'apps.sports_apis.tasks.backfill_tennis_players_task',
+        'schedule': crontab(hour=5, minute=30, day_of_month=1, month_of_year=1),
+    },
+    # Golf season starts January → run Jan 2 at 5am
+    'backfill-golf-players-season-start': {
+        'task': 'apps.sports_apis.tasks.backfill_golf_players_task',
+        'schedule': crontab(hour=5, minute=0, day_of_month=2, month_of_year=1),
+    },
+    # Handball season starts September → run Sep 2 at 5am
+    'backfill-handball-players-season-start': {
+        'task': 'apps.sports_apis.tasks.backfill_handball_players_task',
+        'schedule': crontab(hour=5, minute=0, day_of_month=2, month_of_year=9),
+    },
+    # Volleyball season starts September → run Sep 3 at 5am
+    'backfill-volleyball-players-season-start': {
+        'task': 'apps.sports_apis.tasks.backfill_volleyball_players_task',
+        'schedule': crontab(hour=5, minute=0, day_of_month=3, month_of_year=9),
+    },
+    # Broken logo cleanup — run monthly on the 1st at 3am
+    'cleanup-broken-logos-monthly': {
+        'task': 'apps.sports_apis.tasks.cleanup_broken_logos_task',
+        'schedule': crontab(hour=3, minute=0, day_of_month=1),
     },
 }
 
