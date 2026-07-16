@@ -140,6 +140,10 @@ class StatPalService:
     def get_nfl_injuries(self, team_abbreviation: str) -> dict:
         return self._get(f"{self.base_v1}/nfl/injuries/{team_abbreviation.lower()}")
 
+    def get_nhl_standings(self) -> dict:
+        """Response root: standings -> tournament -> league[] -> division[] -> team[]"""
+        return self._get(f"{self.base_v1}/nhl/standings")
+
     def get_nfl_team_stats(self, team_abbreviation: str) -> dict:
         return self._get(f"{self.base_v1}/nfl/team-stats/{team_abbreviation.lower()}")
 
