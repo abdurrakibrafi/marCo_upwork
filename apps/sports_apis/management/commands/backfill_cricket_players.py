@@ -99,12 +99,7 @@ class Command(BaseCommand):
                         position = td.get_text().strip()
                         break
 
-                country = "Neutral"
-                flagicon = name_cell.find(class_='flagicon') or r.find(class_='flagicon')
-                if flagicon:
-                    img = flagicon.find('img')
-                    if img and 'alt' in img.attrs:
-                        country = img.attrs['alt'].strip()
+                country = ""
 
                 players_found += 1
                 self.stdout.write(f"    Player: {fullname} (Jersey: {jersey_number}, Role: {position}, Nat: {country})")
