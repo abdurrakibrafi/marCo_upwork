@@ -35,8 +35,13 @@ def _logo_url(entity_type: str, statpal_id: str, sport: str) -> str:
     return f"{base}?type={entity_type}&id={statpal_id}&access_key={_ACCESS_KEY}"
 
 
-def _needs_logo(entity) -> bool:
-    return not entity.logo_url or "statpal.io" not in entity.logo_url
+def _needs_logo(entity, sport: str) -> bool:
+    # Only use StatPal logo for soccer, and only if the team does not already have a logo.
+    # Other sports don't have valid logos in StatPal, and we never want to overwrite
+    # an existing logo (e.g. custom user uploads or Wikipedia logos).
+    if sport != "soccer":
+        return False
+    return not entity.logo_url
 
 
 def get_or_create_precise_entity(
@@ -66,7 +71,7 @@ def get_or_create_precise_entity(
         type=entity_type
     ).first()
     if entity:
-        if _needs_logo(entity):
+        if _needs_logo(entity, sport):
             entity.logo_url = logo
             entity.save(update_fields=["logo_url"])
         return entity
@@ -81,7 +86,7 @@ def get_or_create_precise_entity(
         update_fields = ["api_source", "external_id"]
         entity.api_source  = "statpal"
         entity.external_id = statpal_id
-        if _needs_logo(entity):
+        if _needs_logo(entity, sport):
             entity.logo_url = logo
             update_fields.append("logo_url")
         entity.save(update_fields=update_fields)
@@ -96,7 +101,7 @@ def get_or_create_precise_entity(
             type=entity_type,
             api_source="statpal",
             external_id=statpal_id,
-            logo_url=logo,
+            logo_url=logo if sport == "soccer" else "",
         )
         logger.info("Created entity '%s' (sport=%s, type=%s)", name, entity_sport, entity_type)
         if entity_type == "team":
