@@ -315,14 +315,27 @@ def get_team_stats(request, team_id):
     if team_entity.sport == 'soccer':
         if team_entity.api_source == 'api_sports':
             stats_data = _fetch_soccer_team_stats(team_entity.external_id, int(season))
-        elif team_entity.api_source == 'statpal':
+        else:
+            # statpal or any other source
             stats_data = _fetch_soccer_team_stats_statpal(team_entity.external_id, int(season))
  
     elif team_entity.sport == 'basketball':
-        if team_entity.api_source == 'balldontlie':
-            stats_data = _fetch_nba_team_stats(team_entity.external_id, int(season))
-        elif team_entity.api_source == 'statpal':
-            stats_data = _fetch_nba_team_stats_statpal(team_entity.external_id, int(season))
+        # Always use StatPal standings (balldontlie is no longer in use)
+        stats_data = _fetch_nba_team_stats_statpal(team_entity.external_id, int(season))
+ 
+    elif team_entity.sport == 'football':
+        stats_data = _fetch_nfl_team_stats(team_entity.external_id, int(season))
+ 
+    elif team_entity.sport == 'hockey':
+        stats_data = _fetch_nhl_team_stats(team_entity.external_id, int(season))
+ 
+    elif team_entity.sport == 'baseball':
+        stats_data = _fetch_mlb_team_stats(team_entity.external_id, int(season))
+ 
+    elif team_entity.sport == 'cricket':
+        stats_data = _fetch_cricket_team_stats(team_entity.external_id, int(season))
+ 
+    # tennis / golf / mma / f1 have no team-standings API — return empty gracefully
  
     # 3 — save to DB so next call is instant
     if stats_data:
@@ -341,6 +354,310 @@ def get_team_stats(request, team_id):
     })
  
  
+def _fetch_cricket_team_stats(external_id, season):
+    """
+    Build win/loss/draw stats for a cricket team by scanning all active
+    StatPal tours and filtering completed matches that involve this team.
+
+    Cricket national teams play bilateral series (no single league table),
+    so we aggregate across every tour in the tour-list that overlaps the
+    requested season year.  Draws ("Match drawn") and No-results are
+    counted separately from losses.
+    """
+    cache_key = f'team_stats:cricket:{external_id}:{season}:statpal'
+    cached = cache.get(cache_key)
+    if cached:
+        return cached
+
+    try:
+        from apps.sports_apis.services.statpal import statpal_service
+
+        # 1. Fetch the tour list
+        tours_resp = statpal_service.get_cricket_tournaments()
+        if not tours_resp.get('success'):
+            return {}
+
+        tours_raw = tours_resp.get('data', {}).get('tours', {}).get('category', [])
+        if isinstance(tours_raw, dict):
+            tours_raw = [tours_raw]
+
+        wins = losses = draws = no_results = 0
+
+        for tour in tours_raw:
+            tour_id   = tour.get('id')
+            tour_uri  = tour.get('schedule_uri', '')  # e.g. '/tour/1114' or '/intl/5536'
+
+            if not tour_id or not tour_uri:
+                continue
+
+            # Derive tournament_type from the URI prefix
+            parts = [p for p in tour_uri.strip('/').split('/') if p]
+            if len(parts) < 2:
+                continue
+            tournament_type = parts[0]   # 'tour' or 'intl'
+            tournament_id   = parts[1]
+
+            # 2. Fetch season-schedule for this tour
+            try:
+                sched_resp = statpal_service.get_cricket_schedule(tournament_type, tournament_id)
+            except Exception:
+                continue
+
+            if not sched_resp.get('success'):
+                continue
+
+            scores = sched_resp.get('data', {}).get('scores', {})
+            cats   = scores.get('category', [])
+            if isinstance(cats, dict):
+                cats = [cats]
+
+            for cat in cats:
+                matches = cat.get('match', [])
+                if isinstance(matches, dict):
+                    matches = [matches]
+
+                for match in matches:
+                    # Only count completed matches
+                    if str(match.get('status', '')).lower() not in ('finished', 'complete', 'completed'):
+                        continue
+
+                    home = match.get('home', {})
+                    away = match.get('away', {})
+                    home_id = str(home.get('id', ''))
+                    away_id = str(away.get('id', ''))
+
+                    if str(external_id) not in (home_id, away_id):
+                        continue
+
+                    # Determine result
+                    comment_post = str(match.get('comment', {}).get('post', '')).lower()
+                    home_winner = str(home.get('winner', '')).lower()
+                    away_winner = str(away.get('winner', '')).lower()
+
+                    if 'drawn' in comment_post or 'draw' in comment_post:
+                        draws += 1
+                    elif 'no result' in comment_post or 'abandoned' in comment_post:
+                        no_results += 1
+                    else:
+                        team_is_home = (str(external_id) == home_id)
+                        team_won = (team_is_home and home_winner == 'true') or \
+                                   (not team_is_home and away_winner == 'true')
+                        if team_won:
+                            wins += 1
+                        else:
+                            losses += 1
+
+        matches_played = wins + losses + draws + no_results
+        if matches_played == 0:
+            return {}
+
+        stats_data = {
+            'wins':           wins,
+            'losses':         losses,
+            'draws':          draws,
+            'no_results':     no_results,
+            'matches_played': matches_played,
+            'win_percentage': round(wins / matches_played * 100, 1),
+        }
+        cache.set(cache_key, stats_data, timeout=3600)
+        return stats_data
+
+    except Exception:
+        return {}
+
+def _fetch_nfl_team_stats(external_id, season):
+    """
+    NFL stats from StatPal /nfl/standings.
+    Standings structure: standings → category[] → league[] → division[] → team[]
+    Fields: won, lost, ties, win_percentage, points_for, points_against, difference.
+    """
+    cache_key = f'team_stats:football:{external_id}:{season}:statpal'
+    cached = cache.get(cache_key)
+    if cached:
+        return cached
+
+    try:
+        from apps.sports_apis.services.statpal import statpal_service
+        result = statpal_service.get_nfl_standings()
+        if not result.get('success'):
+            return {}
+
+        cats = result['data'].get('standings', {}).get('category', [])
+        if isinstance(cats, dict):
+            cats = [cats]
+
+        for cat in cats:
+            leagues = cat.get('league', [])
+            if isinstance(leagues, dict):
+                leagues = [leagues]
+            for lg in leagues:
+                divs = lg.get('division', [])
+                if isinstance(divs, dict):
+                    divs = [divs]
+                for div in divs:
+                    teams = div.get('team', [])
+                    if isinstance(teams, dict):
+                        teams = [teams]
+                    for t in teams:
+                        if str(t.get('id', '')) == str(external_id):
+                            wins   = int(t.get('won') or 0)
+                            losses = int(t.get('lost') or 0)
+                            ties   = int(t.get('ties') or 0)
+                            played = wins + losses + ties
+                            stats_data = {
+                                'wins':           wins,
+                                'losses':         losses,
+                                'ties':           ties,
+                                'matches_played': played,
+                                'win_percentage': float(t.get('win_percentage', '0').replace('.', '0.', 1)
+                                                        if t.get('win_percentage', '').startswith('.') else
+                                                        t.get('win_percentage') or 0),
+                                'points_for':     int(t.get('points_for') or 0),
+                                'points_against': int(t.get('points_against') or 0),
+                                'conference':     lg.get('name', ''),
+                                'division':       div.get('name', ''),
+                                'rank':           int(t.get('position') or 0),
+                                'streak':         t.get('streak', ''),
+                                'home_record':    t.get('home_record', ''),
+                                'road_record':    t.get('road_record', ''),
+                            }
+                            cache.set(cache_key, stats_data, timeout=3600)
+                            return stats_data
+        return {}
+    except Exception:
+        return {}
+
+
+def _fetch_nhl_team_stats(external_id, season):
+    """
+    NHL stats from StatPal /nhl/standings.
+    Standings structure: standings → tournament → league[] → division[] → team[]
+    Fields: won, lost, ot_losses, points, games_played, goals_for, goals_against.
+    """
+    cache_key = f'team_stats:hockey:{external_id}:{season}:statpal'
+    cached = cache.get(cache_key)
+    if cached:
+        return cached
+
+    try:
+        from apps.sports_apis.services.statpal import statpal_service
+        result = statpal_service.get_nhl_standings()
+        if not result.get('success'):
+            return {}
+
+        tourn = result['data'].get('standings', {}).get('tournament', {})
+        leagues = tourn.get('league', [])
+        if isinstance(leagues, dict):
+            leagues = [leagues]
+
+        for lg in leagues:
+            divs = lg.get('division', [])
+            if isinstance(divs, dict):
+                divs = [divs]
+            for div in divs:
+                teams = div.get('team', [])
+                if isinstance(teams, dict):
+                    teams = [teams]
+                for t in teams:
+                    if str(t.get('id', '')) == str(external_id):
+                        wins      = int(t.get('won') or t.get('regular_ot_wins') or 0)
+                        losses    = int(t.get('lost') or 0)
+                        ot_losses = int(t.get('ot_losses') or 0)
+                        played    = int(t.get('games_played') or (wins + losses + ot_losses))
+                        stats_data = {
+                            'wins':           wins,
+                            'losses':         losses,
+                            'ot_losses':      ot_losses,
+                            'points':         int(t.get('points') or 0),
+                            'matches_played': played,
+                            'goals_for':      int(t.get('goals_for') or 0),
+                            'goals_against':  int(t.get('goals_against') or 0),
+                            'difference':     t.get('difference', ''),
+                            'conference':     lg.get('name', ''),
+                            'division':       div.get('name', ''),  # if available
+                            'rank':           int(t.get('position') or 0),
+                            'streak':         t.get('streak', ''),
+                            'home_record':    t.get('home_record', ''),
+                            'road_record':    t.get('road_record', ''),
+                        }
+                        cache.set(cache_key, stats_data, timeout=3600)
+                        return stats_data
+        return {}
+    except Exception:
+        return {}
+
+
+def _fetch_mlb_team_stats(external_id, season):
+    """
+    MLB stats — StatPal doesn't expose a full MLB standings endpoint.
+    We aggregate wins/losses from the last 7 days of daily schedules
+    (d-7 to d-1) for completed matches involving this team.
+    """
+    cache_key = f'team_stats:baseball:{external_id}:{season}:statpal'
+    cached = cache.get(cache_key)
+    if cached:
+        return cached
+
+    try:
+        from apps.sports_apis.services.statpal import statpal_service
+        wins = losses = 0
+
+        # Scan recent days for finished MLB matches
+        for offset in range(-7, 0):   # d-7 through d-1
+            result = statpal_service.get_mlb_fixtures(offset=offset)
+            if not result.get('success'):
+                continue
+
+            scores = result['data'].get('scores', {})
+            tourn  = scores.get('tournament', {})
+            matches = tourn.get('match', [])
+            if isinstance(matches, dict):
+                matches = [matches]
+
+            for match in matches:
+                if str(match.get('status', '')).lower() != 'finished':
+                    continue
+                home = match.get('home', {})
+                away = match.get('away', {})
+                if str(external_id) not in (str(home.get('id', '')), str(away.get('id', ''))):
+                    continue
+
+                try:
+                    home_score = int(home.get('totalscore') or 0)
+                    away_score = int(away.get('totalscore') or 0)
+                except (ValueError, TypeError):
+                    continue
+
+                team_is_home = str(external_id) == str(home.get('id', ''))
+                if team_is_home:
+                    if home_score > away_score:
+                        wins += 1
+                    elif home_score < away_score:
+                        losses += 1
+                else:
+                    if away_score > home_score:
+                        wins += 1
+                    elif away_score < home_score:
+                        losses += 1
+
+        played = wins + losses
+        if played == 0:
+            return {}
+
+        stats_data = {
+            'wins':           wins,
+            'losses':         losses,
+            'matches_played': played,
+            'win_percentage': round(wins / played * 100, 1),
+            'note':           'Last 7 days only (StatPal MLB has no standings endpoint)',
+        }
+        cache.set(cache_key, stats_data, timeout=3600)
+        return stats_data
+
+    except Exception:
+        return {}
+
+
 def _fetch_soccer_team_stats(external_id, season):
     """Hit API-Sports /teams/statistics for one team."""
     cache_key = f'team_stats:soccer:{external_id}:{season}'
