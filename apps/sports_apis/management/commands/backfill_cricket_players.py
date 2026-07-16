@@ -51,7 +51,7 @@ class Command(BaseCommand):
                 has_player = "player" in headers_text or "name" in headers_text
                 has_role = "role" in headers_text
                 has_style = "batting" in headers_text or "bowling" in headers_text
-                if has_player and has_role and has_style:
+                if has_player and has_style:
                     squad_table = table
                     break
 
