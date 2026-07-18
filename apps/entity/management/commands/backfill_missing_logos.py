@@ -17,10 +17,14 @@ class Command(BaseCommand):
         if dry_run:
             self.stdout.write(self.style.WARNING("=== DRY RUN MODE: Database changes will not be saved ==="))
 
-        # Get only team entities with empty logo_url
-        entities_to_fix = Entity.objects.filter(logo_url="", type="team").order_by("name")
+        # Get only team entities with empty or invalid StatPal logo_url
+        from django.db.models import Q
+        entities_to_fix = Entity.objects.filter(
+            Q(logo_url="") | (Q(logo_url__contains="statpal.io") & ~Q(logo_url__contains="/soccer/")),
+            type="team"
+        ).order_by("name")
         total_found = entities_to_fix.count()
-        self.stdout.write(f"Found {total_found} team entities with empty logo_url.")
+        self.stdout.write(f"Found {total_found} team entities with empty/invalid logo_url.")
 
         backfilled_count = 0
         for entity in entities_to_fix:

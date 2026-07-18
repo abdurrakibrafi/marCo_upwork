@@ -1463,8 +1463,15 @@ def _save_livescore(row: dict, event: Event):
             return None
 
     from apps.entity.utils.matcher import find_team_logo_by_name
-    home_logo_val = (event.home_entity.logo_url if event.home_entity else "") or find_team_logo_by_name(row["home_name"])
-    away_logo_val = (event.away_entity.logo_url if event.away_entity else "") or find_team_logo_by_name(row["away_name"])
+    home_logo_raw = event.home_entity.logo_url if event.home_entity else ""
+    if home_logo_raw and "statpal.io" in home_logo_raw and "/soccer/" not in home_logo_raw:
+        home_logo_raw = ""
+    home_logo_val = home_logo_raw or find_team_logo_by_name(row["home_name"])
+
+    away_logo_raw = event.away_entity.logo_url if event.away_entity else ""
+    if away_logo_raw and "statpal.io" in away_logo_raw and "/soccer/" not in away_logo_raw:
+        away_logo_raw = ""
+    away_logo_val = away_logo_raw or find_team_logo_by_name(row["away_name"])
 
     live_obj, _ = LiveScore.objects.update_or_create(
         sport=ls_sport,

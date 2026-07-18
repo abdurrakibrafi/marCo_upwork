@@ -44,6 +44,18 @@ def _needs_logo(entity, sport: str) -> bool:
     return not entity.logo_url
 
 
+def _needs_logo_update(entity, new_logo) -> bool:
+    if not new_logo:
+        return False
+    current_logo = entity.logo_url
+    if not current_logo:
+        return True
+    # If current logo is an invalid StatPal logo (not soccer), update it
+    if "statpal.io" in current_logo and "/soccer/" not in current_logo:
+        return True
+    return False
+
+
 def find_team_logo_by_name(name):
     """
     Search database for any team with name matching `name` (case-insensitive)
@@ -60,12 +72,17 @@ def find_team_logo_by_name(name):
         return cached_logo
 
     # Look for an exact match (case-insensitive) of type 'team'
-    logo = Entity.objects.filter(
+    logos = Entity.objects.filter(
         name__iexact=name_clean,
         type="team"
-    ).exclude(logo_url="").values_list("logo_url", flat=True).first()
+    ).exclude(logo_url="").values_list("logo_url", flat=True)
     
-    logo_val = logo or ""
+    logo_val = ""
+    for l in logos:
+        # Avoid invalid StatPal URLs
+        if l and ("statpal.io" not in l or "/soccer/" in l):
+            logo_val = l
+            break
     # Cache for 24 hours (86400 seconds)
     cache.set(cache_key, logo_val, timeout=86400)
     return logo_val
@@ -116,7 +133,7 @@ def get_or_create_precise_entity(
         if _needs_logo(entity, sport):
             entity.logo_url = logo
             entity.save(update_fields=["logo_url"])
-        elif not entity.logo_url and logo:
+        elif _needs_logo_update(entity, logo):
             entity.logo_url = logo
             entity.save(update_fields=["logo_url"])
         return entity
@@ -168,7 +185,7 @@ def get_or_create_precise_entity(
         if _needs_logo(entity, sport):
             entity.logo_url = logo
             update_fields.append("logo_url")
-        elif not entity.logo_url and logo:
+        elif _needs_logo_update(entity, logo):
             entity.logo_url = logo
             update_fields.append("logo_url")
         if update_fields:
@@ -192,7 +209,7 @@ def get_or_create_precise_entity(
         if _needs_logo(entity, sport):
             entity.logo_url = logo
             update_fields.append("logo_url")
-        elif not entity.logo_url and logo:
+        elif _needs_logo_update(entity, logo):
             entity.logo_url = logo
             update_fields.append("logo_url")
         entity.save(update_fields=update_fields)
@@ -226,7 +243,7 @@ def get_or_create_precise_entity(
         if _needs_logo(similar_entity, sport):
             similar_entity.logo_url = logo
             update_fields.append("logo_url")
-        elif not similar_entity.logo_url and logo:
+        elif _needs_logo_update(similar_entity, logo):
             similar_entity.logo_url = logo
             update_fields.append("logo_url")
         similar_entity.save(update_fields=update_fields)

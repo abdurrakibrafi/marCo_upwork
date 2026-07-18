@@ -501,8 +501,15 @@ def live_score_detail(request, score_id):
                 external_id = event_obj.external_id
                 home_team = event_obj.home_entity.name if event_obj.home_entity else ""
                 away_team = event_obj.away_entity.name if event_obj.away_entity else ""
-                home_logo = (event_obj.home_entity.logo_url if event_obj.home_entity else "") or find_team_logo_by_name(home_team)
-                away_logo = (event_obj.away_entity.logo_url if event_obj.away_entity else "") or find_team_logo_by_name(away_team)
+                _home_logo_raw = event_obj.home_entity.logo_url if event_obj.home_entity else ""
+                if _home_logo_raw and "statpal.io" in _home_logo_raw and "/soccer/" not in _home_logo_raw:
+                    _home_logo_raw = ""
+                home_logo = _home_logo_raw or find_team_logo_by_name(home_team)
+
+                _away_logo_raw = event_obj.away_entity.logo_url if event_obj.away_entity else ""
+                if _away_logo_raw and "statpal.io" in _away_logo_raw and "/soccer/" not in _away_logo_raw:
+                    _away_logo_raw = ""
+                away_logo = _away_logo_raw or find_team_logo_by_name(away_team)
                 status = event_obj.status
                 status_detail = event_obj.status_detail
                 start_time = event_obj.start_time
@@ -1088,12 +1095,14 @@ def live_score_detail(request, score_id):
         # Resolve logos and make them absolute
         from apps.entity.utils.matcher import find_team_logo_by_name
         home_logo_val = game.home_logo
-        if not home_logo_val and getattr(game, 'home_team', None):
+        is_invalid_home = home_logo_val and "statpal.io" in home_logo_val and "/soccer/" not in home_logo_val
+        if (not home_logo_val or is_invalid_home) and getattr(game, 'home_team', None):
             home_logo_val = find_team_logo_by_name(game.home_team)
         home_logo_val = _make_absolute(home_logo_val)
 
         away_logo_val = game.away_logo
-        if not away_logo_val and getattr(game, 'away_team', None):
+        is_invalid_away = away_logo_val and "statpal.io" in away_logo_val and "/soccer/" not in away_logo_val
+        if (not away_logo_val or is_invalid_away) and getattr(game, 'away_team', None):
             away_logo_val = find_team_logo_by_name(game.away_team)
         away_logo_val = _make_absolute(away_logo_val)
 
@@ -1136,12 +1145,14 @@ def live_score_detail(request, score_id):
             logging.getLogger(__name__).error(f"Error in live_score_detail for game {game.id}: {exc}", exc_info=True)
             from apps.entity.utils.matcher import find_team_logo_by_name
             home_logo_val = getattr(game, 'home_logo', '')
-            if not home_logo_val and getattr(game, 'home_team', None):
+            is_invalid_home = home_logo_val and "statpal.io" in home_logo_val and "/soccer/" not in home_logo_val
+            if (not home_logo_val or is_invalid_home) and getattr(game, 'home_team', None):
                 home_logo_val = find_team_logo_by_name(game.home_team)
             home_logo_val = _make_absolute(home_logo_val)
 
             away_logo_val = getattr(game, 'away_logo', '')
-            if not away_logo_val and getattr(game, 'away_team', None):
+            is_invalid_away = away_logo_val and "statpal.io" in away_logo_val and "/soccer/" not in away_logo_val
+            if (not away_logo_val or is_invalid_away) and getattr(game, 'away_team', None):
                 away_logo_val = find_team_logo_by_name(game.away_team)
             away_logo_val = _make_absolute(away_logo_val)
 
