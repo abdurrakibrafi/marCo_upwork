@@ -41,12 +41,13 @@ def _logo_url(entity_type: str, statpal_id: str, sport: str) -> str:
 
 def _needs_logo(entity, sport: str) -> bool:
     # We want to use StatPal logo for all supported sports (using soccer base URL)
-    # only if the entity does not already have a logo (or has an invalid non-soccer logo).
+    # only if the entity does not already have a logo (or has an invalid non-soccer/404 logo).
     current_logo = entity.logo_url
     if not current_logo:
         return True
-    if "statpal.io" in current_logo and "/soccer/" not in current_logo:
-        return True
+    if "statpal.io" in current_logo:
+        if "/soccer/" not in current_logo or not is_valid_statpal_logo(current_logo):
+            return True
     return False
 
 
@@ -56,9 +57,10 @@ def _needs_logo_update(entity, new_logo) -> bool:
     current_logo = entity.logo_url
     if not current_logo:
         return True
-    # If current logo is an invalid StatPal logo (not soccer), update it
-    if "statpal.io" in current_logo and "/soccer/" not in current_logo:
-        return True
+    # If current logo is an invalid StatPal logo (not soccer/404), update it
+    if "statpal.io" in current_logo:
+        if "/soccer/" not in current_logo or not is_valid_statpal_logo(current_logo):
+            return True
     return False
 
 
@@ -115,6 +117,37 @@ def is_national_team(name: str) -> bool:
     return base_name.lower() in _KNOWN_COUNTRIES
 
 
+def is_valid_statpal_logo(url: str) -> bool:
+    if not url:
+        return False
+    if "statpal.io" not in url:
+        return True
+        
+    from django.core.cache import cache
+    import hashlib
+    # Cache result using hashlib to create a clean key
+    url_hash = hashlib.md5(url.encode('utf-8')).hexdigest()
+    cache_key = f"valid_logo_{url_hash}"
+    
+    cached_val = cache.get(cache_key)
+    if cached_val is not None:
+        return cached_val
+        
+    is_valid = False
+    try:
+        import requests
+        res = requests.head(url, allow_redirects=True, timeout=2)
+        if res.status_code == 200:
+            ct = res.headers.get("Content-Type", "")
+            if "image" in ct:
+                is_valid = True
+    except Exception:
+        is_valid = False
+        
+    cache.set(cache_key, is_valid, timeout=604800)  # Cache for 7 days
+    return is_valid
+
+
 def normalize_statpal_logo_url(url: str, entity_name: str, entity_type: str, sport: str) -> str:
     if not url:
         return ""
@@ -123,12 +156,16 @@ def normalize_statpal_logo_url(url: str, entity_name: str, entity_type: str, spo
     if entity_type == "league":
         return ""
     if "/soccer/" in url:
-        return url
+        if is_valid_statpal_logo(url):
+            return url
+        return ""
         
     if is_national_team(entity_name):
         import re
-        return re.sub(r"/api/v2/[^/]+/images", "/api/v2/soccer/images", url)
-        
+        potential_url = re.sub(r"/api/v2/[^/]+/images", "/api/v2/soccer/images", url)
+        if is_valid_statpal_logo(potential_url):
+            return potential_url
+            
     return ""
 
 
@@ -197,7 +234,9 @@ def get_or_create_precise_entity(
         logo = find_team_logo_by_name(name)
         
     if not logo and is_national_team(name):
-        logo = _logo_url(entity_type, statpal_id, sport)
+        potential_logo = _logo_url(entity_type, statpal_id, sport)
+        if is_valid_statpal_logo(potential_logo):
+            logo = potential_logo
 
     # Guard against empty/blank names
     if not name or not str(name).strip():

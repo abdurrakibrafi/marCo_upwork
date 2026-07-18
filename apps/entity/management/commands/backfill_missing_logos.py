@@ -17,7 +17,7 @@ class Command(BaseCommand):
         if dry_run:
             self.stdout.write(self.style.WARNING("=== DRY RUN MODE: Database changes will not be saved ==="))
 
-        from apps.entity.utils.matcher import is_national_team, _logo_url
+        from apps.entity.utils.matcher import is_national_team, _logo_url, is_valid_statpal_logo
 
         # 1. Clear any invalid soccer/non-soccer logos from StatPal (teams, athletes, leagues)
         invalid_logos = Entity.objects.filter(logo_url__contains="statpal.io")
@@ -29,15 +29,15 @@ class Command(BaseCommand):
             if entity.type == "league":
                 should_clear = True
             elif entity.type == "athlete":
-                if entity.sport != "soccer" or not is_soccer_url:
+                if entity.sport != "soccer" or not is_soccer_url or not is_valid_statpal_logo(entity.logo_url):
                     should_clear = True
             elif entity.type == "team":
                 if entity.sport == "soccer":
-                    if not is_soccer_url:
+                    if not is_soccer_url or not is_valid_statpal_logo(entity.logo_url):
                         should_clear = True
                 else:
                     if is_national_team(entity.name):
-                        if not is_soccer_url:
+                        if not is_soccer_url or not is_valid_statpal_logo(entity.logo_url):
                             should_clear = True
                     else:
                         should_clear = True
