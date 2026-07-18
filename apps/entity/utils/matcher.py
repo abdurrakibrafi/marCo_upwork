@@ -56,6 +56,27 @@ def _needs_logo_update(entity, new_logo) -> bool:
     return False
 
 
+def clean_national_team_name(name: str) -> str:
+    if not name:
+        return ""
+    name_clean = name.strip()
+    suffixes = [
+        " women", " men", " emerging team", " under-19s", " u19", " u-19",
+        " under-23s", " u23", " u-23", " a team", " emerging",
+        " cricket team", " national cricket team", " national team",
+        " xi", " under-19", " under-23"
+    ]
+    name_lower = name_clean.lower()
+    for suffix in suffixes:
+        if name_lower.endswith(suffix):
+            return name_clean[:-len(suffix)].strip()
+            
+    if len(name_clean) > 2 and name_clean[-2] == " " and name_clean[-1] in ("A", "B"):
+        return name_clean[:-2].strip()
+        
+    return name_clean
+
+
 def find_team_logo_by_name(name):
     """
     Search database for any team with name matching `name` (case-insensitive)
@@ -71,18 +92,25 @@ def find_team_logo_by_name(name):
     if cached_logo is not None:
         return cached_logo
 
-    # Look for an exact match (case-insensitive) of type 'team'
-    logos = Entity.objects.filter(
-        name__iexact=name_clean,
-        type="team"
-    ).exclude(logo_url="").values_list("logo_url", flat=True)
-    
-    logo_val = ""
-    for l in logos:
-        # Avoid invalid StatPal URLs
-        if l and ("statpal.io" not in l or "/soccer/" in l):
-            logo_val = l
-            break
+    def _query_logo(target_name):
+        logos = Entity.objects.filter(
+            name__iexact=target_name,
+            type="team"
+        ).exclude(logo_url="").values_list("logo_url", flat=True)
+        for l in logos:
+            if l and ("statpal.io" not in l or "/soccer/" in l):
+                return l
+        return ""
+
+    # 1. Try exact name match
+    logo_val = _query_logo(name_clean)
+
+    # 2. Try cleaned base country name fallback
+    if not logo_val:
+        base_name = clean_national_team_name(name_clean)
+        if base_name != name_clean:
+            logo_val = _query_logo(base_name)
+            
     # Cache for 24 hours (86400 seconds)
     cache.set(cache_key, logo_val, timeout=86400)
     return logo_val
