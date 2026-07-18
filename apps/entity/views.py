@@ -1183,20 +1183,20 @@ def _get_standings_for_league(request, league_entity, season, highlight_team_id=
         if stats and stats.stats_data.get('rank'):
             has_db_data = True
         standings.append({
-            'rank':      stats.stats_data.get('rank', 0) if stats else 0,
-            'team_id':   team.entity.id,
-            'team_name': team.entity.name,
-            'logo':      team.entity.logo_url,
-            'country':   team.entity.country,
-            'points':    stats.stats_data.get('points', 0) if stats else 0,
-            'played':    stats.stats_data.get('played', 0) if stats else 0,
-            'wins':      stats.stats_data.get('win', team.total_wins) if stats else team.total_wins,
-            'draws':     stats.stats_data.get('draw', 0) if stats else 0,
-            'losses':    stats.stats_data.get('lose', team.total_losses) if stats else team.total_losses,
-            'goals_for': stats.stats_data.get('goals_for', 0) if stats else 0,
+            'rank':       stats.stats_data.get('rank', 0) if stats else 0,
+            'team_id':    team.entity.id,
+            'team_name':  team.entity.name,
+            'logo':       team.entity.logo_url,
+            'country':    team.entity.country,
+            'points':     stats.stats_data.get('points', 0) if stats else 0,
+            'played':     stats.stats_data.get('played', 0) if stats else 0,
+            'wins':       stats.stats_data.get('wins') or stats.stats_data.get('win', team.total_wins) if stats else team.total_wins,
+            'draws':      stats.stats_data.get('draws') or stats.stats_data.get('draw', 0) if stats else 0,
+            'losses':     stats.stats_data.get('losses') or stats.stats_data.get('lose', team.total_losses) if stats else team.total_losses,
+            'goals_for':  stats.stats_data.get('goals_for', 0) if stats else 0,
             'goals_against': stats.stats_data.get('goals_against', 0) if stats else 0,
-            'goal_diff': stats.stats_data.get('goal_diff', 0) if stats else 0,
-            'form':      stats.stats_data.get('form', '') if stats else '',
+            'goal_diff':  stats.stats_data.get('goal_diff', 0) if stats else 0,
+            'form':       stats.stats_data.get('form', '') if stats else '',
             'is_highlighted': str(team.entity.external_id) == str(highlight_team_id),
         })
  
