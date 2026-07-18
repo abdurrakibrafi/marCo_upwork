@@ -1405,9 +1405,12 @@ def _save_event(row: dict) -> Event | None:
     home = get_or_create_precise_entity(
         row["home_id"], row["home_name"], sport, entity_type="team"
     )
+    from apps.entity.utils.matcher import normalize_statpal_logo_url
     if row.get("home_logo") and not home.logo_url:
-        home.logo_url = row["home_logo"]
-        home.save(update_fields=['logo_url'])
+        norm_logo = normalize_statpal_logo_url(row["home_logo"], home.name, "team", sport)
+        if norm_logo:
+            home.logo_url = norm_logo
+            home.save(update_fields=['logo_url'])
     # For individual sports, away entity can be null
     away = None
     if row.get("away_id") and row.get("away_name"):
@@ -1415,8 +1418,10 @@ def _save_event(row: dict) -> Event | None:
             row["away_id"], row["away_name"], sport, entity_type="team"
         )
         if row.get("away_logo") and not away.logo_url:
-            away.logo_url = row["away_logo"]
-            away.save(update_fields=['logo_url'])
+            norm_logo = normalize_statpal_logo_url(row["away_logo"], away.name, "team", sport)
+            if norm_logo:
+                away.logo_url = norm_logo
+                away.save(update_fields=['logo_url'])
     start_time = _parse_dt(row["date"], row["time"])
 
     event, _ = Event.objects.update_or_create(

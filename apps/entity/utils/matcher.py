@@ -115,6 +115,23 @@ def is_national_team(name: str) -> bool:
     return base_name.lower() in _KNOWN_COUNTRIES
 
 
+def normalize_statpal_logo_url(url: str, entity_name: str, entity_type: str, sport: str) -> str:
+    if not url:
+        return ""
+    if "statpal.io" not in url:
+        return url
+    if entity_type == "league":
+        return ""
+    if "/soccer/" in url:
+        return url
+        
+    if is_national_team(entity_name):
+        import re
+        return re.sub(r"/api/v2/[^/]+/images", "/api/v2/soccer/images", url)
+        
+    return ""
+
+
 def find_team_logo_by_name(name):
     """
     Search database for any team with name matching `name` (case-insensitive)
