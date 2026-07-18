@@ -19,11 +19,29 @@ class Command(BaseCommand):
 
         from apps.entity.utils.matcher import is_national_team, _logo_url
 
-        # 1. Clear any invalid non-national team or league soccer logos from StatPal
+        # 1. Clear any invalid soccer/non-soccer logos from StatPal (teams, athletes, leagues)
         invalid_logos = Entity.objects.filter(logo_url__contains="statpal.io")
         cleared_count = 0
         for entity in invalid_logos:
-            should_clear = (entity.type == "league") or (entity.type == "team" and not is_national_team(entity.name))
+            is_soccer_url = "/soccer/" in entity.logo_url
+            should_clear = False
+            
+            if entity.type == "league":
+                should_clear = True
+            elif entity.type == "athlete":
+                if entity.sport != "soccer" or not is_soccer_url:
+                    should_clear = True
+            elif entity.type == "team":
+                if entity.sport == "soccer":
+                    if not is_soccer_url:
+                        should_clear = True
+                else:
+                    if is_national_team(entity.name):
+                        if not is_soccer_url:
+                            should_clear = True
+                    else:
+                        should_clear = True
+                        
             if should_clear:
                 self.stdout.write(f"Clearing invalid logo for {entity.type} '{entity.name}': {entity.logo_url}")
                 if not dry_run:
@@ -31,7 +49,7 @@ class Command(BaseCommand):
                     entity.save(update_fields=["logo_url"])
                 cleared_count += 1
         if cleared_count:
-            self.stdout.write(self.style.SUCCESS(f"Cleared {cleared_count} invalid non-national logo URLs."))
+            self.stdout.write(self.style.SUCCESS(f"Cleared {cleared_count} invalid logo URLs."))
 
         # Get only team entities with empty or invalid StatPal logo_url
         from django.db.models import Q
