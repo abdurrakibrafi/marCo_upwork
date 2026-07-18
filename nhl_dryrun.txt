@@ -1,0 +1,87 @@
+🐉 DEBUG mode is set to: False ⚠️
+🚀 Running in PRODUCTION mode
+/usr/local/lib/python3.13/site-packages/requests/__init__.py:113: RequestsDependencyWarning: urllib3 (2.6.3) or chardet (7.4.3)/charset_normalizer (3.4.4) doesn't match a supported version!
+  warnings.warn(
+/app/apps/core/views.py:724: SyntaxWarning: invalid escape sequence '\d'
+  </html>"""
+/app/apps/core/views.py:727: SyntaxWarning: invalid escape sequence '\/'
+  
+/usr/local/lib/python3.13/site-packages/dj_rest_auth/registration/serializers.py:225: UserWarning: app_settings.USERNAME_REQUIRED is deprecated, use: app_settings.SIGNUP_FIELDS['username']['required']
+  required=allauth_account_settings.USERNAME_REQUIRED,
+/usr/local/lib/python3.13/site-packages/dj_rest_auth/registration/serializers.py:227: UserWarning: app_settings.EMAIL_REQUIRED is deprecated, use: app_settings.SIGNUP_FIELDS['email']['required']
+  email = serializers.EmailField(required=allauth_account_settings.EMAIL_REQUIRED)
+/usr/local/lib/python3.13/site-packages/dj_rest_auth/registration/serializers.py:285: UserWarning: app_settings.EMAIL_REQUIRED is deprecated, use: app_settings.SIGNUP_FIELDS['email']['required']
+  email = serializers.EmailField(required=allauth_account_settings.EMAIL_REQUIRED)
+=== DRY RUN MODE: Database changes will not be saved ===
+Fetching NHL standings from https://api-web.nhle.com/v1/standings/now...
+System check identified some issues:
+
+WARNINGS:
+?: (account.W001) ACCOUNT_LOGIN_METHODS conflicts with ACCOUNT_SIGNUP_FIELDS
+Found 32 teams in official NHL standings.
+Processing NHL Team: Colorado Avalanche (COL)
+  [Dry-run] Would create/update Entity and Team detail for: Colorado Avalanche (Abbrev: COL, Logo: https://assets.nhle.com/logos/nhl/svg/COL_light.svg)
+Processing NHL Team: Carolina Hurricanes (CAR)
+  [Dry-run] Would create/update Entity and Team detail for: Carolina Hurricanes (Abbrev: CAR, Logo: https://assets.nhle.com/logos/nhl/svg/CAR_light.svg)
+Processing NHL Team: Dallas Stars (DAL)
+  [Dry-run] Would create/update Entity and Team detail for: Dallas Stars (Abbrev: DAL, Logo: https://assets.nhle.com/logos/nhl/svg/DAL_light.svg)
+Processing NHL Team: Buffalo Sabres (BUF)
+  [Dry-run] Would create/update Entity and Team detail for: Buffalo Sabres (Abbrev: BUF, Logo: https://assets.nhle.com/logos/nhl/svg/BUF_light.svg)
+Processing NHL Team: Tampa Bay Lightning (TBL)
+  [Dry-run] Would create/update Entity and Team detail for: Tampa Bay Lightning (Abbrev: TBL, Logo: https://assets.nhle.com/logos/nhl/svg/TBL_light.svg)
+Processing NHL Team: Montréal Canadiens (MTL)
+  [Dry-run] Would create/update Entity and Team detail for: Montréal Canadiens (Abbrev: MTL, Logo: https://assets.nhle.com/logos/nhl/svg/MTL_light.svg)
+Processing NHL Team: Minnesota Wild (MIN)
+  [Dry-run] Would create/update Entity and Team detail for: Minnesota Wild (Abbrev: MIN, Logo: https://assets.nhle.com/logos/nhl/svg/MIN_light.svg)
+Processing NHL Team: Boston Bruins (BOS)
+  [Dry-run] Would create/update Entity and Team detail for: Boston Bruins (Abbrev: BOS, Logo: https://assets.nhle.com/logos/nhl/svg/BOS_light.svg?season=20252026)
+Processing NHL Team: Ottawa Senators (OTT)
+  [Dry-run] Would create/update Entity and Team detail for: Ottawa Senators (Abbrev: OTT, Logo: https://assets.nhle.com/logos/nhl/svg/OTT_light.svg)
+Processing NHL Team: Pittsburgh Penguins (PIT)
+  [Dry-run] Would create/update Entity and Team detail for: Pittsburgh Penguins (Abbrev: PIT, Logo: https://assets.nhle.com/logos/nhl/svg/PIT_light.svg)
+Processing NHL Team: Philadelphia Flyers (PHI)
+  [Dry-run] Would create/update Entity and Team detail for: Philadelphia Flyers (Abbrev: PHI, Logo: https://assets.nhle.com/logos/nhl/svg/PHI_light.svg)
+Processing NHL Team: Washington Capitals (WSH)
+  [Dry-run] Would create/update Entity and Team detail for: Washington Capitals (Abbrev: WSH, Logo: https://assets.nhle.com/logos/nhl/svg/WSH_secondary_light.svg)
+Processing NHL Team: Vegas Golden Knights (VGK)
+  [Dry-run] Would create/update Entity and Team detail for: Vegas Golden Knights (Abbrev: VGK, Logo: https://assets.nhle.com/logos/nhl/svg/VGK_light.svg)
+Processing NHL Team: Edmonton Oilers (EDM)
+  [Dry-run] Would create/update Entity and Team detail for: Edmonton Oilers (Abbrev: EDM, Logo: https://assets.nhle.com/logos/nhl/svg/EDM_light.svg)
+Processing NHL Team: Utah Mammoth (UTA)
+  [Dry-run] Would create/update Entity and Team detail for: Utah Mammoth (Abbrev: UTA, Logo: https://assets.nhle.com/logos/nhl/svg/UTA_light.svg?season=20252026)
+Processing NHL Team: Detroit Red Wings (DET)
+  [Dry-run] Would create/update Entity and Team detail for: Detroit Red Wings (Abbrev: DET, Logo: https://assets.nhle.com/logos/nhl/svg/DET_light.svg?season=20252026)
+Processing NHL Team: Columbus Blue Jackets (CBJ)
+  [Dry-run] Would create/update Entity and Team detail for: Columbus Blue Jackets (Abbrev: CBJ, Logo: https://assets.nhle.com/logos/nhl/svg/CBJ_light.svg)
+Processing NHL Team: Anaheim Ducks (ANA)
+  [Dry-run] Would create/update Entity and Team detail for: Anaheim Ducks (Abbrev: ANA, Logo: https://assets.nhle.com/logos/nhl/svg/ANA_light.svg)
+Processing NHL Team: New York Islanders (NYI)
+  [Dry-run] Would create/update Entity and Team detail for: New York Islanders (Abbrev: NYI, Logo: https://assets.nhle.com/logos/nhl/svg/NYI_light.svg)
+Processing NHL Team: Los Angeles Kings (LAK)
+  [Dry-run] Would create/update Entity and Team detail for: Los Angeles Kings (Abbrev: LAK, Logo: https://assets.nhle.com/logos/nhl/svg/LAK_light.svg)
+Processing NHL Team: New Jersey Devils (NJD)
+  [Dry-run] Would create/update Entity and Team detail for: New Jersey Devils (Abbrev: NJD, Logo: https://assets.nhle.com/logos/nhl/svg/NJD_light.svg)
+Processing NHL Team: St. Louis Blues (STL)
+  [Dry-run] Would create/update Entity and Team detail for: St. Louis Blues (Abbrev: STL, Logo: https://assets.nhle.com/logos/nhl/svg/STL_light.svg?season=20252026)
+Processing NHL Team: Nashville Predators (NSH)
+  [Dry-run] Would create/update Entity and Team detail for: Nashville Predators (Abbrev: NSH, Logo: https://assets.nhle.com/logos/nhl/svg/NSH_light.svg)
+Processing NHL Team: San Jose Sharks (SJS)
+  [Dry-run] Would create/update Entity and Team detail for: San Jose Sharks (Abbrev: SJS, Logo: https://assets.nhle.com/logos/nhl/svg/SJS_light.svg)
+Processing NHL Team: Florida Panthers (FLA)
+  [Dry-run] Would create/update Entity and Team detail for: Florida Panthers (Abbrev: FLA, Logo: https://assets.nhle.com/logos/nhl/svg/FLA_light.svg)
+Processing NHL Team: Winnipeg Jets (WPG)
+  [Dry-run] Would create/update Entity and Team detail for: Winnipeg Jets (Abbrev: WPG, Logo: https://assets.nhle.com/logos/nhl/svg/WPG_light.svg)
+Processing NHL Team: Seattle Kraken (SEA)
+  [Dry-run] Would create/update Entity and Team detail for: Seattle Kraken (Abbrev: SEA, Logo: https://assets.nhle.com/logos/nhl/svg/SEA_light.svg)
+Processing NHL Team: Toronto Maple Leafs (TOR)
+  [Dry-run] Would create/update Entity and Team detail for: Toronto Maple Leafs (Abbrev: TOR, Logo: https://assets.nhle.com/logos/nhl/svg/TOR_light.svg)
+Processing NHL Team: Calgary Flames (CGY)
+  [Dry-run] Would create/update Entity and Team detail for: Calgary Flames (Abbrev: CGY, Logo: https://assets.nhle.com/logos/nhl/svg/CGY_light.svg)
+Processing NHL Team: New York Rangers (NYR)
+  [Dry-run] Would create/update Entity and Team detail for: New York Rangers (Abbrev: NYR, Logo: https://assets.nhle.com/logos/nhl/svg/NYR_light.svg)
+Processing NHL Team: Chicago Blackhawks (CHI)
+  [Dry-run] Would create/update Entity and Team detail for: Chicago Blackhawks (Abbrev: CHI, Logo: https://assets.nhle.com/logos/nhl/svg/CHI_light.svg?season=20252026)
+Processing NHL Team: Vancouver Canucks (VAN)
+  [Dry-run] Would create/update Entity and Team detail for: Vancouver Canucks (Abbrev: VAN, Logo: https://assets.nhle.com/logos/nhl/svg/VAN_light.svg)
+
+NHL Seeding dry-run completed successfully!

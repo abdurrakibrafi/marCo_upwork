@@ -1,0 +1,1188 @@
+nohup: ignoring input
+🐉 DEBUG mode is set to: False ⚠️
+🚀 Running in PRODUCTION mode
+/usr/local/lib/python3.13/site-packages/requests/__init__.py:113: RequestsDependencyWarning: urllib3 (2.6.3) or chardet (7.4.3)/charset_normalizer (3.4.4) doesn't match a supported version!
+  warnings.warn(
+/app/apps/core/views.py:724: SyntaxWarning: invalid escape sequence '\d'
+  </html>"""
+/app/apps/core/views.py:727: SyntaxWarning: invalid escape sequence '\/'
+  
+/usr/local/lib/python3.13/site-packages/dj_rest_auth/registration/serializers.py:225: UserWarning: app_settings.USERNAME_REQUIRED is deprecated, use: app_settings.SIGNUP_FIELDS['username']['required']
+  required=allauth_account_settings.USERNAME_REQUIRED,
+/usr/local/lib/python3.13/site-packages/dj_rest_auth/registration/serializers.py:227: UserWarning: app_settings.EMAIL_REQUIRED is deprecated, use: app_settings.SIGNUP_FIELDS['email']['required']
+  email = serializers.EmailField(required=allauth_account_settings.EMAIL_REQUIRED)
+/usr/local/lib/python3.13/site-packages/dj_rest_auth/registration/serializers.py:285: UserWarning: app_settings.EMAIL_REQUIRED is deprecated, use: app_settings.SIGNUP_FIELDS['email']['required']
+  email = serializers.EmailField(required=allauth_account_settings.EMAIL_REQUIRED)
+System check identified some issues:
+
+WARNINGS:
+?: (account.W001) ACCOUNT_LOGIN_METHODS conflicts with ACCOUNT_SIGNUP_FIELDS
+Found 160 cricket teams in the database.
+
+Processing Team: Bangladesh
+    Player: Najmul Hossain Shanto (Jersey: 28, Role: All-rounder, Nat: )
+    Player: Towhid Hridoy (Jersey: 25, Role: All-rounder, Nat: )
+    Player: Mahmudul Hasan Joy (Jersey: 25, Role: All-rounder, Nat: )
+    Player: Tanzid Hasan (Jersey: 25, Role: All-rounder, Nat: )
+    Player: Shadman Islam (Jersey: 31, Role: All-rounder, Nat: )
+    Player: Mominul Haque (Jersey: 34, Role: All-rounder, Nat: )
+    Player: Mehidy Hasan Miraz (Jersey: 28, Role: All-rounder, Nat: )
+    Player: Saif Hassan (Jersey: 27, Role: All-rounder, Nat: )
+    Player: Mahedi Hasan (Jersey: 31, Role: All-rounder, Nat: )
+    Player: Shamim Hossain (Jersey: 25, Role: All-rounder, Nat: )
+    Player: Mohammad Saifuddin (Jersey: 29, Role: All-rounder, Nat: )
+    Player: Soumya Sarkar (Jersey: 33, Role: All-rounder, Nat: )
+    Player: Mushfiqur Rahim (Jersey: 39, Role: All-rounder, Nat: )
+    Player: Litton Das (Jersey: 31, Role: All-rounder, Nat: )
+    Player: Nurul Hasan (Jersey: 32, Role: All-rounder, Nat: )
+    Player: Jaker Ali (Jersey: 28, Role: All-rounder, Nat: )
+    Player: Nasum Ahmed (Jersey: 31, Role: All-rounder, Nat: )
+    Player: Nayeem Hasan (Jersey: 26, Role: All-rounder, Nat: )
+    Player: Rishad Hossain (Jersey: 24, Role: All-rounder, Nat: )
+    Player: Taijul Islam (Jersey: 34, Role: All-rounder, Nat: )
+    Player: Tanvir Islam (Jersey: 29, Role: All-rounder, Nat: )
+    Player: Shoriful Islam (Jersey: 25, Role: All-rounder, Nat: )
+    Player: Taskin Ahmed (Jersey: 31, Role: All-rounder, Nat: )
+    Player: Mustafizur Rahman (Jersey: 30, Role: All-rounder, Nat: )
+    Player: Tanzim Hasan Sakib (Jersey: 23, Role: All-rounder, Nat: )
+    Player: Khaled Ahmed (Jersey: 33, Role: All-rounder, Nat: )
+    Player: Hasan Mahmud (Jersey: 26, Role: All-rounder, Nat: )
+    Player: Nahid Rana (Jersey: 23, Role: All-rounder, Nat: )
+  Processed 28 valid players for Bangladesh
+
+Processing Team: England
+    Player: Tom Banton (Jersey: 27, Role: All-rounder, Nat: )
+    Player: Harry Brook (Jersey: 27, Role: All-rounder, Nat: )
+    Player: Jordan Cox (Jersey: 25, Role: All-rounder, Nat: )
+    Player: Zak Crawley (Jersey: 28, Role: All-rounder, Nat: )
+    Player: Ben Duckett (Jersey: 31, Role: All-rounder, Nat: )
+    Player: Emilio Gay (Jersey: 26, Role: All-rounder, Nat: )
+    Player: Ollie Pope (Jersey: 28, Role: All-rounder, Nat: )
+    Player: Joe Root (Jersey: 35, Role: All-rounder, Nat: )
+    Player: Rehan Ahmed (Jersey: 21, Role: All-rounder, Nat: )
+    Player: Jacob Bethell (Jersey: 22, Role: All-rounder, Nat: )
+    Player: James Coles (Jersey: 22, Role: All-rounder, Nat: )
+    Player: Sam Curran (Jersey: 28, Role: All-rounder, Nat: )
+    Player: Liam Dawson (Jersey: 36, Role: All-rounder, Nat: )
+    Player: Will Jacks (Jersey: 27, Role: All-rounder, Nat: )
+    Player: Jamie Overton (Jersey: 32, Role: All-rounder, Nat: )
+    Player: Jos Buttler (Jersey: 35, Role: All-rounder, Nat: )
+    Player: James Rew (Jersey: 22, Role: All-rounder, Nat: )
+    Player: Phil Salt (Jersey: 29, Role: All-rounder, Nat: )
+    Player: Jamie Smith (Jersey: 26, Role: All-rounder, Nat: )
+    Player: Jofra Archer (Jersey: 31, Role: All-rounder, Nat: )
+    Player: Gus Atkinson (Jersey: 28, Role: All-rounder, Nat: )
+    Player: Sonny Baker (Jersey: 23, Role: All-rounder, Nat: )
+    Player: Brydon Carse (Jersey: 30, Role: All-rounder, Nat: )
+    Player: Matthew Fisher (Jersey: 28, Role: All-rounder, Nat: )
+    Player: Saqib Mahmood (Jersey: 29, Role: All-rounder, Nat: )
+    Player: Matthew Potts (Jersey: 27, Role: All-rounder, Nat: )
+    Player: Ollie Robinson (Jersey: 32, Role: All-rounder, Nat: )
+    Player: Josh Tongue (Jersey: 28, Role: All-rounder, Nat: )
+    Player: Luke Wood (Jersey: 30, Role: All-rounder, Nat: )
+    Player: Mark Wood (Jersey: 36, Role: All-rounder, Nat: )
+    Player: Shoaib Bashir (Jersey: 22, Role: All-rounder, Nat: )
+    Player: Adil Rashid (Jersey: 38, Role: All-rounder, Nat: )
+  Processed 32 valid players for England
+
+Processing Team: France
+    Player: Gustav McKeon (Jersey: 22, Role: All-rounder, Nat: )
+  Processed 1 valid players for France
+
+Processing Team: Amo Sharks
+
+Processing Team: Anurag Nalgonda Knights
+
+Processing Team: Anvita Khammam Aces
+
+Processing Team: Australia
+    Player: Tim David (Jersey: 30, Role: All-rounder, Nat: )
+    Player: Jake Fraser-McGurk (Jersey: 24, Role: All-rounder, Nat: )
+    Player: Travis Head (Jersey: 32, Role: All-rounder, Nat: )
+    Player: Marnus Labuschagne (Jersey: 32, Role: All-rounder, Nat: )
+    Player: Matt Renshaw (Jersey: 30, Role: All-rounder, Nat: )
+    Player: Steve Smith (Jersey: 37, Role: All-rounder, Nat: )
+    Player: Jake Weatherald (Jersey: 31, Role: All-rounder, Nat: )
+    Player: Sean Abbott (Jersey: 34, Role: All-rounder, Nat: )
+    Player: Nikhil Chaudhary (Jersey: 30, Role: All-rounder, Nat: )
+    Player: Cooper Connolly (Jersey: 22, Role: All-rounder, Nat: )
+    Player: Jack Edwards (Jersey: 26, Role: All-rounder, Nat: )
+    Player: Cameron Green (Jersey: 27, Role: All-rounder, Nat: )
+    Player: Aaron Hardie (Jersey: 27, Role: All-rounder, Nat: )
+    Player: Mitchell Marsh (Jersey: 34, Role: All-rounder, Nat: )
+    Player: Glenn Maxwell (Jersey: 37, Role: All-rounder, Nat: )
+    Player: Michael Neser (Jersey: 36, Role: All-rounder, Nat: )
+    Player: Mitch Owen (Jersey: 24, Role: All-rounder, Nat: )
+    Player: Oliver Peake (Jersey: 19, Role: All-rounder, Nat: )
+    Player: Liam Scott (Jersey: 25, Role: All-rounder, Nat: )
+    Player: Matthew Short (Jersey: 30, Role: All-rounder, Nat: )
+    Player: Marcus Stoinis (Jersey: 36, Role: All-rounder, Nat: )
+    Player: Beau Webster (Jersey: 32, Role: All-rounder, Nat: )
+    Player: Alex Carey (Jersey: 34, Role: All-rounder, Nat: )
+    Player: Josh Inglis (Jersey: 31, Role: All-rounder, Nat: )
+    Player: Josh Philippe (Jersey: 29, Role: All-rounder, Nat: )
+    Player: Xavier Bartlett (Jersey: 27, Role: All-rounder, Nat: )
+    Player: Mahli Beardman (Jersey: 20, Role: All-rounder, Nat: )
+    Player: Scott Boland (Jersey: 37, Role: All-rounder, Nat: )
+    Player: Pat Cummins (Jersey: 33, Role: All-rounder, Nat: )
+    Player: Brendan Doggett (Jersey: 32, Role: All-rounder, Nat: )
+    Player: Ben Dwarshuis (Jersey: 32, Role: All-rounder, Nat: )
+    Player: Nathan Ellis (Jersey: 31, Role: All-rounder, Nat: )
+    Player: Josh Hazlewood (Jersey: 35, Role: All-rounder, Nat: )
+    Player: Spencer Johnson (Jersey: 30, Role: All-rounder, Nat: )
+    Player: Riley Meredith (Jersey: 30, Role: All-rounder, Nat: )
+    Player: Jhye Richardson (Jersey: 29, Role: All-rounder, Nat: )
+    Player: Billy Stanlake (Jersey: 31, Role: All-rounder, Nat: )
+    Player: Mitchell Starc (Jersey: 36, Role: All-rounder, Nat: )
+    Player: Joel Davies (Jersey: 22, Role: All-rounder, Nat: )
+    Player: Matthew Kuhnemann (Jersey: 29, Role: All-rounder, Nat: )
+    Player: Nathan Lyon (Jersey: 38, Role: All-rounder, Nat: )
+    Player: Todd Murphy (Jersey: 25, Role: All-rounder, Nat: )
+    Player: Tanveer Sangha (Jersey: 24, Role: All-rounder, Nat: )
+    Player: Adam Zampa (Jersey: 34, Role: All-rounder, Nat: )
+  Processed 44 valid players for Australia
+
+Processing Team: Australia Women
+    Player: Phoebe Litchfield (Jersey: None, Role: All-rounder, Nat: )
+    Player: Georgia Voll (Jersey: None, Role: All-rounder, Nat: )
+    Player: Ashleigh Gardner (Jersey: None, Role: All-rounder, Nat: )
+    Player: Kim Garth (Jersey: None, Role: All-rounder, Nat: )
+    Player: Heather Graham (Jersey: None, Role: All-rounder, Nat: )
+    Player: Lucy Hamilton (Jersey: None, Role: All-rounder, Nat: )
+    Player: Grace Harris (Jersey: None, Role: All-rounder, Nat: )
+    Player: Alana King (Jersey: None, Role: All-rounder, Nat: )
+    Player: Tahlia McGrath (Jersey: None, Role: All-rounder, Nat: )
+    Player: Sophie Molineux (Jersey: None, Role: All-rounder, Nat: )
+    Player: Ellyse Perry (Jersey: None, Role: All-rounder, Nat: )
+    Player: Annabel Sutherland (Jersey: None, Role: All-rounder, Nat: )
+    Player: Beth Mooney (Jersey: None, Role: All-rounder, Nat: )
+    Player: Tahlia Wilson (Jersey: None, Role: All-rounder, Nat: )
+    Player: Georgia Wareham (Jersey: None, Role: All-rounder, Nat: )
+    Player: Chloe Ainsworth (Jersey: None, Role: All-rounder, Nat: )
+    Player: Darcie Brown (Jersey: None, Role: All-rounder, Nat: )
+    Player: Nicola Carey (Jersey: None, Role: All-rounder, Nat: )
+    Player: Megan Schutt (Jersey: None, Role: All-rounder, Nat: )
+  Processed 19 valid players for Australia Women
+
+Processing Team: Band-e-Amir Dragons
+
+Processing Team: Bangladesh Women
+    Player: Murshida Khatun (Jersey: 27, Role: All-rounder, Nat: )
+    Player: Fargana Hoque (Jersey: 33, Role: All-rounder, Nat: )
+    Player: Sobhana Mostary (Jersey: 24, Role: All-rounder, Nat: )
+    Player: Sumaiya Akter (Jersey: 20, Role: All-rounder, Nat: )
+    Player: Rubya Haider (Jersey: 28, Role: All-rounder, Nat: )
+    Player: Ritu Moni (Jersey: 33, Role: All-rounder, Nat: )
+    Player: Shorna Akter (Jersey: 19, Role: All-rounder, Nat: )
+    Player: Nigar Sultana (Jersey: 28, Role: All-rounder, Nat: )
+    Player: Shamima Sultana (Jersey: 38, Role: All-rounder, Nat: )
+    Player: Dilara Akter (Jersey: 22, Role: All-rounder, Nat: )
+    Player: Nahida Akter (Jersey: 26, Role: All-rounder, Nat: )
+    Player: Fahima Khatun (Jersey: 33, Role: All-rounder, Nat: )
+    Player: Rabeya Khan (Jersey: 21, Role: All-rounder, Nat: )
+    Player: Sultana Khatun (Jersey: 30, Role: All-rounder, Nat: )
+    Player: Shorifa Khatun (Jersey: 33, Role: All-rounder, Nat: )
+    Player: Nishita Akter Nishi (Jersey: 18, Role: All-rounder, Nat: )
+    Player: Marufa Akter (Jersey: 21, Role: All-rounder, Nat: )
+    Player: Fariha Trisna (Jersey: 23, Role: All-rounder, Nat: )
+    Player: Disha Biswas (Jersey: 22, Role: All-rounder, Nat: )
+  Processed 19 valid players for Bangladesh Women
+
+Processing Team: Belgium
+  Processed 0 valid players for Belgium
+
+Processing Team: Bengaluru Blasters
+
+Processing Team: Birmingham Phoenix (Men)
+
+Processing Team: Birmingham Phoenix (Women)
+
+Processing Team: Boost Defenders
+
+Processing Team: Coastal Kings Mangaluru
+
+Processing Team: Colombo Kaps
+
+Processing Team: Dambulla Sixers
+
+Processing Team: Denmark
+    Player: Shangeev Thanikaithasan (Jersey: 27, Role: All-rounder, Nat: )
+    Player: Hamid Shah (Jersey: 33, Role: All-rounder, Nat: )
+    Player: Surya Anand (Jersey: 28, Role: All-rounder, Nat: )
+    Player: Lucky Ali (Jersey: 22, Role: All-rounder, Nat: )
+    Player: Delawar Khan (Jersey: 29, Role: All-rounder, Nat: )
+    Player: Taranjit Bharaj (Jersey: 33, Role: All-rounder, Nat: )
+    Player: Abdullah Mahmood (Jersey: 24, Role: All-rounder, Nat: )
+    Player: Eshan Karimi (Jersey: 21, Role: All-rounder, Nat: )
+    Player: Shakeel Zeb (Jersey: 23, Role: All-rounder, Nat: )
+  Processed 9 valid players for Denmark
+
+Processing Team: Derbyshire
+
+Processing Team: Derbyshire 2nd XI
+
+Processing Team: Derbyshire Women
+  No valid squad table found.
+
+Processing Team: Desert Vipers
+
+Processing Team: Durham
+    Player: Emily Windsor (Jersey: None, Role: All-rounder, Nat: )
+    Player: Emma Marlow (Jersey: None, Role: All-rounder, Nat: )
+    Player: Leah Dobson (Jersey: None, Role: All-rounder, Nat: )
+    Player: Abigail Glen (Jersey: None, Role: All-rounder, Nat: )
+    Player: Phoebe Turner (Jersey: None, Role: All-rounder, Nat: )
+    Player: Mady Villiers (Jersey: None, Role: All-rounder, Nat: )
+    Player: Hollie Armitage (Jersey: None, Role: All-rounder, Nat: )
+    Player: Katherine Fraser (Jersey: None, Role: All-rounder, Nat: )
+    Player: Heather Graham (Jersey: None, Role: All-rounder, Nat: )
+    Player: Tahlia Wilson (Jersey: None, Role: All-rounder, Nat: )
+    Player: Bess Heath (Jersey: None, Role: All-rounder, Nat: )
+    Player: Mia Rogers (Jersey: None, Role: All-rounder, Nat: )
+    Player: Lizzie Scott (Jersey: None, Role: All-rounder, Nat: )
+    Player: Katie Levick (Jersey: None, Role: All-rounder, Nat: )
+    Player: Lauren Filer (Jersey: None, Role: All-rounder, Nat: )
+    Player: Sophia Turner (Jersey: None, Role: All-rounder, Nat: )
+  Processed 16 valid players for Durham
+
+Processing Team: Durham 2nd XI
+
+Processing Team: Durham Women
+    Player: Emily Windsor (Jersey: None, Role: All-rounder, Nat: )
+    Player: Emma Marlow (Jersey: None, Role: All-rounder, Nat: )
+    Player: Leah Dobson (Jersey: None, Role: All-rounder, Nat: )
+    Player: Abigail Glen (Jersey: None, Role: All-rounder, Nat: )
+    Player: Phoebe Turner (Jersey: None, Role: All-rounder, Nat: )
+    Player: Mady Villiers (Jersey: None, Role: All-rounder, Nat: )
+    Player: Hollie Armitage (Jersey: None, Role: All-rounder, Nat: )
+    Player: Katherine Fraser (Jersey: None, Role: All-rounder, Nat: )
+    Player: Heather Graham (Jersey: None, Role: All-rounder, Nat: )
+    Player: Tahlia Wilson (Jersey: None, Role: All-rounder, Nat: )
+    Player: Bess Heath (Jersey: None, Role: All-rounder, Nat: )
+    Player: Mia Rogers (Jersey: None, Role: All-rounder, Nat: )
+    Player: Lizzie Scott (Jersey: None, Role: All-rounder, Nat: )
+    Player: Katie Levick (Jersey: None, Role: All-rounder, Nat: )
+    Player: Lauren Filer (Jersey: None, Role: All-rounder, Nat: )
+    Player: Sophia Turner (Jersey: None, Role: All-rounder, Nat: )
+  Processed 16 valid players for Durham Women
+
+Processing Team: England A Women
+    Player: Maia Bouchier (Jersey: 27, Role: All-rounder, Nat: )
+    Player: Sophia Dunkley (Jersey: 28, Role: All-rounder, Nat: )
+    Player: Danni Wyatt-Hodge (Jersey: 35, Role: All-rounder, Nat: )
+    Player: Alice Capsey (Jersey: 21, Role: All-rounder, Nat: )
+    Player: Charlie Dean (Jersey: 25, Role: All-rounder, Nat: )
+    Player: Danielle Gibson (Jersey: 25, Role: All-rounder, Nat: )
+    Player: Jodi Grewcock (Jersey: 21, Role: All-rounder, Nat: )
+    Player: Freya Kemp (Jersey: 21, Role: All-rounder, Nat: )
+    Player: Emma Lamb (Jersey: 28, Role: All-rounder, Nat: )
+    Player: Nat Sciver-Brunt (Jersey: 33, Role: All-rounder, Nat: )
+    Player: Amy Jones (Jersey: 33, Role: All-rounder, Nat: )
+    Player: Emily Arlott (Jersey: 28, Role: All-rounder, Nat: )
+    Player: Lauren Bell (Jersey: 25, Role: All-rounder, Nat: )
+    Player: Lauren Filer (Jersey: 25, Role: All-rounder, Nat: )
+    Player: Mahika Gaur (Jersey: 20, Role: All-rounder, Nat: )
+    Player: Ryana MacDonald-Gay (Jersey: 22, Role: All-rounder, Nat: )
+    Player: Issy Wong (Jersey: 24, Role: All-rounder, Nat: )
+    Player: Tilly Corteen-Coleman (Jersey: 18, Role: All-rounder, Nat: )
+    Player: Sophie Ecclestone (Jersey: 27, Role: All-rounder, Nat: )
+    Player: Sarah Glenn (Jersey: 26, Role: All-rounder, Nat: )
+    Player: Linsey Smith (Jersey: 31, Role: All-rounder, Nat: )
+    Player: Mady Villiers (Jersey: 27, Role: All-rounder, Nat: )
+  Processed 22 valid players for England A Women
+
+Processing Team: England Under-19s
+    Player: Ralphie Albert (Jersey: 10, Role: All-rounder, Nat: )
+    Player: Tazeem Ali (Jersey: 6, Role: All-rounder, Nat: )
+    Player: Will Bennison (Jersey: 9, Role: Batter, Nat: )
+    Player: Ben Dawkins (Jersey: 10, Role: Wicket-keeper, Nat: )
+    Player: Jaydn Denly (Jersey: 1, Role: All-rounder, Nat: )
+    Player: Caleb Falconer (Jersey: 9, Role: Batter, Nat: )
+    Player: Farhan Ahmed (Jersey: 2, Role: All-rounder, Nat: )
+    Player: James Feldman (Jersey: 6, Role: All-rounder, Nat: )
+    Player: Matthew Firbank (Jersey: 3, Role: All-rounder, Nat: )
+    Player: Rocky Flintoff (Jersey: 4, Role: Batter, Nat: )
+    Player: Alex French (Jersey: 7, Role: All-rounder, Nat: )
+    Player: Alex Green (Jersey: 2, Role: All-rounder, Nat: )
+    Player: Luke Hands (Jersey: 11, Role: All-rounder, Nat: )
+    Player: Byron Hatton-Lowe (Jersey: 12, Role: All-rounder, Nat: )
+    Player: Joe Hawkins (Jersey: 3, Role: All-rounder, Nat: )
+    Player: Jack Home (Jersey: 5, Role: All-rounder, Nat: )
+    Player: Manny Lumsden (Jersey: 11, Role: All-rounder, Nat: )
+    Player: Ben Mayes (Jersey: 11, Role: Wicket-keeper, Nat: )
+    Player: James Minto (Jersey: 11, Role: All-rounder, Nat: )
+    Player: Isaac Mohammed (Jersey: 4, Role: Batter, Nat: )
+    Player: Joe Moores (Jersey: 9, Role: Wicket-keeper, Nat: )
+    Player: Sebastian Morgan (Jersey: 8, Role: All-rounder, Nat: )
+    Player: Thomas Rew (Jersey: 11, Role: Wicket-keeper, Nat: )
+    Player: Hamza Shaikh (Jersey: 5, Role: Batter, Nat: )
+    Player: Ekansh Singh (Jersey: 7, Role: Batter, Nat: )
+    Player: Archie Vaughan (Jersey: 12, Role: All-rounder, Nat: )
+  Processed 26 valid players for England Under-19s
+
+Processing Team: England Women
+    Player: Maia Bouchier (Jersey: 27, Role: All-rounder, Nat: )
+    Player: Sophia Dunkley (Jersey: 28, Role: All-rounder, Nat: )
+    Player: Danni Wyatt-Hodge (Jersey: 35, Role: All-rounder, Nat: )
+    Player: Alice Capsey (Jersey: 21, Role: All-rounder, Nat: )
+    Player: Charlie Dean (Jersey: 25, Role: All-rounder, Nat: )
+    Player: Danielle Gibson (Jersey: 25, Role: All-rounder, Nat: )
+    Player: Jodi Grewcock (Jersey: 21, Role: All-rounder, Nat: )
+    Player: Freya Kemp (Jersey: 21, Role: All-rounder, Nat: )
+    Player: Emma Lamb (Jersey: 28, Role: All-rounder, Nat: )
+    Player: Nat Sciver-Brunt (Jersey: 33, Role: All-rounder, Nat: )
+    Player: Amy Jones (Jersey: 33, Role: All-rounder, Nat: )
+    Player: Emily Arlott (Jersey: 28, Role: All-rounder, Nat: )
+    Player: Lauren Bell (Jersey: 25, Role: All-rounder, Nat: )
+    Player: Lauren Filer (Jersey: 25, Role: All-rounder, Nat: )
+    Player: Mahika Gaur (Jersey: 20, Role: All-rounder, Nat: )
+    Player: Ryana MacDonald-Gay (Jersey: 22, Role: All-rounder, Nat: )
+    Player: Issy Wong (Jersey: 24, Role: All-rounder, Nat: )
+    Player: Tilly Corteen-Coleman (Jersey: 18, Role: All-rounder, Nat: )
+    Player: Sophie Ecclestone (Jersey: 27, Role: All-rounder, Nat: )
+    Player: Sarah Glenn (Jersey: 26, Role: All-rounder, Nat: )
+    Player: Linsey Smith (Jersey: 31, Role: All-rounder, Nat: )
+    Player: Mady Villiers (Jersey: 27, Role: All-rounder, Nat: )
+  Processed 22 valid players for England Women
+
+Processing Team: Essex
+    Player: Tom Westley (Jersey: None, Role: All-rounder, Nat: )
+    Player: Robin Das (Jersey: None, Role: All-rounder, Nat: )
+    Player: Charlie Allison (Jersey: None, Role: All-rounder, Nat: )
+    Player: Dean Elgar (Jersey: None, Role: All-rounder, Nat: )
+    Player: Zaman Akhter (Jersey: None, Role: All-rounder, Nat: )
+    Player: Noah Thain (Jersey: None, Role: All-rounder, Nat: )
+    Player: Simon Harmer (Jersey: None, Role: All-rounder, Nat: )
+    Player: Matt Critchley (Jersey: None, Role: All-rounder, Nat: )
+    Player: Paul Walter (Jersey: None, Role: All-rounder, Nat: )
+    Player: Luc Benkenstein (Jersey: None, Role: All-rounder, Nat: )
+    Player: Michael Pepper (Jersey: None, Role: All-rounder, Nat: )
+    Player: Simon Fernandes (Jersey: None, Role: All-rounder, Nat: )
+    Player: Jordan Cox (Jersey: None, Role: All-rounder, Nat: )
+    Player: Mitchell Killeen (Jersey: None, Role: All-rounder, Nat: )
+    Player: Sam Cook (Jersey: None, Role: All-rounder, Nat: )
+    Player: Shane Snater (Jersey: None, Role: All-rounder, Nat: )
+    Player: Jamie Porter (Jersey: None, Role: All-rounder, Nat: )
+    Player: Mackenzie Jones (Jersey: None, Role: All-rounder, Nat: )
+    Player: Charlie Bennett (Jersey: None, Role: All-rounder, Nat: )
+  Processed 19 valid players for Essex
+
+Processing Team: Essex 2nd XI
+
+Processing Team: Essex Women
+    Player: Flo Miller (Jersey: None, Role: All-rounder, Nat: )
+    Player: Cordelia Griffith (Jersey: None, Role: All-rounder, Nat: )
+    Player: Liberty Heap (Jersey: None, Role: All-rounder, Nat: )
+    Player: Anneke Bosch (Jersey: None, Role: All-rounder, Nat: )
+    Player: Lissy Macleod (Jersey: None, Role: All-rounder, Nat: )
+    Player: Jodi Grewcock (Jersey: None, Role: All-rounder, Nat: )
+    Player: Jo Gardner (Jersey: None, Role: All-rounder, Nat: )
+    Player: Sophia Smale (Jersey: None, Role: All-rounder, Nat: )
+    Player: Grace Scrivens (Jersey: None, Role: All-rounder, Nat: )
+    Player: Michaela Kirk (Jersey: None, Role: All-rounder, Nat: )
+    Player: Amara Carr (Jersey: None, Role: All-rounder, Nat: )
+    Player: Ariana Dowse (Jersey: None, Role: All-rounder, Nat: )
+    Player: Esmae MacGregor (Jersey: None, Role: All-rounder, Nat: )
+    Player: Eva Gray (Jersey: None, Role: All-rounder, Nat: )
+    Player: Kate Coppack (Jersey: None, Role: All-rounder, Nat: )
+    Player: Abtaha Maqsood (Jersey: None, Role: All-rounder, Nat: )
+    Player: Sophie Munro (Jersey: None, Role: All-rounder, Nat: )
+  Processed 17 valid players for Essex Women
+
+Processing Team: Estonia
+  No valid squad table found.
+
+Processing Team: Finland
+  No valid squad table found.
+
+Processing Team: Galle Gallants
+
+Processing Team: Germany Women
+
+Processing Team: Gibraltar
+  Processed 0 valid players for Gibraltar
+
+Processing Team: Glamorgan
+
+Processing Team: Glamorgan 2nd XI
+
+Processing Team: Glamorgan Women
+  No valid squad table found.
+
+Processing Team: Gloucestershire
+    Player: Cameron Bancroft (Jersey: None, Role: All-rounder, Nat: )
+    Player: Jack Taylor (Jersey: None, Role: All-rounder, Nat: )
+    Player: Dawid Malan (Jersey: None, Role: All-rounder, Nat: )
+    Player: Joe Phillips (Jersey: None, Role: All-rounder, Nat: )
+    Player: D'Arcy Short (Jersey: None, Role: All-rounder, Nat: )
+    Player: Tommy Boorman (Jersey: None, Role: All-rounder, Nat: )
+    Player: Kamran Dhariwal (Jersey: None, Role: All-rounder, Nat: )
+    Player: Miles Hammond (Jersey: None, Role: All-rounder, Nat: )
+    Player: Liam Scott (Jersey: None, Role: All-rounder, Nat: )
+    Player: Graeme van Buuren (Jersey: None, Role: All-rounder, Nat: )
+    Player: Ed Middleton (Jersey: None, Role: All-rounder, Nat: )
+    Player: Ben Charlesworth (Jersey: None, Role: All-rounder, Nat: )
+    Player: Ollie Price (Jersey: None, Role: All-rounder, Nat: )
+    Player: James Bracey (Jersey: None, Role: All-rounder, Nat: )
+    Player: Will Williams (Jersey: None, Role: All-rounder, Nat: )
+    Player: James Hayes (Jersey: None, Role: All-rounder, Nat: )
+    Player: David Payne (Jersey: None, Role: All-rounder, Nat: )
+    Player: Luke Charlesworth (Jersey: None, Role: All-rounder, Nat: )
+    Player: Aman Rao (Jersey: None, Role: All-rounder, Nat: )
+    Player: Craig Miles (Jersey: None, Role: All-rounder, Nat: )
+    Player: Matthew Taylor (Jersey: None, Role: All-rounder, Nat: )
+    Player: Daz Ahmed (Jersey: None, Role: All-rounder, Nat: )
+    Player: Marchant de Lange (Jersey: None, Role: All-rounder, Nat: )
+    Player: Sai Kishore (Jersey: None, Role: All-rounder, Nat: )
+  Processed 24 valid players for Gloucestershire
+
+Processing Team: Gloucestershire 2nd XI
+
+Processing Team: Gloucestershire Women
+  No valid squad table found.
+
+Processing Team: Gulbarga Mystics
+
+Processing Team: Guyana Amazon Warriors
+
+Processing Team: Hampshire
+  No valid squad table found.
+
+Processing Team: Hampshire 2nd XI
+
+Processing Team: Hampshire Women
+    Player: Ella McCaughan (Jersey: None, Role: All-rounder, Nat: )
+    Player: Abi Norgrove (Jersey: None, Role: All-rounder, Nat: )
+    Player: Maia Bouchier (Jersey: None, Role: All-rounder, Nat: )
+    Player: Georgia Adams (Jersey: None, Role: All-rounder, Nat: )
+    Player: Megan Sturge (Jersey: None, Role: All-rounder, Nat: )
+    Player: Freya Kemp (Jersey: None, Role: All-rounder, Nat: )
+    Player: Amanda-Jade Wellington (Jersey: None, Role: All-rounder, Nat: )
+    Player: Naomi Dattani (Jersey: None, Role: All-rounder, Nat: )
+    Player: Nancy Harman (Jersey: None, Role: All-rounder, Nat: )
+    Player: Rhianna Southby (Jersey: None, Role: All-rounder, Nat: )
+    Player: Daisy Gibb (Jersey: None, Role: All-rounder, Nat: )
+    Player: Hannah Hardwick (Jersey: None, Role: All-rounder, Nat: )
+    Player: Ava Lee (Jersey: None, Role: All-rounder, Nat: )
+    Player: Bex Tyson (Jersey: None, Role: All-rounder, Nat: )
+    Player: Linsey Smith (Jersey: None, Role: All-rounder, Nat: )
+    Player: Lauren Bell (Jersey: None, Role: All-rounder, Nat: )
+  Processed 16 valid players for Hampshire Women
+
+Processing Team: Hong Kong Women
+  No valid squad table found.
+
+Processing Team: Hubli Tigers
+
+Processing Team: Hungary
+
+Processing Team: Hyderabad E-Champions
+
+Processing Team: India
+
+Processing Team: India A
+
+Processing Team: India A Women
+    Player: Smriti Mandhana (Jersey: 29, Role: All-rounder, Nat: )
+    Player: Jemimah Rodrigues (Jersey: 25, Role: All-rounder, Nat: )
+    Player: Shafali Verma (Jersey: 22, Role: All-rounder, Nat: )
+    Player: Harleen Deol (Jersey: 28, Role: All-rounder, Nat: )
+    Player: Tejal Hasabnis (Jersey: 28, Role: All-rounder, Nat: )
+    Player: Priya Punia (Jersey: 29, Role: All-rounder, Nat: )
+    Player: Pratika Rawal (Jersey: 24, Role: All-rounder, Nat: )
+    Player: Deepti Sharma (Jersey: 28, Role: All-rounder, Nat: )
+    Player: Harmanpreet Kaur (Jersey: 37, Role: All-rounder, Nat: )
+    Player: Pooja Vastrakar (Jersey: 26, Role: All-rounder, Nat: )
+    Player: Amanjot Kaur (Jersey: 26, Role: All-rounder, Nat: )
+    Player: Dayalan Hemalatha (Jersey: 31, Role: All-rounder, Nat: )
+    Player: Sajeevan Sajana (Jersey: 31, Role: All-rounder, Nat: )
+    Player: Richa Ghosh (Jersey: 22, Role: All-rounder, Nat: )
+    Player: Yastika Bhatia (Jersey: 26, Role: All-rounder, Nat: )
+    Player: Uma Chetry (Jersey: 23, Role: All-rounder, Nat: )
+    Player: Sneh Rana (Jersey: 32, Role: All-rounder, Nat: )
+    Player: Radha Yadav (Jersey: 26, Role: All-rounder, Nat: )
+    Player: Shreyanka Patil (Jersey: 23, Role: All-rounder, Nat: )
+    Player: Vaishnavi Sharma (Jersey: 20, Role: All-rounder, Nat: )
+    Player: Asha Sobhana (Jersey: 35, Role: All-rounder, Nat: )
+    Player: Priya Mishra (Jersey: 22, Role: All-rounder, Nat: )
+    Player: Renuka Singh Thakur (Jersey: 30, Role: All-rounder, Nat: )
+    Player: Saima Thakor (Jersey: 29, Role: All-rounder, Nat: )
+    Player: Arundhati Reddy (Jersey: 29, Role: All-rounder, Nat: )
+    Player: Sayali Satghare (Jersey: 26, Role: All-rounder, Nat: )
+    Player: Kranti Gaud (Jersey: 22, Role: All-rounder, Nat: )
+    Player: Kashvee Gautam (Jersey: 23, Role: All-rounder, Nat: )
+  Processed 28 valid players for India A Women
+
+Processing Team: India Under-19s
+  No valid squad table found.
+
+Processing Team: India Women
+    Player: Smriti Mandhana (Jersey: 29, Role: All-rounder, Nat: )
+    Player: Jemimah Rodrigues (Jersey: 25, Role: All-rounder, Nat: )
+    Player: Shafali Verma (Jersey: 22, Role: All-rounder, Nat: )
+    Player: Harleen Deol (Jersey: 28, Role: All-rounder, Nat: )
+    Player: Tejal Hasabnis (Jersey: 28, Role: All-rounder, Nat: )
+    Player: Priya Punia (Jersey: 29, Role: All-rounder, Nat: )
+    Player: Pratika Rawal (Jersey: 24, Role: All-rounder, Nat: )
+    Player: Deepti Sharma (Jersey: 28, Role: All-rounder, Nat: )
+    Player: Harmanpreet Kaur (Jersey: 37, Role: All-rounder, Nat: )
+    Player: Pooja Vastrakar (Jersey: 26, Role: All-rounder, Nat: )
+    Player: Amanjot Kaur (Jersey: 26, Role: All-rounder, Nat: )
+    Player: Dayalan Hemalatha (Jersey: 31, Role: All-rounder, Nat: )
+    Player: Sajeevan Sajana (Jersey: 31, Role: All-rounder, Nat: )
+    Player: Richa Ghosh (Jersey: 22, Role: All-rounder, Nat: )
+    Player: Yastika Bhatia (Jersey: 26, Role: All-rounder, Nat: )
+    Player: Uma Chetry (Jersey: 23, Role: All-rounder, Nat: )
+    Player: Sneh Rana (Jersey: 32, Role: All-rounder, Nat: )
+    Player: Radha Yadav (Jersey: 26, Role: All-rounder, Nat: )
+    Player: Shreyanka Patil (Jersey: 23, Role: All-rounder, Nat: )
+    Player: Vaishnavi Sharma (Jersey: 20, Role: All-rounder, Nat: )
+    Player: Asha Sobhana (Jersey: 35, Role: All-rounder, Nat: )
+    Player: Priya Mishra (Jersey: 22, Role: All-rounder, Nat: )
+    Player: Renuka Singh Thakur (Jersey: 30, Role: All-rounder, Nat: )
+    Player: Saima Thakor (Jersey: 29, Role: All-rounder, Nat: )
+    Player: Arundhati Reddy (Jersey: 29, Role: All-rounder, Nat: )
+    Player: Sayali Satghare (Jersey: 26, Role: All-rounder, Nat: )
+    Player: Kranti Gaud (Jersey: 22, Role: All-rounder, Nat: )
+    Player: Kashvee Gautam (Jersey: 23, Role: All-rounder, Nat: )
+  Processed 28 valid players for India Women
+
+Processing Team: India Women Under-19s
+
+Processing Team: Ireland Women
+    Player: Rebecca Stokell (Jersey: 26, Role: All-rounder, Nat: )
+    Player: Gaby Lewis (Jersey: 25, Role: All-rounder, Nat: )
+    Player: Una Raymond-Hoey (Jersey: 29, Role: All-rounder, Nat: )
+    Player: Orla Prendergast (Jersey: 24, Role: All-rounder, Nat: )
+    Player: Leah Paul (Jersey: 26, Role: All-rounder, Nat: )
+    Player: Laura Delany (Jersey: 34, Role: All-rounder, Nat: )
+    Player: Sophie MacMahon (Jersey: 29, Role: All-rounder, Nat: )
+    Player: Louise Little (Jersey: 23, Role: All-rounder, Nat: )
+    Player: Amy Hunter (Jersey: 20, Role: All-rounder, Nat: )
+    Player: Cara Murray (Jersey: 25, Role: All-rounder, Nat: )
+    Player: Freya Sargent (Jersey: 20, Role: All-rounder, Nat: )
+    Player: Arlene Kelly (Jersey: 32, Role: All-rounder, Nat: )
+    Player: Ava Canning (Jersey: 22, Role: All-rounder, Nat: )
+    Player: Jane Maguire (Jersey: 23, Role: All-rounder, Nat: )
+    Player: Georgina Dempsey (Jersey: 21, Role: All-rounder, Nat: )
+    Player: Alana Dalzell (Jersey: 25, Role: All-rounder, Nat: )
+  Processed 16 valid players for Ireland Women
+
+Processing Team: Jaffna Kings
+
+Processing Team: Kandy Royals
+
+Processing Team: Karimnagar Diamonds
+
+Processing Team: Kent
+    Player: Ben Compton (Jersey: None, Role: All-rounder, Nat: )
+    Player: Ekansh Singh (Jersey: None, Role: All-rounder, Nat: )
+    Player: Joe Denly (Jersey: None, Role: All-rounder, Nat: )
+    Player: Tawanda Muyeye (Jersey: None, Role: All-rounder, Nat: )
+    Player: Zak Crawley (Jersey: None, Role: All-rounder, Nat: )
+    Player: Sam Northeast (Jersey: None, Role: All-rounder, Nat: )
+    Player: Daniel Bell-Drummond (Jersey: None, Role: All-rounder, Nat: )
+    Player: Grant Stewart (Jersey: None, Role: All-rounder, Nat: )
+    Player: Tom Rogers (Jersey: None, Role: All-rounder, Nat: )
+    Player: Bertie Foreman (Jersey: None, Role: All-rounder, Nat: )
+    Player: Corey Flintoff (Jersey: None, Role: All-rounder, Nat: )
+    Player: Olly Curtiss (Jersey: None, Role: All-rounder, Nat: )
+    Player: Joey Evison (Jersey: None, Role: All-rounder, Nat: )
+    Player: Dian Forrester (Jersey: None, Role: All-rounder, Nat: )
+    Player: Jaydn Denly (Jersey: None, Role: All-rounder, Nat: )
+    Player: Senuran Muthusamy (Jersey: None, Role: All-rounder, Nat: )
+    Player: Sam Billings (Jersey: None, Role: All-rounder, Nat: )
+    Player: Chris Benjamin (Jersey: None, Role: All-rounder, Nat: )
+    Player: Ben Dawkins (Jersey: None, Role: All-rounder, Nat: )
+    Player: Harry Finch (Jersey: None, Role: All-rounder, Nat: )
+    Player: Matt Milnes (Jersey: None, Role: All-rounder, Nat: )
+    Player: Fred Klaassen (Jersey: None, Role: All-rounder, Nat: )
+    Player: Jas Singh (Jersey: None, Role: All-rounder, Nat: )
+    Player: Matt Parkinson (Jersey: None, Role: All-rounder, Nat: )
+    Player: Jake Lintott (Jersey: None, Role: All-rounder, Nat: )
+    Player: Michael Cohen (Jersey: None, Role: All-rounder, Nat: )
+    Player: Glenton Stuurman (Jersey: None, Role: All-rounder, Nat: )
+    Player: Matt Quinn (Jersey: None, Role: All-rounder, Nat: )
+    Player: Keith Dudgeon (Jersey: None, Role: All-rounder, Nat: )
+    Player: Hasan Mahmud (Jersey: None, Role: All-rounder, Nat: )
+  Processed 30 valid players for Kent
+
+Processing Team: Kent 2nd XI
+
+Processing Team: Kent Women
+    Player: Amy Gordon (Jersey: None, Role: All-rounder, Nat: )
+    Player: Megan Sturge (Jersey: None, Role: All-rounder, Nat: )
+    Player: Megan Belt (Jersey: None, Role: All-rounder, Nat: )
+  Processed 3 valid players for Kent Women
+
+Processing Team: Lahore Qalandars
+
+Processing Team: Lancashire
+
+Processing Team: Lancashire 2nd XI
+
+Processing Team: Lancashire Women
+    Player: Katie Mack (Jersey: None, Role: All-rounder, Nat: )
+    Player: Meg Lanning (Jersey: None, Role: All-rounder, Nat: )
+    Player: Emma Lamb (Jersey: None, Role: All-rounder, Nat: )
+    Player: Eve Jones (Jersey: None, Role: All-rounder, Nat: )
+    Player: Danielle Collins (Jersey: None, Role: All-rounder, Nat: )
+    Player: Ailsa Lister (Jersey: None, Role: All-rounder, Nat: )
+    Player: Seren Smale (Jersey: None, Role: All-rounder, Nat: )
+    Player: Gaby Lewis (Jersey: None, Role: All-rounder, Nat: )
+    Player: Madeline Penna (Jersey: None, Role: All-rounder, Nat: )
+    Player: Fi Morris (Jersey: None, Role: All-rounder, Nat: )
+    Player: Darcey Carter (Jersey: None, Role: All-rounder, Nat: )
+    Player: Ellie Threlkeld (Jersey: None, Role: All-rounder, Nat: )
+    Player: Alice Clarke (Jersey: None, Role: All-rounder, Nat: )
+    Player: Sophie Morris (Jersey: None, Role: All-rounder, Nat: )
+    Player: Olivia Bell (Jersey: None, Role: All-rounder, Nat: )
+    Player: Hannah Jones (Jersey: None, Role: All-rounder, Nat: )
+    Player: Grace Potts (Jersey: None, Role: All-rounder, Nat: )
+    Player: Kate Cross (Jersey: None, Role: All-rounder, Nat: )
+    Player: Mahika Gaur (Jersey: None, Role: All-rounder, Nat: )
+    Player: Sophie Ecclestone (Jersey: None, Role: All-rounder, Nat: )
+    Player: Tara Norris (Jersey: None, Role: All-rounder, Nat: )
+    Player: Grace Johnson (Jersey: None, Role: All-rounder, Nat: )
+  Processed 22 valid players for Lancashire Women
+
+Processing Team: Leicestershire
+
+Processing Team: Leicestershire 2nd XI
+
+Processing Team: Leicestershire Women
+  No valid squad table found.
+
+Processing Team: Leinster Lightning
+    Player: Harry Tector (Jersey: None, Role: All-rounder, Nat: )
+    Player: Tim Tector (Jersey: None, Role: All-rounder, Nat: )
+    Player: Curtis Campher (Jersey: None, Role: All-rounder, Nat: )
+    Player: George Dockrell (Jersey: None, Role: All-rounder, Nat: )
+    Player: Stephen Doheny (Jersey: None, Role: All-rounder, Nat: )
+    Player: Lorcan Tucker (Jersey: None, Role: All-rounder, Nat: )
+    Player: David Delany (Jersey: None, Role: All-rounder, Nat: )
+    Player: Gavin Hoey (Jersey: None, Role: All-rounder, Nat: )
+    Player: Matt Hollard (Jersey: None, Role: All-rounder, Nat: )
+    Player: Josh Little (Jersey: None, Role: All-rounder, Nat: )
+    Player: Barry McCarthy (Jersey: None, Role: All-rounder, Nat: )
+    Player: Jai Moondra (Jersey: None, Role: All-rounder, Nat: )
+    Player: Ben White (Jersey: None, Role: All-rounder, Nat: )
+  Processed 13 valid players for Leinster Lightning
+
+Processing Team: London Spirit (Men)
+
+Processing Team: London Spirit (Women)
+
+Processing Team: Los Angeles Knight Riders
+
+Processing Team: Manchester Super Giants (Men)
+
+Processing Team: Manchester Super Giants (Women)
+
+Processing Team: Medak Falcons
+
+Processing Team: Middlesex
+  No valid squad table found.
+
+Processing Team: Middlesex 2nd XI
+
+Processing Team: Middlesex Women
+
+Processing Team: MI London (Men)
+
+Processing Team: MI London (Women)
+
+Processing Team: MI New York
+
+Processing Team: Mis Ainak Knights
+
+Processing Team: Mysuru Warriors
+
+Processing Team: Namibia
+    Player: Niko Davin (Jersey: 28, Role: All-rounder, Nat: )
+    Player: Louren Steenkamp (Jersey: 29, Role: All-rounder, Nat: )
+    Player: Jean-Pierre Kotze (Jersey: 32, Role: All-rounder, Nat: )
+    Player: Malan Kruger (Jersey: 31, Role: All-rounder, Nat: )
+    Player: Dylan Leicher (Jersey: 22, Role: All-rounder, Nat: )
+    Player: Michael van Lingen (Jersey: 28, Role: All-rounder, Nat: )
+    Player: Gerhard Erasmus (Jersey: 31, Role: All-rounder, Nat: )
+    Player: Alexander Busing-Volschenk (Jersey: 21, Role: All-rounder, Nat: )
+    Player: Jan Frylinck (Jersey: 32, Role: All-rounder, Nat: )
+    Player: Jan Nicol Loftie-Eaton (Jersey: 25, Role: All-rounder, Nat: )
+    Player: JJ Smit (Jersey: 30, Role: All-rounder, Nat: )
+    Player: Zane Green (Jersey: 29, Role: All-rounder, Nat: )
+    Player: Jack Brassell (Jersey: 21, Role: All-rounder, Nat: )
+    Player: Tangeni Lungameni (Jersey: 34, Role: All-rounder, Nat: )
+    Player: Ben Shikongo (Jersey: 26, Role: All-rounder, Nat: )
+    Player: Simon Shikongo (Jersey: None, Role: All-rounder, Nat: )
+    Player: Ruben Trumpelmann (Jersey: 28, Role: All-rounder, Nat: )
+    Player: Jan-Izak de Villiers (Jersey: 25, Role: All-rounder, Nat: )
+    Player: Max Heingo (Jersey: None, Role: All-rounder, Nat: )
+    Player: Bernard Scholtz (Jersey: 35, Role: All-rounder, Nat: )
+    Player: Peter-Daniel Blignaut (Jersey: 20, Role: All-rounder, Nat: )
+  Processed 21 valid players for Namibia
+
+Processing Team: Namibia Women
+  No valid squad table found.
+
+Processing Team: Nepal
+    Player: Kushal Bhurtel (Jersey: None, Role: All-rounder, Nat: )
+    Player: Arjun Kumal (Jersey: None, Role: All-rounder, Nat: )
+    Player: Bhim Sharki (Jersey: None, Role: All-rounder, Nat: )
+    Player: Ishan Pandey (Jersey: None, Role: All-rounder, Nat: )
+    Player: Rohit Paudel (Jersey: None, Role: All-rounder, Nat: )
+    Player: Sundeep Jora (Jersey: None, Role: All-rounder, Nat: )
+    Player: Aarif Sheikh (Jersey: None, Role: All-rounder, Nat: )
+    Player: Aasif Sheikh (Jersey: None, Role: All-rounder, Nat: )
+    Player: Anil Kumar Sah (Jersey: None, Role: All-rounder, Nat: )
+    Player: Binod Bhandari (Jersey: None, Role: All-rounder, Nat: )
+    Player: Lokesh Bam (Jersey: None, Role: All-rounder, Nat: )
+    Player: Dipendra Singh Airee (Jersey: None, Role: All-rounder, Nat: )
+    Player: Gulsan Jha (Jersey: None, Role: All-rounder, Nat: )
+    Player: Basir Ahamad (Jersey: None, Role: All-rounder, Nat: )
+    Player: Kushal Malla (Jersey: None, Role: All-rounder, Nat: )
+    Player: Sompal Kami (Jersey: None, Role: All-rounder, Nat: )
+    Player: Karan KC (Jersey: None, Role: All-rounder, Nat: )
+    Player: Nandan Yadav (Jersey: None, Role: All-rounder, Nat: )
+    Player: Hemant Dhami (Jersey: None, Role: All-rounder, Nat: )
+    Player: Sandeep Lamichhane (Jersey: None, Role: All-rounder, Nat: )
+    Player: Lalit Rajbanshi (Jersey: None, Role: All-rounder, Nat: )
+    Player: Sher Malla (Jersey: None, Role: All-rounder, Nat: )
+    Player: Shahab Alam (Jersey: None, Role: All-rounder, Nat: )
+  Processed 23 valid players for Nepal
+
+Processing Team: Netherlands
+    Player: Colin Ackermann (Jersey: 35, Role: All-rounder, Nat: )
+    Player: Michael Levitt (Jersey: 23, Role: All-rounder, Nat: )
+    Player: Teja Nidamanuru (Jersey: 31, Role: All-rounder, Nat: )
+    Player: Max O'Dowd (Jersey: 32, Role: All-rounder, Nat: )
+    Player: Vikramjit Singh (Jersey: 23, Role: All-rounder, Nat: )
+    Player: Sikander Zulfiqar (Jersey: 29, Role: All-rounder, Nat: )
+    Player: Bas de Leede (Jersey: 26, Role: All-rounder, Nat: )
+    Player: Zach Lion-Cachet (Jersey: 22, Role: All-rounder, Nat: )
+    Player: Roelof van der Merwe (Jersey: 41, Role: All-rounder, Nat: )
+    Player: Tim Pringle (Jersey: 23, Role: All-rounder, Nat: )
+    Player: Saqib Zulfiqar (Jersey: 29, Role: All-rounder, Nat: )
+    Player: Noah Croes (Jersey: 26, Role: All-rounder, Nat: )
+    Player: Scott Edwards (Jersey: 29, Role: All-rounder, Nat: )
+    Player: Wesley Barresi (Jersey: 42, Role: All-rounder, Nat: )
+    Player: Paul van Meekeren (Jersey: 33, Role: All-rounder, Nat: )
+    Player: Logan van Beek (Jersey: 35, Role: All-rounder, Nat: )
+    Player: Vivian Kingma (Jersey: 31, Role: All-rounder, Nat: )
+    Player: Fred Klaassen (Jersey: 33, Role: All-rounder, Nat: )
+    Player: Kyle Klein (Jersey: 25, Role: All-rounder, Nat: )
+    Player: Timm van der Gugten (Jersey: 35, Role: All-rounder, Nat: )
+    Player: Shariz Ahmad (Jersey: 23, Role: All-rounder, Nat: )
+    Player: Daniel Doram (Jersey: 28, Role: All-rounder, Nat: )
+    Player: Aryan Dutt (Jersey: 23, Role: All-rounder, Nat: )
+  Processed 23 valid players for Netherlands
+
+Processing Team: New Zealand
+    Player: Muhammad Abbas (Jersey: 22, Role: All-rounder, Nat: )
+    Player: Finn Allen (Jersey: 27, Role: All-rounder, Nat: )
+    Player: Bevon Jacobs (Jersey: 24, Role: All-rounder, Nat: )
+    Player: Nick Kelly (Jersey: 32, Role: All-rounder, Nat: )
+    Player: Rhys Mariu (Jersey: 24, Role: All-rounder, Nat: )
+    Player: Henry Nicholls (Jersey: 34, Role: All-rounder, Nat: )
+    Player: Tim Robinson (Jersey: 24, Role: All-rounder, Nat: )
+    Player: Will Young (Jersey: 33, Role: All-rounder, Nat: )
+    Player: Michael Bracewell (Jersey: 35, Role: All-rounder, Nat: )
+    Player: Mark Chapman (Jersey: 32, Role: All-rounder, Nat: )
+    Player: Zak Foulkes (Jersey: 24, Role: All-rounder, Nat: )
+    Player: Daryl Mitchell (Jersey: 35, Role: All-rounder, Nat: )
+    Player: James Neesham (Jersey: 35, Role: All-rounder, Nat: )
+    Player: Glenn Phillips (Jersey: 29, Role: All-rounder, Nat: )
+    Player: Rachin Ravindra (Jersey: 26, Role: All-rounder, Nat: )
+    Player: Mitchell Santner (Jersey: 34, Role: All-rounder, Nat: )
+    Player: Nathan Smith (Jersey: 28, Role: All-rounder, Nat: )
+    Player: Tom Blundell (Jersey: 35, Role: All-rounder, Nat: )
+    Player: Devon Conway (Jersey: 35, Role: All-rounder, Nat: )
+    Player: Mitchell Hay (Jersey: 25, Role: All-rounder, Nat: )
+    Player: Tom Latham (Jersey: 34, Role: All-rounder, Nat: )
+    Player: Tim Seifert (Jersey: 31, Role: All-rounder, Nat: )
+    Player: Kristian Clarke (Jersey: 25, Role: All-rounder, Nat: )
+    Player: Jacob Duffy (Jersey: 31, Role: All-rounder, Nat: )
+    Player: Matthew Fisher (Jersey: 26, Role: All-rounder, Nat: )
+    Player: Lockie Ferguson (Jersey: 35, Role: All-rounder, Nat: )
+    Player: Matt Henry (Jersey: 34, Role: All-rounder, Nat: )
+    Player: Kyle Jamieson (Jersey: 31, Role: All-rounder, Nat: )
+    Player: Adam Milne (Jersey: 34, Role: All-rounder, Nat: )
+    Player: Will O'Rourke (Jersey: 24, Role: All-rounder, Nat: )
+    Player: Michael Rae (Jersey: 31, Role: All-rounder, Nat: )
+    Player: Ben Sears (Jersey: 28, Role: All-rounder, Nat: )
+    Player: Blair Tickner (Jersey: 32, Role: All-rounder, Nat: )
+    Player: Adithya Ashok (Jersey: 23, Role: All-rounder, Nat: )
+    Player: Ajaz Patel (Jersey: 37, Role: All-rounder, Nat: )
+    Player: Ish Sodhi (Jersey: 33, Role: All-rounder, Nat: )
+  Processed 36 valid players for New Zealand
+
+Processing Team: New Zealand Women
+
+Processing Team: Northamptonshire
+
+Processing Team: Northamptonshire 2nd XI
+
+Processing Team: Northamptonshire Women
+
+Processing Team: Northern Knights
+
+Processing Team: North-West Warriors
+
+Processing Team: Norway
+
+Processing Team: Nottinghamshire
+
+Processing Team: Nottinghamshire 2nd XI
+
+Processing Team: Pakistan
+
+Processing Team: Pakistan Women
+
+Processing Team: Palamuru Strikers
+
+Processing Team: Perth Scorchers XI
+
+Processing Team: Portugal
+
+Processing Team: Ranga Reddy Risers
+
+Processing Team: Romania
+
+Processing Team: San Francisco Unicorns
+
+Processing Team: Seattle Orcas
+
+Processing Team: Serbia
+
+Processing Team: Shivamogga Yodhas
+
+Processing Team: Somerset
+
+Processing Team: Somerset 2nd XI
+
+Processing Team: Somerset Women
+    Player: Anika Learoyd (Jersey: None, Role: All-rounder, Nat: )
+    Player: Heather Knight (Jersey: None, Role: All-rounder, Nat: )
+    Player: Rebecca Odgers (Jersey: None, Role: All-rounder, Nat: )
+    Player: Emma Corney (Jersey: None, Role: All-rounder, Nat: )
+    Player: Sophie Luff (Jersey: None, Role: All-rounder, Nat: )
+    Player: Charlie Dean (Jersey: None, Role: All-rounder, Nat: )
+    Player: Alex Griffiths (Jersey: None, Role: All-rounder, Nat: )
+    Player: Niamh Holland (Jersey: None, Role: All-rounder, Nat: )
+    Player: Dani Gibson (Jersey: None, Role: All-rounder, Nat: )
+    Player: Jess Hazell (Jersey: None, Role: All-rounder, Nat: )
+    Player: Katie Jones (Jersey: None, Role: All-rounder, Nat: )
+    Player: Mollie Robbins (Jersey: None, Role: All-rounder, Nat: )
+    Player: Chloe Skelton (Jersey: None, Role: All-rounder, Nat: )
+    Player: Ellie Anderson (Jersey: None, Role: All-rounder, Nat: )
+  Processed 14 valid players for Somerset Women
+
+Processing Team: South Africa
+    Player: Temba Bavuma (Jersey: 36, Role: All-rounder, Nat: )
+    Player: David Bedingham (Jersey: 32, Role: All-rounder, Nat: )
+    Player: Matthew Breetzke (Jersey: 27, Role: All-rounder, Nat: )
+    Player: Dewald Brevis (Jersey: 23, Role: All-rounder, Nat: )
+    Player: Tony de Zorzi (Jersey: 28, Role: All-rounder, Nat: )
+    Player: Zubayr Hamza (Jersey: 31, Role: All-rounder, Nat: )
+    Player: Reeza Hendricks (Jersey: 36, Role: All-rounder, Nat: )
+    Player: David Miller (Jersey: 37, Role: All-rounder, Nat: )
+    Player: Tristan Stubbs (Jersey: 25, Role: All-rounder, Nat: )
+    Player: Rassie van der Dussen (Jersey: 37, Role: All-rounder, Nat: )
+    Player: Corbin Bosch (Jersey: 31, Role: All-rounder, Nat: )
+    Player: Donovan Ferreira (Jersey: 27, Role: All-rounder, Nat: )
+    Player: Marco Jansen (Jersey: 26, Role: All-rounder, Nat: )
+    Player: George Linde (Jersey: 34, Role: All-rounder, Nat: )
+    Player: Aiden Markram (Jersey: 31, Role: All-rounder, Nat: )
+    Player: Wiaan Mulder (Jersey: 28, Role: All-rounder, Nat: )
+    Player: Senuran Muthusamy (Jersey: 32, Role: All-rounder, Nat: )
+    Player: Andile Phehlukwayo (Jersey: 30, Role: All-rounder, Nat: )
+    Player: Quinton de Kock (Jersey: 33, Role: All-rounder, Nat: )
+    Player: Rubin Hermann (Jersey: 29, Role: All-rounder, Nat: )
+    Player: Lhuan-dre Pretorius (Jersey: 20, Role: All-rounder, Nat: )
+    Player: Sinethemba Qeshile (Jersey: 27, Role: All-rounder, Nat: )
+    Player: Ryan Rickelton (Jersey: 30, Role: All-rounder, Nat: )
+    Player: Kyle Verreynne (Jersey: 29, Role: All-rounder, Nat: )
+    Player: Bjorn Fortuin (Jersey: 31, Role: All-rounder, Nat: )
+    Player: Simon Harmer (Jersey: 37, Role: All-rounder, Nat: )
+    Player: Keshav Maharaj (Jersey: 36, Role: All-rounder, Nat: )
+    Player: Nqaba Peter (Jersey: 24, Role: All-rounder, Nat: )
+    Player: Tabraiz Shamsi (Jersey: 36, Role: All-rounder, Nat: )
+    Player: Ottneil Baartman (Jersey: 33, Role: All-rounder, Nat: )
+    Player: Nandre Burger (Jersey: 30, Role: All-rounder, Nat: )
+    Player: Gerald Coetzee (Jersey: 25, Role: All-rounder, Nat: )
+    Player: Kwena Maphaka (Jersey: 20, Role: All-rounder, Nat: )
+    Player: Lungi Ngidi (Jersey: 30, Role: All-rounder, Nat: )
+    Player: Kagiso Rabada (Jersey: 31, Role: All-rounder, Nat: )
+    Player: Andile Simelane (Jersey: 23, Role: All-rounder, Nat: )
+    Player: Lizaad Williams (Jersey: 32, Role: All-rounder, Nat: )
+  Processed 37 valid players for South Africa
+
+Processing Team: South Africa Under-19s
+  No valid squad table found.
+
+Processing Team: South Africa Women
+    Player: Tazmin Brits (Jersey: 1, Role: All-rounder, Nat: )
+    Player: Lara Goodall (Jersey: 4, Role: All-rounder, Nat: )
+    Player: Andrie Steyn (Jersey: 11, Role: All-rounder, Nat: )
+    Player: Laura Wolvaardt (Jersey: 4, Role: All-rounder, Nat: )
+    Player: Anneke Bosch (Jersey: 8, Role: All-rounder, Nat: )
+    Player: Nadine de Klerk (Jersey: 1, Role: All-rounder, Nat: )
+    Player: Marizanne Kapp (Jersey: 1, Role: All-rounder, Nat: )
+    Player: Chloe Tryon (Jersey: 1, Role: All-rounder, Nat: )
+    Player: Delmi Tucker (Jersey: 3, Role: All-rounder, Nat: )
+    Player: Dane van Niekerk (Jersey: 5, Role: All-rounder, Nat: )
+    Player: Trisha Chetty (Jersey: 6, Role: All-rounder, Nat: )
+    Player: Sinalo Jafta (Jersey: 12, Role: All-rounder, Nat: )
+    Player: Faye Tunnicliffe (Jersey: 12, Role: All-rounder, Nat: )
+    Player: Nonkululeko Mlaba (Jersey: 6, Role: All-rounder, Nat: )
+    Player: Raisibe Ntozakhe (Jersey: 11, Role: All-rounder, Nat: )
+    Player: Nondumiso Shangase (Jersey: 4, Role: All-rounder, Nat: )
+    Player: Shabnim Ismail (Jersey: 10, Role: All-rounder, Nat: )
+    Player: Ayabonga Khaka (Jersey: 7, Role: All-rounder, Nat: )
+    Player: Masabata Klaas (Jersey: 2, Role: All-rounder, Nat: )
+    Player: Tumi Sekhukhune (Jersey: 11, Role: All-rounder, Nat: )
+  Processed 20 valid players for South Africa Women
+
+Processing Team: Southern Brave (Men)
+
+Processing Team: Southern Brave (Women)
+
+Processing Team: Speen Ghar Tigers
+
+Processing Team: Sri Lanka
+
+Processing Team: Sri Lanka A
+
+Processing Team: Sri Lanka Under-19s
+
+Processing Team: Sri Lanka Women
+
+Processing Team: Sri Lanka Women Under-19s
+
+Processing Team: Sunrisers Leeds (Men)
+
+Processing Team: Sunrisers Leeds (Women)
+
+Processing Team: Surrey
+  No valid squad table found.
+
+Processing Team: Surrey 2nd XI
+
+Processing Team: Surrey Women
+    Player: Laura Harris (Jersey: None, Role: All-rounder, Nat: )
+    Player: Danni Wyatt-Hodge (Jersey: None, Role: All-rounder, Nat: )
+    Player: Aylish Cranstone (Jersey: None, Role: All-rounder, Nat: )
+    Player: Bryony Smith (Jersey: None, Role: All-rounder, Nat: )
+    Player: Paige Scholfield (Jersey: None, Role: All-rounder, Nat: )
+    Player: Phoebe Franklin (Jersey: None, Role: All-rounder, Nat: )
+    Player: Priyanaz Chatterji (Jersey: None, Role: All-rounder, Nat: )
+    Player: Alexa Stonehouse (Jersey: None, Role: All-rounder, Nat: )
+    Player: Alice Davidson-Richards (Jersey: None, Role: All-rounder, Nat: )
+    Player: Alice Capsey (Jersey: None, Role: All-rounder, Nat: )
+    Player: Kalea Moore (Jersey: None, Role: All-rounder, Nat: )
+    Player: Sophia Dunkley (Jersey: None, Role: All-rounder, Nat: )
+    Player: Alice Monaghan (Jersey: None, Role: All-rounder, Nat: )
+    Player: Maitlan Brown (Jersey: None, Role: All-rounder, Nat: )
+    Player: Kira Chathli (Jersey: None, Role: All-rounder, Nat: )
+    Player: Jemima Spence (Jersey: None, Role: All-rounder, Nat: )
+    Player: Danielle Gregory (Jersey: None, Role: All-rounder, Nat: )
+    Player: Tilly Corteen-Coleman (Jersey: None, Role: All-rounder, Nat: )
+    Player: Ryana MacDonald-Gay (Jersey: None, Role: All-rounder, Nat: )
+    Player: Bethan Miles (Jersey: None, Role: All-rounder, Nat: )
+  Processed 20 valid players for Surrey Women
+
+Processing Team: Sussex
+  No valid squad table found.
+
+Processing Team: Sussex 2nd XI
+
+Processing Team: Sussex Women
+    Player: Izzy Collis (Jersey: None, Role: All-rounder, Nat: )
+    Player: Chiara Green (Jersey: None, Role: All-rounder, Nat: )
+  Processed 2 valid players for Sussex Women
+
+Processing Team: Switzerland Women
+
+Processing Team: Tanzania Women
+
+Processing Team: TBA
+
+Processing Team: Texas Super Kings
+
+Processing Team: The Blaze Women
+
+Processing Team: Trent Rockets (Men)
+
+Processing Team: Trent Rockets (Women)
+
+Processing Team: Turkey
+
+Processing Team: Uganda Women
+
+Processing Team: Warangal Warriors
+
+Processing Team: Warwickshire
+
+Processing Team: Warwickshire 2nd XI
+
+Processing Team: Warwickshire Women
+    Player: Chloe Brewer (Jersey: None, Role: All-rounder, Nat: )
+    Player: Davina Perrin (Jersey: None, Role: All-rounder, Nat: )
+    Player: Meg Austin (Jersey: None, Role: All-rounder, Nat: )
+    Player: Nat Wraith (Jersey: None, Role: All-rounder, Nat: )
+    Player: Bethan Ellis (Jersey: None, Role: All-rounder, Nat: )
+    Player: Millie Taylor (Jersey: None, Role: All-rounder, Nat: )
+    Player: Charis Pavely (Jersey: None, Role: All-rounder, Nat: )
+    Player: Katie George (Jersey: None, Role: All-rounder, Nat: )
+    Player: Abbey Freeborn (Jersey: None, Role: All-rounder, Nat: )
+    Player: Georgia Redmayne (Jersey: None, Role: All-rounder, Nat: )
+    Player: Hannah Baker (Jersey: None, Role: All-rounder, Nat: )
+    Player: Mary Taylor (Jersey: None, Role: All-rounder, Nat: )
+    Player: Amu Surenkumar (Jersey: None, Role: All-rounder, Nat: )
+    Player: Phoebe Brett (Jersey: None, Role: All-rounder, Nat: )
+    Player: Alexa Stonehouse (Jersey: None, Role: All-rounder, Nat: )
+    Player: Em Arlott (Jersey: None, Role: All-rounder, Nat: )
+    Player: Georgia Davis (Jersey: None, Role: All-rounder, Nat: )
+    Player: Issy Wong (Jersey: None, Role: All-rounder, Nat: )
+  Processed 18 valid players for Warwickshire Women
+
+Processing Team: Washington Freedom
+
+Processing Team: Welsh Fire (Men)
+
+Processing Team: Welsh Fire (Women)
+
+Processing Team: West Indies
+    Player: Kevlon Anderson (Jersey: 25, Role: All-rounder, Nat: )
+    Player: Jewel Andrew (Jersey: 19, Role: All-rounder, Nat: )
+    Player: Alick Athanaze (Jersey: 27, Role: All-rounder, Nat: )
+    Player: Ackeem Auguste (Jersey: 22, Role: All-rounder, Nat: )
+    Player: Kraigg Brathwaite (Jersey: 33, Role: All-rounder, Nat: )
+    Player: John Campbell (Jersey: 31, Role: All-rounder, Nat: )
+    Player: Keacy Carty (Jersey: 29, Role: All-rounder, Nat: )
+    Player: Tagenarine Chanderpaul (Jersey: 30, Role: All-rounder, Nat: )
+    Player: Johnson Charles (Jersey: 37, Role: All-rounder, Nat: )
+    Player: Shimron Hetmyer (Jersey: 29, Role: All-rounder, Nat: )
+    Player: Brandon King (Jersey: 31, Role: All-rounder, Nat: )
+    Player: Evin Lewis (Jersey: 34, Role: All-rounder, Nat: )
+    Player: Mikyle Louis (Jersey: 25, Role: All-rounder, Nat: )
+    Player: Rovman Powell (Jersey: 32, Role: All-rounder, Nat: )
+    Player: Sherfane Rutherford (Jersey: 27, Role: All-rounder, Nat: )
+    Player: Fabian Allen (Jersey: 31, Role: All-rounder, Nat: )
+    Player: Navin Bidaisee (Jersey: 22, Role: All-rounder, Nat: )
+    Player: Roston Chase (Jersey: 34, Role: All-rounder, Nat: )
+    Player: Justin Greaves (Jersey: 32, Role: All-rounder, Nat: )
+    Player: Kavem Hodge (Jersey: 33, Role: All-rounder, Nat: )
+    Player: Jason Holder (Jersey: 34, Role: All-rounder, Nat: )
+    Player: Johann Layne (Jersey: 22, Role: All-rounder, Nat: )
+    Player: Kyle Mayers (Jersey: 33, Role: All-rounder, Nat: )
+    Player: Khary Pierre (Jersey: 34, Role: All-rounder, Nat: )
+    Player: Romario Shepherd (Jersey: 31, Role: All-rounder, Nat: )
+    Player: Shamar Springer (Jersey: 28, Role: All-rounder, Nat: )
+    Player: Shai Hope (Jersey: 32, Role: All-rounder, Nat: )
+    Player: Amir Jangoo (Jersey: 29, Role: All-rounder, Nat: )
+    Player: Tevin Imlach (Jersey: 29, Role: All-rounder, Nat: )
+    Player: Jediah Blades (Jersey: 24, Role: All-rounder, Nat: )
+    Player: Matthew Forde (Jersey: 24, Role: All-rounder, Nat: )
+    Player: Alzarri Joseph (Jersey: 29, Role: All-rounder, Nat: )
+    Player: Shamar Joseph (Jersey: 26, Role: All-rounder, Nat: )
+    Player: Obed McCoy (Jersey: 29, Role: All-rounder, Nat: )
+    Player: Anderson Phillip (Jersey: 29, Role: All-rounder, Nat: )
+    Player: Kemar Roach (Jersey: 38, Role: All-rounder, Nat: )
+    Player: Jayden Seales (Jersey: 24, Role: All-rounder, Nat: )
+    Player: Ramon Simmonds (Jersey: 24, Role: All-rounder, Nat: )
+    Player: Karima Gore (Jersey: 28, Role: All-rounder, Nat: )
+    Player: Akeal Hosein (Jersey: 33, Role: All-rounder, Nat: )
+    Player: Gudakesh Motie (Jersey: 31, Role: All-rounder, Nat: )
+    Player: Zishan Motara (Jersey: 20, Role: All-rounder, Nat: )
+    Player: Kevin Sinclair (Jersey: 26, Role: All-rounder, Nat: )
+    Player: Jomel Warrican (Jersey: 34, Role: All-rounder, Nat: )
+  Processed 44 valid players for West Indies
+
+Processing Team: West Indies Women
+  Processed 0 valid players for West Indies Women
+
+Processing Team: Worcestershire
+  No valid squad table found.
+
+Processing Team: Worcestershire 2nd XI
+
+Processing Team: Worcestershire Women
+    Player: Ami Campbell (Jersey: None, Role: All-rounder, Nat: )
+    Player: Milly Home (Jersey: None, Role: All-rounder, Nat: )
+    Player: Emily Arlott (Jersey: None, Role: All-rounder, Nat: )
+    Player: Gabrielle Basketter (Jersey: None, Role: All-rounder, Nat: )
+    Player: Clare Boycott (Jersey: None, Role: All-rounder, Nat: )
+    Player: Charis Pavely (Jersey: None, Role: All-rounder, Nat: )
+    Player: Chloe Hill (Jersey: None, Role: All-rounder, Nat: )
+    Player: Ellie Anderson (Jersey: None, Role: All-rounder, Nat: )
+    Player: Hannah Hardwick (Jersey: None, Role: All-rounder, Nat: )
+  Processed 9 valid players for Worcestershire Women
+
+Processing Team: Yorkshire
+
+Processing Team: Yorkshire 2nd XI
+
+Processing Team: Yorkshire Women
+    Player: Ami Campbell (Jersey: None, Role: All-rounder, Nat: )
+    Player: Rebecca Duckworth (Jersey: None, Role: All-rounder, Nat: )
+    Player: Sterre Kalis (Jersey: None, Role: All-rounder, Nat: )
+    Player: Sarah Glenn (Jersey: None, Role: All-rounder, Nat: )
+    Player: Grace Hall (Jersey: None, Role: All-rounder, Nat: )
+    Player: Jess Jonassen (Jersey: None, Role: All-rounder, Nat: )
+    Player: Beth Langston (Jersey: None, Role: All-rounder, Nat: )
+    Player: Olivia Thomas (Jersey: None, Role: All-rounder, Nat: )
+    Player: Ria Fackrell (Jersey: None, Role: All-rounder, Nat: )
+    Player: Maddie Ward (Jersey: None, Role: All-rounder, Nat: )
+    Player: Alice Clarke (Jersey: None, Role: All-rounder, Nat: )
+    Player: Lauren Winfield-Hill (Jersey: None, Role: All-rounder, Nat: )
+    Player: Claudie Cooper (Jersey: None, Role: All-rounder, Nat: )
+    Player: Jessica Woolston (Jersey: None, Role: All-rounder, Nat: )
+    Player: Hannah Rainey (Jersey: None, Role: All-rounder, Nat: )
+    Player: Rachel Slater (Jersey: None, Role: All-rounder, Nat: )
+  Processed 16 valid players for Yorkshire Women
+
+Processing Team: Zimbabwe
+    Player: Craig Ervine (Jersey: 40, Role: All-rounder, Nat: )
+    Player: Ben Curran (Jersey: 30, Role: All-rounder, Nat: )
+    Player: Nick Welch (Jersey: 28, Role: All-rounder, Nat: )
+    Player: Innocent Kaia (Jersey: 33, Role: All-rounder, Nat: )
+    Player: Tinashe Kamunhukamwe (Jersey: 31, Role: All-rounder, Nat: )
+    Player: Tashinga Musekiwa (Jersey: 26, Role: All-rounder, Nat: )
+    Player: Brian Bennett (Jersey: 22, Role: All-rounder, Nat: )
+    Player: Takudzwanashe Kaitano (Jersey: 33, Role: All-rounder, Nat: )
+    Player: Dion Myers (Jersey: 24, Role: All-rounder, Nat: )
+    Player: Prince Masvaure (Jersey: 37, Role: All-rounder, Nat: )
+    Player: Sikandar Raza (Jersey: 40, Role: All-rounder, Nat: )
+    Player: Ryan Burl (Jersey: 32, Role: All-rounder, Nat: )
+    Player: Milton Shumba (Jersey: 25, Role: All-rounder, Nat: )
+    Player: Tinotenda Maposa (Jersey: 22, Role: All-rounder, Nat: )
+    Player: Wessly Madhevere (Jersey: 25, Role: All-rounder, Nat: )
+    Player: Johnathan Campbell (Jersey: 28, Role: All-rounder, Nat: )
+    Player: Tony Munyonga (Jersey: 27, Role: All-rounder, Nat: )
+    Player: Brendan Taylor (Jersey: 40, Role: All-rounder, Nat: )
+    Player: Tafadzwa Tsiga (Jersey: 32, Role: All-rounder, Nat: )
+    Player: Clive Madande (Jersey: 26, Role: All-rounder, Nat: )
+    Player: Joylord Gumbie (Jersey: 30, Role: All-rounder, Nat: )
+    Player: Tadiwanashe Marumani (Jersey: 24, Role: All-rounder, Nat: )
+    Player: Nyasha Mayavo (Jersey: 33, Role: All-rounder, Nat: )
+    Player: Wellington Masakadza (Jersey: 32, Role: All-rounder, Nat: )
+    Player: Vincent Masekesa (Jersey: 29, Role: All-rounder, Nat: )
+    Player: Brandon Mavuta (Jersey: 29, Role: All-rounder, Nat: )
+    Player: Graeme Cremer (Jersey: 39, Role: All-rounder, Nat: )
+    Player: Richard Ngarava (Jersey: 28, Role: All-rounder, Nat: )
+    Player: Brad Evans (Jersey: 29, Role: All-rounder, Nat: )
+    Player: Victor Nyauchi (Jersey: 34, Role: All-rounder, Nat: )
+    Player: Blessing Muzarabani (Jersey: 29, Role: All-rounder, Nat: )
+    Player: Trevor Gwandu (Jersey: 28, Role: All-rounder, Nat: )
+    Player: Tanaka Chivanga (Jersey: 32, Role: All-rounder, Nat: )
+    Player: Luke Jongwe (Jersey: 31, Role: All-rounder, Nat: )
+    Player: Tendai Chatara (Jersey: 35, Role: All-rounder, Nat: )
+    Player: Newman Nyamhuri (Jersey: 20, Role: All-rounder, Nat: )
+    Player: Faraz Akram (Jersey: 32, Role: All-rounder, Nat: )
+  Processed 37 valid players for Zimbabwe
+
+Processing Team: Zimbabwe Women
+  No valid squad table found.
+
+Cricket backfill completed! Created 729, updated 61.
