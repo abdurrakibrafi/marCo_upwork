@@ -28,6 +28,14 @@ class Command(BaseCommand):
 
         backfilled_count = 0
         for entity in entities_to_fix:
+            current_logo = entity.logo_url
+            is_invalid = current_logo and "statpal.io" in current_logo and "/soccer/" not in current_logo
+            if is_invalid:
+                self.stdout.write(f"Clearing invalid logo for '{entity.name}': {current_logo}")
+                if not dry_run:
+                    entity.logo_url = ""
+                    entity.save(update_fields=["logo_url"])
+
             # Bypass cache to perform a direct query, or use cache. Clear cache to be safe.
             from django.core.cache import cache
             cache_key = f"logo_by_name_{entity.name.strip().lower().replace(' ', '_')}"
