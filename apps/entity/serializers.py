@@ -2,18 +2,43 @@ from rest_framework import serializers
 from apps.entity.models import Entity, Team, Athlete, League, EntityStats
 
 
+def make_logo_url_absolute(url, request=None):
+    if not url:
+        return ''
+    if url.startswith('http://') or url.startswith('https://'):
+        return url
+    if request:
+        return request.build_absolute_uri(url)
+    try:
+        from django.conf import settings
+        base = getattr(settings, 'BASE_URL', 'http://localhost:8005').rstrip('/')
+        return f'{base}{url}'
+    except Exception:
+        return url
+
+
 class EntityCompactSerializer(serializers.ModelSerializer):
     """Minimal entity serializer for nested responses"""
+    
+    logo_url = serializers.SerializerMethodField()
     
     class Meta:
         model = Entity
         fields = ['id', 'type', 'name', 'slug', 'sport', 'logo_url']
+
+    def get_logo_url(self, obj):
+        logo = obj.logo_url
+        if not logo:
+            from apps.entity.utils.matcher import find_team_logo_by_name
+            logo = find_team_logo_by_name(obj.name)
+        return make_logo_url_absolute(logo, self.context.get('request'))
 
 
 class EntitySerializer(serializers.ModelSerializer):
     """Basic entity serializer"""
     
     in_nest = serializers.SerializerMethodField()
+    logo_url = serializers.SerializerMethodField()
     
     class Meta:
         model = Entity
@@ -30,6 +55,13 @@ class EntitySerializer(serializers.ModelSerializer):
         if request and user and user.is_authenticated:
             return obj.usernest_set.filter(user=user).exists()
         return False
+
+    def get_logo_url(self, obj):
+        logo = obj.logo_url
+        if not logo:
+            from apps.entity.utils.matcher import find_team_logo_by_name
+            logo = find_team_logo_by_name(obj.name)
+        return make_logo_url_absolute(logo, self.context.get('request'))
 
 
 class TeamDetailSerializer(serializers.ModelSerializer):

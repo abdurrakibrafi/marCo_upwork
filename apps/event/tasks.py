@@ -1462,14 +1462,18 @@ def _save_livescore(row: dict, event: Event):
             LiveScore.objects.filter(sport=ls_sport, external_id=external_id).delete()
             return None
 
+    from apps.entity.utils.matcher import find_team_logo_by_name
+    home_logo_val = (event.home_entity.logo_url if event.home_entity else "") or find_team_logo_by_name(row["home_name"])
+    away_logo_val = (event.away_entity.logo_url if event.away_entity else "") or find_team_logo_by_name(row["away_name"])
+
     live_obj, _ = LiveScore.objects.update_or_create(
         sport=ls_sport,
         external_id=external_id,
         defaults={
             "home_team":     row["home_name"],
             "away_team":     row["away_name"],
-            "home_logo":     event.home_entity.logo_url if event.home_entity else "",
-            "away_logo":     event.away_entity.logo_url if event.away_entity else "",
+            "home_logo":     home_logo_val,
+            "away_logo":     away_logo_val,
             "home_score":    _clean_score(row.get("home_score")),
             "away_score":    _clean_score(row.get("away_score")),
             "status":        status,

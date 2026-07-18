@@ -44,6 +44,39 @@ def _needs_logo(entity, sport: str) -> bool:
     return not entity.logo_url
 
 
+def find_team_logo_by_name(name):
+    """
+    Search database for any entity with name matching `name` (case-insensitive)
+    that has a non-empty logo_url, and return the logo_url. Uses Django cache to avoid N+1 queries.
+    """
+    if not name or not str(name).strip():
+        return ""
+    name_clean = name.strip()
+    cache_key = f"logo_by_name_{name_clean.lower().replace(' ', '_')}"
+    
+    from django.core.cache import cache
+    cached_logo = cache.get(cache_key)
+    if cached_logo is not None:
+        return cached_logo
+
+    # Look for an exact match (case-insensitive) of type 'team'
+    logo = Entity.objects.filter(
+        name__iexact=name_clean,
+        type="team"
+    ).exclude(logo_url="").values_list("logo_url", flat=True).first()
+    
+    if not logo:
+        # Check any entity type (e.g. league or athlete if they have name match, or fallback)
+        logo = Entity.objects.filter(
+            name__iexact=name_clean
+        ).exclude(logo_url="").values_list("logo_url", flat=True).first()
+        
+    logo_val = logo or ""
+    # Cache for 24 hours (86400 seconds)
+    cache.set(cache_key, logo_val, timeout=86400)
+    return logo_val
+
+
 def get_or_create_precise_entity(
     statpal_id,
     name: str,
@@ -62,7 +95,9 @@ def get_or_create_precise_entity(
     """
     statpal_id  = str(statpal_id)
     entity_sport = _SPORT_MAP.get(sport, sport)   # 'nba' → 'basketball'
-    logo         = _logo_url(entity_type, statpal_id, sport) 
+    logo         = _logo_url(entity_type, statpal_id, sport) if sport == "soccer" else ""
+    if not logo:
+        logo = find_team_logo_by_name(name)
 
     # Guard against empty/blank names
     if not name or not str(name).strip():
@@ -85,6 +120,9 @@ def get_or_create_precise_entity(
     ).first()
     if entity:
         if _needs_logo(entity, sport):
+            entity.logo_url = logo
+            entity.save(update_fields=["logo_url"])
+        elif not entity.logo_url and logo:
             entity.logo_url = logo
             entity.save(update_fields=["logo_url"])
         return entity
@@ -136,6 +174,9 @@ def get_or_create_precise_entity(
         if _needs_logo(entity, sport):
             entity.logo_url = logo
             update_fields.append("logo_url")
+        elif not entity.logo_url and logo:
+            entity.logo_url = logo
+            update_fields.append("logo_url")
         if update_fields:
             entity.save(update_fields=update_fields)
 
@@ -155,6 +196,9 @@ def get_or_create_precise_entity(
         entity.api_source  = "statpal"
         entity.external_id = statpal_id
         if _needs_logo(entity, sport):
+            entity.logo_url = logo
+            update_fields.append("logo_url")
+        elif not entity.logo_url and logo:
             entity.logo_url = logo
             update_fields.append("logo_url")
         entity.save(update_fields=update_fields)
@@ -186,6 +230,9 @@ def get_or_create_precise_entity(
         similar_entity.external_id = statpal_id
         update_fields = ["api_source", "external_id"]
         if _needs_logo(similar_entity, sport):
+            similar_entity.logo_url = logo
+            update_fields.append("logo_url")
+        elif not similar_entity.logo_url and logo:
             similar_entity.logo_url = logo
             update_fields.append("logo_url")
         similar_entity.save(update_fields=update_fields)
@@ -220,7 +267,7 @@ def get_or_create_precise_entity(
             type=entity_type,
             api_source="statpal",
             external_id=statpal_id,
-            logo_url=logo if sport == "soccer" else "",
+            logo_url=logo,
         )
         logger.info("Created entity '%s' (sport=%s, type=%s)", name, entity_sport, entity_type)
         if entity_type == "team":

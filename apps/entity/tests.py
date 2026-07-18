@@ -203,3 +203,52 @@ class LogoRestoreCommandTestCase(TestCase):
         call_command("restore_logos_from_duplicates")
         self.target_team.refresh_from_db()
         self.assertEqual(self.target_team.logo_url, "https://images.nba.com/lakers-logo.png")
+
+
+class FallbackLogoTestCase(TestCase):
+    def setUp(self):
+        # Create a soccer team with a logo (represents our source)
+        self.soccer_team = Entity.objects.create(
+            name="Bangladesh",
+            sport="soccer",
+            type="team",
+            logo_url="https://flags.com/bangladesh.png",
+            api_source="statpal",
+            external_id="101"
+        )
+        Team.objects.create(entity=self.soccer_team)
+        
+    def test_find_team_logo_by_name(self):
+        from apps.entity.utils.matcher import find_team_logo_by_name
+        logo = find_team_logo_by_name("Bangladesh")
+        self.assertEqual(logo, "https://flags.com/bangladesh.png")
+        
+    def test_get_or_create_precise_entity_fallback(self):
+        # Retrieve or create a cricket team named Bangladesh
+        cricket_team = get_or_create_precise_entity("202", "Bangladesh", "cricket")
+        self.assertEqual(cricket_team.logo_url, "https://flags.com/bangladesh.png")
+
+    def test_backfill_missing_logos_command(self):
+        # Create a team with empty logo
+        blank_team = Entity.objects.create(
+            name="Bangladesh",
+            sport="basketball",
+            type="team",
+            logo_url=""
+        )
+        call_command("backfill_missing_logos")
+        blank_team.refresh_from_db()
+        self.assertEqual(blank_team.logo_url, "https://flags.com/bangladesh.png")
+
+    def test_serializer_fallback(self):
+        # Create a team with empty logo and serialize it
+        blank_team = Entity.objects.create(
+            name="Bangladesh",
+            sport="basketball",
+            type="team",
+            logo_url=""
+        )
+        from apps.entity.serializers import EntitySerializer
+        serializer = EntitySerializer(blank_team)
+        self.assertEqual(serializer.data["logo_url"], "https://flags.com/bangladesh.png")
+

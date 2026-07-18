@@ -33,10 +33,18 @@ class LiveScoreSerializer(serializers.ModelSerializer):
             return relative_url
 
     def get_home_logo(self, obj):
-        return self._absolute(obj.home_logo)
+        logo = obj.home_logo
+        if not logo and hasattr(obj, 'home_team'):
+            from apps.entity.utils.matcher import find_team_logo_by_name
+            logo = find_team_logo_by_name(obj.home_team)
+        return self._absolute(logo)
 
     def get_away_logo(self, obj):
-        return self._absolute(obj.away_logo)
+        logo = obj.away_logo
+        if not logo and hasattr(obj, 'away_team'):
+            from apps.entity.utils.matcher import find_team_logo_by_name
+            logo = find_team_logo_by_name(obj.away_team)
+        return self._absolute(logo)
 
     def to_representation(self, instance):
         data = super().to_representation(instance)

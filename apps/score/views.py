@@ -465,6 +465,19 @@ def nest_live_scores(request):
 @permission_classes([IsAuthenticated])
 def live_score_detail(request, score_id):
     mixin = BaseResponseMixin()
+    def _make_absolute(url):
+        if not url:
+            return ""
+        if url.startswith("http://") or url.startswith("https://"):
+            return url
+        if request:
+            return request.build_absolute_uri(url)
+        try:
+            from django.conf import settings
+            base = getattr(settings, 'BASE_URL', 'http://localhost:8005').rstrip('/')
+            return f'{base}{url}'
+        except Exception:
+            return url
     try:
         game = None
         # 1. Try LiveScore ID
@@ -481,14 +494,15 @@ def live_score_detail(request, score_id):
 
         # 3. Fallback: If not live, mock the game object from the completed/upcoming Event!
         if not game and event_obj:
+            from apps.entity.utils.matcher import find_team_logo_by_name
             class MockGame:
                 id = event_obj.id
                 sport = event_obj.sport
                 external_id = event_obj.external_id
                 home_team = event_obj.home_entity.name if event_obj.home_entity else ""
                 away_team = event_obj.away_entity.name if event_obj.away_entity else ""
-                home_logo = event_obj.home_entity.logo_url if event_obj.home_entity else ""
-                away_logo = event_obj.away_entity.logo_url if event_obj.away_entity else ""
+                home_logo = (event_obj.home_entity.logo_url if event_obj.home_entity else "") or find_team_logo_by_name(home_team)
+                away_logo = (event_obj.away_entity.logo_url if event_obj.away_entity else "") or find_team_logo_by_name(away_team)
                 status = event_obj.status
                 status_detail = event_obj.status_detail
                 start_time = event_obj.start_time
@@ -1071,6 +1085,18 @@ def live_score_detail(request, score_id):
                     game.away_team, away_entity_id
                 )
 
+        # Resolve logos and make them absolute
+        from apps.entity.utils.matcher import find_team_logo_by_name
+        home_logo_val = game.home_logo
+        if not home_logo_val and getattr(game, 'home_team', None):
+            home_logo_val = find_team_logo_by_name(game.home_team)
+        home_logo_val = _make_absolute(home_logo_val)
+
+        away_logo_val = game.away_logo
+        if not away_logo_val and getattr(game, 'away_team', None):
+            away_logo_val = find_team_logo_by_name(game.away_team)
+        away_logo_val = _make_absolute(away_logo_val)
+
         # 7. Construct final data dictionary containing ALL keys (original + new fields)
         data = {
             # Original keys:
@@ -1078,8 +1104,8 @@ def live_score_detail(request, score_id):
             'sport': sport,
             'home_team': game.home_team,
             'away_team': game.away_team,
-            'home_logo': game.home_logo,
-            'away_logo': game.away_logo,
+            'home_logo': home_logo_val,
+            'away_logo': away_logo_val,
             'status': game.status,
             'status_detail': game.status_detail,
             'start_time': game.start_time,
@@ -1108,13 +1134,24 @@ def live_score_detail(request, score_id):
         if 'game' in locals() and game:
             import logging
             logging.getLogger(__name__).error(f"Error in live_score_detail for game {game.id}: {exc}", exc_info=True)
+            from apps.entity.utils.matcher import find_team_logo_by_name
+            home_logo_val = getattr(game, 'home_logo', '')
+            if not home_logo_val and getattr(game, 'home_team', None):
+                home_logo_val = find_team_logo_by_name(game.home_team)
+            home_logo_val = _make_absolute(home_logo_val)
+
+            away_logo_val = getattr(game, 'away_logo', '')
+            if not away_logo_val and getattr(game, 'away_team', None):
+                away_logo_val = find_team_logo_by_name(game.away_team)
+            away_logo_val = _make_absolute(away_logo_val)
+
             fallback_data = {
                 'id': game.id,
                 'sport': getattr(game, 'sport', ''),
                 'home_team': getattr(game, 'home_team', ''),
                 'away_team': getattr(game, 'away_team', ''),
-                'home_logo': getattr(game, 'home_logo', ''),
-                'away_logo': getattr(game, 'away_logo', ''),
+                'home_logo': home_logo_val,
+                'away_logo': away_logo_val,
                 'status': getattr(game, 'status', ''),
                 'status_detail': getattr(game, 'status_detail', ''),
                 'start_time': getattr(game, 'start_time', None),
