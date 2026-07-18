@@ -17,10 +17,10 @@ class Command(BaseCommand):
         if dry_run:
             self.stdout.write(self.style.WARNING("=== DRY RUN MODE: Database changes will not be saved ==="))
 
-        # Get all active entities with empty logo_url
-        entities_to_fix = Entity.objects.filter(logo_url="").order_by("name")
+        # Get only team entities with empty logo_url
+        entities_to_fix = Entity.objects.filter(logo_url="", type="team").order_by("name")
         total_found = entities_to_fix.count()
-        self.stdout.write(f"Found {total_found} entities with empty logo_url.")
+        self.stdout.write(f"Found {total_found} team entities with empty logo_url.")
 
         backfilled_count = 0
         for entity in entities_to_fix:

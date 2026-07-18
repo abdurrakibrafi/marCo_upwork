@@ -46,7 +46,7 @@ def _needs_logo(entity, sport: str) -> bool:
 
 def find_team_logo_by_name(name):
     """
-    Search database for any entity with name matching `name` (case-insensitive)
+    Search database for any team with name matching `name` (case-insensitive)
     that has a non-empty logo_url, and return the logo_url. Uses Django cache to avoid N+1 queries.
     """
     if not name or not str(name).strip():
@@ -65,12 +65,6 @@ def find_team_logo_by_name(name):
         type="team"
     ).exclude(logo_url="").values_list("logo_url", flat=True).first()
     
-    if not logo:
-        # Check any entity type (e.g. league or athlete if they have name match, or fallback)
-        logo = Entity.objects.filter(
-            name__iexact=name_clean
-        ).exclude(logo_url="").values_list("logo_url", flat=True).first()
-        
     logo_val = logo or ""
     # Cache for 24 hours (86400 seconds)
     cache.set(cache_key, logo_val, timeout=86400)
@@ -96,7 +90,7 @@ def get_or_create_precise_entity(
     statpal_id  = str(statpal_id)
     entity_sport = _SPORT_MAP.get(sport, sport)   # 'nba' → 'basketball'
     logo         = _logo_url(entity_type, statpal_id, sport) if sport == "soccer" else ""
-    if not logo:
+    if not logo and entity_type == "team":
         logo = find_team_logo_by_name(name)
 
     # Guard against empty/blank names

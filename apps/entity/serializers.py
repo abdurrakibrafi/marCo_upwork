@@ -28,7 +28,7 @@ class EntityCompactSerializer(serializers.ModelSerializer):
 
     def get_logo_url(self, obj):
         logo = obj.logo_url
-        if not logo:
+        if not logo and obj.type == 'team':
             from apps.entity.utils.matcher import find_team_logo_by_name
             logo = find_team_logo_by_name(obj.name)
         return make_logo_url_absolute(logo, self.context.get('request'))
@@ -58,7 +58,7 @@ class EntitySerializer(serializers.ModelSerializer):
 
     def get_logo_url(self, obj):
         logo = obj.logo_url
-        if not logo:
+        if not logo and obj.type == 'team':
             from apps.entity.utils.matcher import find_team_logo_by_name
             logo = find_team_logo_by_name(obj.name)
         return make_logo_url_absolute(logo, self.context.get('request'))
