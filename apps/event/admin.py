@@ -13,31 +13,43 @@ class EventAdmin(admin.ModelAdmin):
     list_filter = ['sport', 'status', 'start_time']
     search_fields = ['home_entity__name', 'away_entity__name']
     date_hierarchy = 'start_time'
+    list_select_related = ['home_entity', 'away_entity']
+    raw_id_fields = ['home_entity', 'away_entity']
 
 @admin.register(EventTimeline)
 class EventTimelineAdmin(admin.ModelAdmin):
     list_display = ['event', 'event_type', 'minute', 'team', 'player']
     list_filter = ['event_type']
     search_fields = ['event__home_entity__name', 'player__name']
+    list_select_related = ['event', 'team', 'player']
+    raw_id_fields = ['event', 'team', 'player']
 
 @admin.register(EventLineup)
 class EventLineupAdmin(admin.ModelAdmin):
     list_display = ['event', 'team', 'player', 'position_type', 'jersey_number']
     list_filter = ['position_type']
     search_fields = ['player__name', 'team__name']
+    list_select_related = ['event', 'team', 'player']
+    raw_id_fields = ['event', 'team', 'player']
 
 @admin.register(EventStatistics)
 class EventStatisticsAdmin(admin.ModelAdmin):
     list_display = ['event', 'team', 'updated_at']
     search_fields = ['event__home_entity__name', 'team__name']
+    list_select_related = ['event', 'team']
+    raw_id_fields = ['event', 'team']
 
 @admin.register(EventPlayerStats)
 class EventPlayerStatsAdmin(admin.ModelAdmin):
     list_display = ['event', 'player', 'team', 'points_or_goals']
     search_fields = ['player__name']
+    list_select_related = ['event', 'player', 'team']
+    raw_id_fields = ['event', 'player', 'team']
 
 @admin.register(EventHighlight)
 class EventHighlightAdmin(admin.ModelAdmin):
     list_display = ['event', 'title', 'source', 'views', 'created_at']
     list_filter = ['source', 'created_at']
     search_fields = ['title', 'event__home_entity__name']
+    list_select_related = ['event']
+    raw_id_fields = ['event']

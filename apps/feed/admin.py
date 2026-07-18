@@ -37,6 +37,8 @@ class EntitySourceAdmin(admin.ModelAdmin):
     list_display = ['user_nest', 'source', 'priority', 'added_at']
     list_filter = ['priority', 'added_at']
     search_fields = ['user_nest__user__email', 'source__name']
+    list_select_related = ['user_nest', 'source']
+    raw_id_fields = ['user_nest', 'source']
 
 
 @admin.register(FeedItem)
@@ -47,6 +49,8 @@ class FeedItemAdmin(admin.ModelAdmin):
     list_filter = ['is_breaking', 'is_trending', 'published_at']
     search_fields = ['title', 'source__name']
     date_hierarchy = 'published_at'
+    list_select_related = ['source']
+    raw_id_fields = ['source']
 
 
 @admin.register(UserSource)
@@ -54,9 +58,13 @@ class UserSourceAdmin(admin.ModelAdmin):
     list_display = ['user', 'source', 'created_at']
     list_filter = ['created_at']
     search_fields = ['user__username', 'source__name']
+    list_select_related = ['user', 'source']
+    raw_id_fields = ['user', 'source']
 
 
 @admin.register(HiddenSource)
 class HiddenSourceAdmin(admin.ModelAdmin):
     list_display = ['user', 'source', 'created_at']
     search_fields = ['user__username', 'source__name']
+    list_select_related = ['user', 'source']
+    raw_id_fields = ['user', 'source']

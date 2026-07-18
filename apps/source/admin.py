@@ -9,6 +9,8 @@ class UserCustomSourceAdmin(admin.ModelAdmin):
     search_fields = ('user__username', 'user__email', 'source__name', 'search_query')
     readonly_fields = ('created_at',)
     date_hierarchy = 'created_at'
+    list_select_related = ('user', 'source')
+    raw_id_fields = ('user', 'source')
     
     fieldsets = (
         (None, {

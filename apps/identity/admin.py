@@ -116,6 +116,8 @@ class UserProfileAdmin(admin.ModelAdmin):
     list_filter = ('gender', 'profile_completed', 'onboarding_completed', 'created_at')
     search_fields = ('user__email', 'full_name', 'phone')
     ordering = ('-created_at',)
+    list_select_related = ('user',)
+    raw_id_fields = ('user',)
     
     fieldsets = (
         ('User Information', {
@@ -174,6 +176,8 @@ class OTPAdmin(admin.ModelAdmin):
     list_filter = ('purpose', 'is_used', 'created_at')
     search_fields = ('user__email', 'otp')
     ordering = ('-created_at',)
+    list_select_related = ('user',)
+    raw_id_fields = ('user',)
     
     fieldsets = (
         ('OTP Information', {
