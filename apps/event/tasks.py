@@ -250,23 +250,25 @@ def _populate_statpal_event_details(event):
     # 1. Fetch soccer stats if they are missing from metadata
     if event.sport == 'soccer' and not meta.get('event_summary') and not meta.get('team_stats') and event.league:
         try:
-            from apps.sports_apis.services.statpal import statpal_service
             league_id = int(event.league.external_id)
-            result = statpal_service.get_soccer_match_stats(league_id)
-            if result['success']:
-                matches = result['data'].get('match-stats', {}).get('tournament', {}).get('matches', [])
-                if isinstance(matches, dict):
-                    matches = [matches]
-                elif not isinstance(matches, list):
-                    matches = []
-                for m in matches:
-                    if not isinstance(m, dict):
-                        continue
-                    if str(m.get('main_id')) == str(event.external_id) or str(m.get('id')) == str(event.external_id):
-                        event.metadata = m
-                        event.save(update_fields=['metadata'])
-                        meta = m
-                        break
+            # Skip league 3962 because it returns HTTP 404, and honor inactive league status
+            if league_id != 3962 and event.league.is_active:
+                from apps.sports_apis.services.statpal import statpal_service
+                result = statpal_service.get_soccer_match_stats(league_id)
+                if result['success']:
+                    matches = result['data'].get('match-stats', {}).get('tournament', {}).get('matches', [])
+                    if isinstance(matches, dict):
+                        matches = [matches]
+                    elif not isinstance(matches, list):
+                        matches = []
+                    for m in matches:
+                        if not isinstance(m, dict):
+                            continue
+                        if str(m.get('main_id')) == str(event.external_id) or str(m.get('id')) == str(event.external_id):
+                            event.metadata = m
+                            event.save(update_fields=['metadata'])
+                            meta = m
+                            break
         except Exception as e:
             logger.warning(f"Failed to fetch soccer match stats for event {event.id}: {e}")
 
@@ -1510,94 +1512,102 @@ def sync_statpal_data(self):
 
     Recommended beat schedule: every 60 seconds.
     """
-    fetches = [
-        ("soccer", statpal_service.get_soccer_live, _soccer_rows, {}),
-        ("soccer", statpal_service.get_soccer_fixtures, _soccer_rows, {'offset': 0}),
-        ("nba", statpal_service.get_nba_live, _nba_rows, {}),
-        ("nba", statpal_service.get_nba_fixtures, _nba_rows, {'offset': 0}),
-        ("football", statpal_service.get_nfl_live, _nfl_rows, {}),
-        ("football", statpal_service.get_nfl_fixtures, _nfl_rows, {'offset': 0}),
-        ("cricket", statpal_service.get_cricket_live, _cricket_rows, {}),
-        ("cricket", statpal_service.get_cricket_fixtures, _cricket_rows, {}),
-        ("tennis", statpal_service.get_tennis_live, _tennis_rows, {}),
-        ("tennis", statpal_service.get_tennis_fixtures, _tennis_rows, {'offset': 0}),
-        ("baseball", statpal_service.get_mlb_live, _mlb_rows, {}),
-        ("baseball", statpal_service.get_mlb_fixtures, _mlb_rows, {'offset': 0}),
-        ("handball", statpal_service.get_handball_live, _handball_rows, {}),
-        ("handball", statpal_service.get_handball_fixtures, _handball_rows, {'offset': 0}),
-        ("volleyball", statpal_service.get_volleyball_live, _volleyball_rows, {}),
-        ("golf", statpal_service.get_golf_live, _golf_rows, {}),
-        ("horse_racing", lambda: statpal_service.get_horse_racing_live('uk'), _horse_racing_rows, {}),
-        ("horse_racing", lambda: statpal_service.get_horse_racing_live('usa'), _horse_racing_rows, {}),
-        # ("horse_racing", lambda: statpal_service.get_horse_racing_live('aus'), _horse_racing_rows, {}), # Returns HTTP 500
-    ]
+    lock_id = "sync_statpal_data_lock"
+    if not cache.add(lock_id, "true", timeout=300):
+        logger.info("sync_statpal_data already running, skipping this cycle")
+        return "skipped — already running"
 
-    # ── Stale LiveScore cleanup ──────────────────────────────────────────────
-    # Any match still marked 'live' but not updated in the last 3 hours is
-    # almost certainly finished and missed by the API. Remove it so the
-    # WebSocket feed stays clean.
-    stale_cutoff = timezone.now() - timezone.timedelta(hours=3)
-    stale_deleted, _ = (
-        LiveScore.objects.filter(status="live", updated_at__lt=stale_cutoff).delete()
-    )
-    if stale_deleted:
-        logger.info("[StatPal] Cleaned up %d stale live score(s) older than 3h.", stale_deleted)
+    try:
+        fetches = [
+            ("soccer", statpal_service.get_soccer_live, _soccer_rows, {}),
+            ("soccer", statpal_service.get_soccer_fixtures, _soccer_rows, {'offset': 0}),
+            ("nba", statpal_service.get_nba_live, _nba_rows, {}),
+            ("nba", statpal_service.get_nba_fixtures, _nba_rows, {'offset': 0}),
+            ("football", statpal_service.get_nfl_live, _nfl_rows, {}),
+            ("football", statpal_service.get_nfl_fixtures, _nfl_rows, {'offset': 0}),
+            ("cricket", statpal_service.get_cricket_live, _cricket_rows, {}),
+            ("cricket", statpal_service.get_cricket_fixtures, _cricket_rows, {}),
+            ("tennis", statpal_service.get_tennis_live, _tennis_rows, {}),
+            ("tennis", statpal_service.get_tennis_fixtures, _tennis_rows, {'offset': 0}),
+            ("baseball", statpal_service.get_mlb_live, _mlb_rows, {}),
+            ("baseball", statpal_service.get_mlb_fixtures, _mlb_rows, {'offset': 0}),
+            ("handball", statpal_service.get_handball_live, _handball_rows, {}),
+            ("handball", statpal_service.get_handball_fixtures, _handball_rows, {'offset': 0}),
+            ("volleyball", statpal_service.get_volleyball_live, _volleyball_rows, {}),
+            ("golf", statpal_service.get_golf_live, _golf_rows, {}),
+            ("horse_racing", lambda: statpal_service.get_horse_racing_live('uk'), _horse_racing_rows, {}),
+            ("horse_racing", lambda: statpal_service.get_horse_racing_live('usa'), _horse_racing_rows, {}),
+            # ("horse_racing", lambda: statpal_service.get_horse_racing_live('aus'), _horse_racing_rows, {}), # Returns HTTP 500
+        ]
 
-    saved, skipped, errors = 0, 0, 0
-    live_objects_to_publish = []
-
-    for fetch_config in fetches:
-        sport, fetch_fn, extract_fn, params = fetch_config
-
-        try:
-            result = fetch_fn(**params)
-
-            if not result["success"]:
-                logger.warning("[StatPal] %s fetch failed: %s", sport, result.get("error"))
-                continue
-
-            extracted_rows = extract_fn(result["data"])
-        except Exception as exc:
-            errors += 1
-            logger.exception("[StatPal] %s fetch/extract crashed: %s", sport, exc)
-            continue
-
-        logger.info(
-            "[StatPal] Fetched '%s' (%s). API response parsed into %d rows.",
-            sport, fetch_fn.__name__, len(extracted_rows)
+        # ── Stale LiveScore cleanup ──────────────────────────────────────────────
+        # Any match still marked 'live' but not updated in the last 3 hours is
+        # almost certainly finished and missed by the API. Remove it so the
+        # WebSocket feed stays clean.
+        stale_cutoff = timezone.now() - timezone.timedelta(hours=3)
+        stale_deleted, _ = (
+            LiveScore.objects.filter(status="live", updated_at__lt=stale_cutoff).delete()
         )
+        if stale_deleted:
+            logger.info("[StatPal] Cleaned up %d stale live score(s) older than 3h.", stale_deleted)
 
-        for row in extracted_rows:
+        saved, skipped, errors = 0, 0, 0
+        live_objects_to_publish = []
+
+        for fetch_config in fetches:
+            sport, fetch_fn, extract_fn, params = fetch_config
+
             try:
-                # Skip soccer matches with no live stats
-                if sport == "soccer":
-                    raw_match = row.get("raw", {})
-                    if str(raw_match.get("has_live_stats", "True")).strip().lower() == "false":
-                        LiveScore.objects.filter(sport="soccer", external_id=row["external_id"]).delete()
-                        skipped += 1
-                        continue
+                result = fetch_fn(**params)
 
-                from django.db import transaction
-                with transaction.atomic():
-                    event_obj = _save_event(row)
-                    if event_obj is None:
-                        skipped += 1
-                        continue
-                    live_obj = _save_livescore(row, event_obj)
-                    if live_obj:
-                        live_objects_to_publish.append(live_obj)
-                    saved += 1
+                if not result["success"]:
+                    logger.warning("[StatPal] %s fetch failed: %s", sport, result.get("error"))
+                    continue
+
+                extracted_rows = extract_fn(result["data"])
             except Exception as exc:
                 errors += 1
-                logger.exception(
-                    "[StatPal] Save failed — external_id=%r sport=%s: %s",
-                    row.get("external_id"), sport, exc,
-                )
+                logger.exception("[StatPal] %s fetch/extract crashed: %s", sport, exc)
+                continue
 
-    # Publish all collected live objects at the end to avoid multiple publishes for the same game
-    for live_obj in live_objects_to_publish:
-        _publish(live_obj)
+            logger.info(
+                "[StatPal] Fetched '%s' (%s). API response parsed into %d rows.",
+                sport, fetch_fn.__name__, len(extracted_rows)
+            )
 
-    msg = f"sync_statpal_data — saved={saved}, skipped={skipped}, errors={errors}"
-    logger.info(msg)
-    return msg
+            for row in extracted_rows:
+                try:
+                    # Skip soccer matches with no live stats
+                    if sport == "soccer":
+                        raw_match = row.get("raw", {})
+                        if str(raw_match.get("has_live_stats", "True")).strip().lower() == "false":
+                            LiveScore.objects.filter(sport="soccer", external_id=row["external_id"]).delete()
+                            skipped += 1
+                            continue
+
+                    from django.db import transaction
+                    with transaction.atomic():
+                        event_obj = _save_event(row)
+                        if event_obj is None:
+                            skipped += 1
+                            continue
+                        live_obj = _save_livescore(row, event_obj)
+                        if live_obj:
+                            live_objects_to_publish.append(live_obj)
+                        saved += 1
+                except Exception as exc:
+                    errors += 1
+                    logger.exception(
+                        "[StatPal] Save failed — external_id=%r sport=%s: %s",
+                        row.get("external_id"), sport, exc,
+                    )
+
+        # Publish all collected live objects at the end to avoid multiple publishes for the same game
+        for live_obj in live_objects_to_publish:
+            _publish(live_obj)
+
+        msg = f"sync_statpal_data — saved={saved}, skipped={skipped}, errors={errors}"
+        logger.info(msg)
+        return msg
+    finally:
+        cache.delete(lock_id)
