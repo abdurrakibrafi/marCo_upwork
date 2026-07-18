@@ -29,12 +29,14 @@ _SPORT_MAP = {
 
 
 def _logo_url(entity_type: str, statpal_id: str, sport: str) -> str:
-    if sport not in _LOGO_SUPPORTED_SPORTS:
+    if sport not in _LOGO_SUPPORTED_SPORTS or entity_type == "league":
         return ""
+    # Map 'athlete' to 'player' for StatPal API parameter
+    param_type = "player" if entity_type == "athlete" else entity_type
     # Always format with sport='soccer' since StatPal only serves images on /soccer/ endpoint,
     # but the team IDs are identical across sports.
     base = _IMAGE_BASE.format(sport="soccer")
-    return f"{base}?type={entity_type}&id={statpal_id}&access_key={_ACCESS_KEY}"
+    return f"{base}?type={param_type}&id={statpal_id}&access_key={_ACCESS_KEY}"
 
 
 def _needs_logo(entity, sport: str) -> bool:

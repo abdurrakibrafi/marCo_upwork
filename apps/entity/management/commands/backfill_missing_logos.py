@@ -19,12 +19,13 @@ class Command(BaseCommand):
 
         from apps.entity.utils.matcher import is_national_team, _logo_url
 
-        # 1. Clear any invalid non-national team soccer logos from StatPal
-        non_national_logos = Entity.objects.filter(logo_url__contains="statpal.io", type="team")
+        # 1. Clear any invalid non-national team or league soccer logos from StatPal
+        invalid_logos = Entity.objects.filter(logo_url__contains="statpal.io")
         cleared_count = 0
-        for entity in non_national_logos:
-            if not is_national_team(entity.name):
-                self.stdout.write(f"Clearing non-national soccer logo for '{entity.name}'")
+        for entity in invalid_logos:
+            should_clear = (entity.type == "league") or (entity.type == "team" and not is_national_team(entity.name))
+            if should_clear:
+                self.stdout.write(f"Clearing invalid logo for {entity.type} '{entity.name}': {entity.logo_url}")
                 if not dry_run:
                     entity.logo_url = ""
                     entity.save(update_fields=["logo_url"])
