@@ -64,6 +64,21 @@ def clean_national_team_name(name: str) -> str:
     if not name:
         return ""
     name_clean = name.strip()
+    suffixes = [
+        " women", " men", " emerging team", " under-19s", " u19", " u-19",
+        " under-23s", " u23", " u-23", " a team", " emerging",
+        " cricket team", " national cricket team", " national team",
+        " xi", " under-19", " under-23"
+    ]
+    name_lower = name_clean.lower()
+    for suffix in suffixes:
+        if name_lower.endswith(suffix):
+            return name_clean[:-len(suffix)].strip()
+            
+    if len(name_clean) > 2 and name_clean[-2] == " " and name_clean[-1] in ("A", "B"):
+        return name_clean[:-2].strip()
+        
+    return name_clean
 
 
 _KNOWN_COUNTRIES = {
@@ -88,26 +103,14 @@ _KNOWN_COUNTRIES = {
     "usa", "uruguay", "uzbekistan", "vanuatu", "vatican city", "venezuela", "vietnam", "wales", "west indies", "yemen", "zambia", "zimbabwe"
 }
 
+
 def is_national_team(name: str) -> bool:
     if not name:
         return False
     base_name = clean_national_team_name(name)
+    if not base_name:
+        return False
     return base_name.lower() in _KNOWN_COUNTRIES
-    suffixes = [
-        " women", " men", " emerging team", " under-19s", " u19", " u-19",
-        " under-23s", " u23", " u-23", " a team", " emerging",
-        " cricket team", " national cricket team", " national team",
-        " xi", " under-19", " under-23"
-    ]
-    name_lower = name_clean.lower()
-    for suffix in suffixes:
-        if name_lower.endswith(suffix):
-            return name_clean[:-len(suffix)].strip()
-            
-    if len(name_clean) > 2 and name_clean[-2] == " " and name_clean[-1] in ("A", "B"):
-        return name_clean[:-2].strip()
-        
-    return name_clean
 
 
 def find_team_logo_by_name(name):
