@@ -42,6 +42,10 @@ class Command(BaseCommand):
             cache.delete(cache_key)
             
             fallback_logo = find_team_logo_by_name(entity.name)
+            if not fallback_logo and entity.api_source == "statpal" and entity.external_id:
+                from apps.entity.utils.matcher import _logo_url
+                fallback_logo = _logo_url(entity.type, entity.external_id, entity.sport)
+
             if fallback_logo:
                 self.stdout.write(
                     self.style.SUCCESS(

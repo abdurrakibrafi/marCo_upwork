@@ -31,17 +31,21 @@ _SPORT_MAP = {
 def _logo_url(entity_type: str, statpal_id: str, sport: str) -> str:
     if sport not in _LOGO_SUPPORTED_SPORTS:
         return ""
-    base = _IMAGE_BASE.format(sport=sport)
+    # Always format with sport='soccer' since StatPal only serves images on /soccer/ endpoint,
+    # but the team IDs are identical across sports.
+    base = _IMAGE_BASE.format(sport="soccer")
     return f"{base}?type={entity_type}&id={statpal_id}&access_key={_ACCESS_KEY}"
 
 
 def _needs_logo(entity, sport: str) -> bool:
-    # Only use StatPal logo for soccer, and only if the team does not already have a logo.
-    # Other sports don't have valid logos in StatPal, and we never want to overwrite
-    # an existing logo (e.g. custom user uploads or Wikipedia logos).
-    if sport != "soccer":
-        return False
-    return not entity.logo_url
+    # We want to use StatPal logo for all supported sports (using soccer base URL)
+    # only if the entity does not already have a logo (or has an invalid non-soccer logo).
+    current_logo = entity.logo_url
+    if not current_logo:
+        return True
+    if "statpal.io" in current_logo and "/soccer/" not in current_logo:
+        return True
+    return False
 
 
 def _needs_logo_update(entity, new_logo) -> bool:
@@ -134,9 +138,15 @@ def get_or_create_precise_entity(
     """
     statpal_id  = str(statpal_id)
     entity_sport = _SPORT_MAP.get(sport, sport)   # 'nba' → 'basketball'
-    logo         = _logo_url(entity_type, statpal_id, sport) if sport == "soccer" else ""
+    logo = ""
+    if sport == "soccer":
+        logo = _logo_url(entity_type, statpal_id, sport)
+    
     if not logo and entity_type == "team":
         logo = find_team_logo_by_name(name)
+        
+    if not logo:
+        logo = _logo_url(entity_type, statpal_id, sport)
 
     # Guard against empty/blank names
     if not name or not str(name).strip():
