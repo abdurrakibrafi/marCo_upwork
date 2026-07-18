@@ -1,0 +1,83 @@
+services:
+  api:
+    build: .
+    container_name: shoppassport_backend
+    ports:
+      - "8005:8000"
+    volumes:
+      - .:/app
+      - static_volume:/app/staticfiles
+      - media_volume:/app/media
+    env_file:
+      - .env
+    depends_on:
+      - db
+      - redis
+    restart: unless-stopped
+    command: gunicorn config.wsgi:application --bind 0.0.0.0:8000
+
+  # --- Celery Worker যোগ করা হলো ---
+  celery:
+    build: .
+    container_name: shoppassport_celery
+    volumes:
+      - .:/app
+      - media_volume:/app/media
+    env_file:
+      - .env
+    depends_on:
+      - db
+      - redis
+    restart: unless-stopped
+    command: celery -A config worker --loglevel=info
+
+  # --- Celery Beat যোগ করা হলো ---
+  celery_beat:
+    build: .
+    container_name: shoppassport_celery_beat
+    volumes:
+      - .:/app
+    env_file:
+      - .env
+    depends_on:
+      - db
+      - redis
+    restart: unless-stopped
+    command: celery -A config beat --loglevel=info
+
+  db:
+    image: postgres:15
+    container_name: shoppassport_db
+    volumes:
+      - postgres_data:/var/lib/postgresql/data/
+    env_file:
+      - .env
+    ports:
+      - "5435:5432"
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    container_name: shoppassport_redis
+    ports:
+      - "6385:6379"
+    volumes:
+      - redis_data:/data
+    restart: unless-stopped
+
+  smtp4dev:
+    image: rnwood/smtp4dev:linux-amd64-v3
+    container_name: shoppassport_smtp4dev
+    ports:
+      - "3005:80"
+      - "2527:25"
+    volumes:
+      - smtp4dev_data:/smtp4dev
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+  static_volume:
+  media_volume:
+  smtp4dev_data:
+  redis_data:
