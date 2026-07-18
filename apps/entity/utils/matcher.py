@@ -64,6 +64,35 @@ def clean_national_team_name(name: str) -> str:
     if not name:
         return ""
     name_clean = name.strip()
+
+
+_KNOWN_COUNTRIES = {
+    "afghanistan", "albania", "algeria", "andorra", "angola", "argentina", "armenia", "australia", "austria", "azerbaijan",
+    "bahamas", "bahrain", "bangladesh", "barbados", "belarus", "belgium", "belize", "benin", "bermuda", "bhutan", "bolivia",
+    "bosnia and herzegovina", "botswana", "brazil", "brunei", "bulgaria", "burkina faso", "burundi", "cambodia", "cameroon",
+    "canada", "cape verde", "central african republic", "chad", "chile", "china", "colombia", "comoros", "congo", "costa rica",
+    "croatia", "cuba", "cyprus", "czech republic", "czechia", "denmark", "djibouti", "dominica", "dominican republic", "ecuador",
+    "egypt", "el salvador", "england", "equatorial guinea", "eritrea", "estonia", "eswatini", "ethiopia", "fiji", "finland",
+    "france", "gabon", "gambia", "georgia", "germany", "ghana", "greece", "grenada", "guatemala", "guinea", "guinea-bissau",
+    "guyana", "haiti", "honduras", "hong kong", "hungary", "iceland", "india", "indonesia", "iran", "iraq", "ireland",
+    "israel", "italy", "jamaica", "japan", "jordan", "kazakhstan", "kenya", "kiribati", "kosovo", "kuwait", "kyrgyzstan",
+    "laos", "latvia", "lebanon", "lesotho", "liberia", "libya", "liechtenstein", "lithuania", "luxembourg", "madagascar",
+    "malawi", "malaysia", "maldives", "mali", "malta", "mauritania", "mauritius", "mexico", "moldova", "monaco", "mongolia",
+    "montenegro", "morocco", "mozambique", "myanmar", "namibia", "nepal", "netherlands", "new zealand", "nicaragua", "niger",
+    "nigeria", "north macedonia", "norway", "oman", "pakistan", "palestine", "panama", "papua new guinea", "paraguay", "peru",
+    "philippines", "poland", "portugal", "qatar", "romania", "russia", "rwanda", "samoa", "san marino", "saudi arabia",
+    "scotland", "senegal", "serbia", "seychelles", "sierra leone", "singapore", "slovakia", "slovenia", "solomon islands",
+    "somalia", "south africa", "south korea", "south cards", "south sudan", "spain", "sri lanka", "sudan", "suriname", "sweden",
+    "switzerland", "syria", "taiwan", "tajikistan", "tanzania", "thailand", "togo", "tonga", "trinidad and tobago", "tunisia",
+    "turkey", "turkmenistan", "tuvalu", "uganda", "ukraine", "united arab emirates", "uae", "united kingdom", "uk", "united states",
+    "usa", "uruguay", "uzbekistan", "vanuatu", "vatican city", "venezuela", "vietnam", "wales", "west indies", "yemen", "zambia", "zimbabwe"
+}
+
+def is_national_team(name: str) -> bool:
+    if not name:
+        return False
+    base_name = clean_national_team_name(name)
+    return base_name.lower() in _KNOWN_COUNTRIES
     suffixes = [
         " women", " men", " emerging team", " under-19s", " u19", " u-19",
         " under-23s", " u23", " u-23", " a team", " emerging",
@@ -145,7 +174,7 @@ def get_or_create_precise_entity(
     if not logo and entity_type == "team":
         logo = find_team_logo_by_name(name)
         
-    if not logo:
+    if not logo and is_national_team(name):
         logo = _logo_url(entity_type, statpal_id, sport)
 
     # Guard against empty/blank names

@@ -17,6 +17,21 @@ class Command(BaseCommand):
         if dry_run:
             self.stdout.write(self.style.WARNING("=== DRY RUN MODE: Database changes will not be saved ==="))
 
+        from apps.entity.utils.matcher import is_national_team, _logo_url
+
+        # 1. Clear any invalid non-national team soccer logos from StatPal
+        non_national_logos = Entity.objects.filter(logo_url__contains="statpal.io", type="team")
+        cleared_count = 0
+        for entity in non_national_logos:
+            if not is_national_team(entity.name):
+                self.stdout.write(f"Clearing non-national soccer logo for '{entity.name}'")
+                if not dry_run:
+                    entity.logo_url = ""
+                    entity.save(update_fields=["logo_url"])
+                cleared_count += 1
+        if cleared_count:
+            self.stdout.write(self.style.SUCCESS(f"Cleared {cleared_count} invalid non-national logo URLs."))
+
         # Get only team entities with empty or invalid StatPal logo_url
         from django.db.models import Q
         entities_to_fix = Entity.objects.filter(
@@ -43,8 +58,8 @@ class Command(BaseCommand):
             
             fallback_logo = find_team_logo_by_name(entity.name)
             if not fallback_logo and entity.api_source == "statpal" and entity.external_id:
-                from apps.entity.utils.matcher import _logo_url
-                fallback_logo = _logo_url(entity.type, entity.external_id, entity.sport)
+                if is_national_team(entity.name):
+                    fallback_logo = _logo_url(entity.type, entity.external_id, entity.sport)
 
             if fallback_logo:
                 self.stdout.write(
