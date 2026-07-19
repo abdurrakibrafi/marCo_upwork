@@ -1,3 +1,5 @@
+import re
+
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
 from rest_framework import status
@@ -51,6 +53,13 @@ def _normalize_list(val):
     if isinstance(val, list):
         return val
     return []
+
+
+def _clean_cricket_league_name(league_name):
+    """Remove an incorrectly persisted ODI suffix from a cricket tour name."""
+    if not isinstance(league_name, str):
+        return league_name
+    return re.sub(r'\s*-\s*ODI\s*$', '', league_name, flags=re.IGNORECASE)
 
 
 def _convert_statpal_stats_to_api_sports(team_stats, home_team_name, home_team_id, away_team_name, away_team_id):
@@ -586,6 +595,8 @@ def live_score_detail(request, score_id):
         event = Event.objects.filter(sport=sport, external_id=game.external_id).first()
         if event and event.league:
             league_name = event.league.name
+        if sport == 'cricket':
+            league_name = _clean_cricket_league_name(league_name)
 
         # Entity IDs for team linking (used in events/statistics)
         home_entity_id = event.home_entity.id if (event and event.home_entity) else 0
