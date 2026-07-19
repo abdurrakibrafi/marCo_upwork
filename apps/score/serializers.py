@@ -34,16 +34,22 @@ class LiveScoreSerializer(serializers.ModelSerializer):
 
     def get_home_logo(self, obj):
         logo = obj.home_logo
-        is_invalid_logo = logo and "statpal.io" in logo and "/soccer/" not in logo
-        if (not logo or is_invalid_logo) and hasattr(obj, 'home_team'):
+        if logo and "statpal.io" in logo:
+            from apps.entity.utils.matcher import normalize_statpal_logo_url
+            logo = normalize_statpal_logo_url(logo, obj.home_team, "team", obj.sport)
+            
+        if not logo and hasattr(obj, 'home_team'):
             from apps.entity.utils.matcher import find_team_logo_by_name
             logo = find_team_logo_by_name(obj.home_team)
         return self._absolute(logo)
 
     def get_away_logo(self, obj):
         logo = obj.away_logo
-        is_invalid_logo = logo and "statpal.io" in logo and "/soccer/" not in logo
-        if (not logo or is_invalid_logo) and hasattr(obj, 'away_team'):
+        if logo and "statpal.io" in logo:
+            from apps.entity.utils.matcher import normalize_statpal_logo_url
+            logo = normalize_statpal_logo_url(logo, obj.away_team, "team", obj.sport)
+            
+        if not logo and hasattr(obj, 'away_team'):
             from apps.entity.utils.matcher import find_team_logo_by_name
             logo = find_team_logo_by_name(obj.away_team)
         return self._absolute(logo)
