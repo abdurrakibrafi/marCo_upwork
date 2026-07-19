@@ -203,9 +203,25 @@ def get_nest_calendar(request):
             athlete_teams = Athlete.objects.filter(entity_id__in=athlete_ids).values_list('current_team_id', flat=True)
             team_ids.update(athlete_teams)
 
+        # Date range support
+        start_date_str = request.query_params.get("start_date")
+        end_date_str = request.query_params.get("end_date")
+
+        try:
+            start_date = datetime.fromisoformat(start_date_str).date() if start_date_str else timezone.now().date() - timedelta(days=7)
+            end_date = datetime.fromisoformat(end_date_str).date() if end_date_str else start_date + timedelta(days=37)
+        except ValueError:
+            return mixin.error_response(
+                message="Invalid date format. Use YYYY-MM-DD",
+                status_code=status.HTTP_400_BAD_REQUEST
+            )
+
         # 3. Queryset
         qs = (
             Event.objects.filter(
+                start_time__date__gte=start_date,
+                start_time__date__lte=end_date,
+            ).filter(
                 Q(home_entity_id__in=team_ids)
                 | Q(away_entity_id__in=team_ids)
                 | Q(league_id__in=league_ids)
@@ -221,7 +237,7 @@ def get_nest_calendar(request):
         elif status_param == "live":
             qs = qs.filter(status="live")
         else:
-            # Default: show all match data present in the database for followed teams
+            # Default: show matches in the specified date range
             pass
 
         qs = qs.select_related("home_entity", "away_entity", "league").order_by("start_time")
@@ -244,7 +260,7 @@ def get_nest_calendar(request):
 
         return mixin.success_response(
             data={
-                "start_date":     timezone.now().date().isoformat(),
+                "start_date":     start_date.isoformat(),
                 "total_count":    len(events_list),
                 "events_by_date": events_by_date,
                 "events":         list(serialized),

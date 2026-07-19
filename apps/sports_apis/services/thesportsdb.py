@@ -225,11 +225,39 @@ class TheSportsDBService:
         return players[0]
 
     def get_player_headshot(self, player_name: str) -> str:
-        """Return transparent cutout/headshot URL for a player, or empty string."""
-        player = self.search_player(player_name)
-        if not player:
-            return ''
-        return player.get('strCutout', '') or player.get('strThumb', '') or ''
+        """
+        Return transparent cutout/headshot URL for a player, or empty string.
+        Optimized with query variations and name validation to prevent false matches.
+        """
+        # Generate variations for initials/spaces
+        variations = [
+            player_name,
+            player_name.replace(". ", "."),
+            player_name.replace(".", "").replace(" ", " "),
+            player_name.replace(".", "")
+        ]
+        # De-duplicate variations
+        variations = list(dict.fromkeys(variations))
+
+        def is_valid_match(query: str, match: str) -> bool:
+            q_norm = query.lower().replace(".", "").strip()
+            m_norm = match.lower().replace(".", "").strip()
+            q_words = [w for w in q_norm.split() if w]
+            m_words = [w for w in m_norm.split() if w]
+            for qw in q_words:
+                if len(qw) > 2:
+                    if qw not in m_words:
+                        return False
+            return True
+
+        for var in variations:
+            player = self.search_player(var)
+            if player:
+                matched_name = player.get('strPlayer', '')
+                if is_valid_match(player_name, matched_name):
+                    return player.get('strCutout', '') or player.get('strThumb', '') or ''
+        return ''
+
 
 
 

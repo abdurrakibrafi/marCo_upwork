@@ -26,102 +26,65 @@ def _current_season(sport: str) -> int:
 # ─────────────────────────────────────────────────────────────────────────────
 # ORCHESTRATOR — fires once per hour, dispatches one task per LEAGUE not per team
 # ─────────────────────────────────────────────────────────────────────────────
-
 @shared_task
 def update_all_team_stats():
     """
-    Dynamically discovers every league that has teams in the DB,
-    then fires exactly ONE task per league.
-
-    That one task fetches standings once and updates ALL teams in
-    that league from the single response — no matter how many leagues
-    or teams exist, it never makes more than 1 API call per league.
-
-    Adding a new league never requires touching this file.
+    Dynamically discovers every active sport and league that has teams in the DB,
+    then dispatches the appropriate Celery tasks.
     """
-
-    # ── Soccer: find every unique soccer league in the DB ──────────────
-    # Only teams that: have a league linked, are active
-    soccer_league_ids = (
-        Entity.objects
-        .filter(
-            type='team',
-            sport='soccer',
-            is_active=True,
-            api_source__in=['api_sports', 'statpal'],
-            team_details__league__isnull=False,
-            team_details__league__api_source__in=['api_sports', 'statpal'],
-        )
-        .values_list('team_details__league__external_id', flat=True)
+    # 1. Discover all active sports that have active teams in the DB
+    active_sports = set(
+        Entity.objects.filter(type='team', is_active=True)
+        .values_list('sport', flat=True)
         .distinct()
     )
 
-    soccer_count = 0
-    for league_external_id in soccer_league_ids:
-        if not league_external_id:
-            continue
-        try:
-            league_id = int(league_external_id)
-        except (ValueError, TypeError):
-            continue
-        update_soccer_league_stats.delay(league_id)
-        soccer_count += 1
+    dispatched = []
 
-    # ── Basketball: one task for all NBA teams ─────────────────────────────
-    has_nba = Entity.objects.filter(
-        type='team', sport='basketball',
-        is_active=True, api_source__in=['balldontlie', 'statpal']
-    ).exists()
+    # 2. Soccer: Dispatch one task per unique soccer league ID
+    if 'soccer' in active_sports:
+        soccer_league_ids = (
+            Entity.objects
+            .filter(
+                type='team',
+                sport='soccer',
+                is_active=True,
+                api_source__in=['api_sports', 'statpal'],
+                team_details__league__isnull=False,
+                team_details__league__api_source__in=['api_sports', 'statpal'],
+            )
+            .values_list('team_details__league__external_id', flat=True)
+            .distinct()
+        )
+        soccer_count = 0
+        for league_external_id in soccer_league_ids:
+            if not league_external_id:
+                continue
+            try:
+                league_id = int(league_external_id)
+            except (ValueError, TypeError):
+                continue
+            update_soccer_league_stats.delay(league_id)
+            soccer_count += 1
+        dispatched.append(f"{soccer_count} soccer leagues")
 
-    if has_nba:
-        update_nba_standings.delay()
+    # 3. Mapping for other sports to their respective Celery tasks
+    other_sports_tasks = {
+        'basketball': ('NBA', update_nba_standings),
+        'cricket': ('cricket', update_cricket_team_stats),
+        'football': ('NFL', update_football_league_stats),
+        'baseball': ('MLB', update_baseball_team_stats),
+        'hockey': ('NHL', update_hockey_team_stats),
+    }
 
-    # Cricket does not have a league table.  Aggregate completed matches from
-    # every current tour so all cricket teams receive a current-year record.
-    has_cricket = Entity.objects.filter(
-        type='team', sport='cricket', is_active=True, api_source='statpal'
-    ).exists()
-    if has_cricket:
-        update_cricket_team_stats.delay()
+    for sport, (label, task_fn) in other_sports_tasks.items():
+        if sport in active_sports:
+            task_fn.delay()
+            dispatched.append(f"1 {label} task")
 
-    # ── Football: one task for NFL standings ─────────────────────────────
-    has_football = Entity.objects.filter(
-        type='team', sport='football', is_active=True
-    ).exists()
-    if has_football:
-        update_football_league_stats.delay()
-
-    # ── Baseball: one task for MLB standings ─────────────────────────────
-    has_baseball = Entity.objects.filter(
-        type='team', sport='baseball', is_active=True
-    ).exists()
-    if has_baseball:
-        update_baseball_team_stats.delay()
-
-    # ── Hockey: one task for NHL standings ───────────────────────────────
-    has_hockey = Entity.objects.filter(
-        type='team', sport='hockey', is_active=True
-    ).exists()
-    if has_hockey:
-        update_hockey_team_stats.delay()
-
-    logger.info(
-        f"Dispatched stats update: {soccer_count} soccer leagues, "
-        f"{'1 NBA task' if has_nba else 'no NBA teams'}, "
-        f"{'1 cricket task' if has_cricket else 'no cricket teams'}, "
-        f"{'1 NFL task' if has_football else 'no NFL teams'}, "
-        f"{'1 MLB task' if has_baseball else 'no MLB teams'}, "
-        f"{'1 NHL task' if has_hockey else 'no NHL teams'}"
-    )
-    return (
-        f"Dispatched {soccer_count} soccer league tasks + "
-        f"{'NBA' if has_nba else 'no NBA'} + "
-        f"{'cricket' if has_cricket else 'no cricket'} + "
-        f"{'NFL' if has_football else 'no NFL'} + "
-        f"{'MLB' if has_baseball else 'no MLB'} + "
-        f"{'NHL' if has_hockey else 'no NHL'}"
-    )
-
+    msg = f"Dispatched stats updates: {', '.join(dispatched) if dispatched else 'no active sports found'}"
+    logger.info(msg)
+    return msg
 
 
 @shared_task
