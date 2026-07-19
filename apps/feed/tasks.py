@@ -195,6 +195,16 @@ def _entity_matches_text(entity: Entity, text: str) -> bool:
     name = normalize_entity_name(entity.name)
     text_norm = normalize_entity_name(text)
 
+    # Enforce sports context for national team entities (e.g. country names)
+    from apps.entity.utils.matcher import is_national_team
+    if is_national_team(entity.name):
+        # Match roots of sports keywords to support variations like coaching, played, refereeing, etc.
+        sports_pattern = re.compile(
+            r'\b(sport|game|match|play|coach|stadium|cup|tourn|leagu|champ|win|won|lost|lose|beat|defeat|scor|goal|team|club|socc|footb|crick|nba|nfl|mlb|nhl|baseb|hockey|tenn|golf|f1|formu|mma|ufc|fight|athlet|runn|race|olympi|squad|rost|train|seaso|jersey|manag|quali|friend|vs|draw|lineup|transf|victo|fan|ref|ump|offic|capt|skip|boss|injur|rule|pitch|ground|copa|americ|fifa|icc|strik|midf|defen|goalk|keep|batsm|bowl|clash|fixt|tie|legend|espn|cricinfo|espncricinfo|basketb|fiba|uefa|unbeat|sub|ban|card|assist|select|retir|ronaldo|messi|neymar|mbappe|shakib|cricbuzz|skysport|eurosport|talksport|theathletic|derby)\w*\b'
+        )
+        if not sports_pattern.search(text_norm):
+            return False
+
     # 1. Exact phrase/name match (with word boundaries)
     escaped_name = re.escape(name)
     if re.search(r'\b' + escaped_name + r'\b', text_norm):
@@ -495,7 +505,20 @@ def ensure_entity_has_rss_source(entity_id: int):
     except Entity.DoesNotExist:
         return f"Entity {entity_id} not found"
 
-    query = urllib.parse.quote(entity.name)
+    from apps.entity.utils.matcher import is_national_team
+    if is_national_team(entity.name):
+        sport_term = entity.sport
+        if sport_term == 'soccer':
+            sport_term = 'soccer OR football'
+        elif sport_term == 'football':
+            sport_term = 'nfl OR "american football"'
+        elif sport_term == 'basketball':
+            sport_term = 'nba OR basketball'
+        query_str = f'"{entity.name}" AND ({sport_term})'
+    else:
+        query_str = entity.name
+
+    query = urllib.parse.quote(query_str)
     google_news_url = f"https://news.google.com/rss/search?q={query}&hl=en&gl=US&ceid=US:en"
 
     source, created = Source.objects.get_or_create(
@@ -508,6 +531,21 @@ def ensure_entity_has_rss_source(entity_id: int):
         }
     )
     source.entities.add(entity)
+
+    # Deactivate old unscoped sources for national team entities to avoid duplicates
+    if is_national_team(entity.name):
+        old_sources = Source.objects.filter(
+            entities=entity,
+            rss_url__icontains="news.google.com",
+            is_active=True
+        ).exclude(
+            rss_url=google_news_url
+        )
+        for old_source in old_sources:
+            old_source.is_active = False
+            old_source.save(update_fields=['is_active'])
+            logger.info(f"Deactivated old unscoped Google News source {old_source.id} for {entity.name}")
+
     poll_single_source.delay(source.id)
 
     linked = 0

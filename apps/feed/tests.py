@@ -47,3 +47,47 @@ class FeedTestCase(TestCase):
         ids = [item["id"] for item in results]
         self.assertEqual(len(ids), 1)
         self.assertEqual(ids[0], self.feed_item.id)
+
+    def test_national_team_sports_context_filtering(self):
+        from apps.feed.tasks import _entity_matches_text
+        
+        # Create a national team entity
+        brazil = Entity.objects.create(name="Brazil", sport="soccer", type="team")
+        
+        # 1. Non-sports news with "Brazil" should fail
+        non_sports_title = "Supreme Court of Brazil orders investigation into Elon Musk"
+        self.assertFalse(_entity_matches_text(brazil, non_sports_title))
+        
+        # 2. Sports news with "Brazil" should pass
+        sports_title = "Brazil striker Neymar scores brilliant goal in Copa America"
+        self.assertTrue(_entity_matches_text(brazil, sports_title))
+
+    def test_ensure_entity_has_rss_source_scoping_and_migration(self):
+        from apps.feed.tasks import ensure_entity_has_rss_source
+        
+        # Create a national team entity
+        brazil = Entity.objects.create(name="Brazil", sport="soccer", type="team")
+        
+        # Create an old unscoped active source for Brazil
+        old_url = "https://news.google.com/rss/search?q=Brazil&hl=en&gl=US&ceid=US:en"
+        old_source = Source.objects.create(
+            name="Google News - Brazil",
+            rss_url=old_url,
+            is_active=True
+        )
+        old_source.entities.add(brazil)
+        
+        # Trigger the RSS source task
+        ensure_entity_has_rss_source(brazil.id)
+        
+        # The old source should be deactivated
+        old_source.refresh_from_db()
+        self.assertFalse(old_source.is_active)
+        
+        # A new scoped source should be created and active
+        scoped_source = Source.objects.get(
+            rss_url="https://news.google.com/rss/search?q=%22Brazil%22%20AND%20%28soccer%20OR%20football%29&hl=en&gl=US&ceid=US:en"
+        )
+        self.assertTrue(scoped_source.is_active)
+        self.assertIn(brazil, scoped_source.entities.all())
+
