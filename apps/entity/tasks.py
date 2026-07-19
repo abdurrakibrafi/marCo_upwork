@@ -84,16 +84,44 @@ def update_all_team_stats():
     if has_cricket:
         update_cricket_team_stats.delay()
 
+    # ── Football: one task for NFL standings ─────────────────────────────
+    has_football = Entity.objects.filter(
+        type='team', sport='football', is_active=True
+    ).exists()
+    if has_football:
+        update_football_league_stats.delay()
+
+    # ── Baseball: one task for MLB standings ─────────────────────────────
+    has_baseball = Entity.objects.filter(
+        type='team', sport='baseball', is_active=True
+    ).exists()
+    if has_baseball:
+        update_baseball_team_stats.delay()
+
+    # ── Hockey: one task for NHL standings ───────────────────────────────
+    has_hockey = Entity.objects.filter(
+        type='team', sport='hockey', is_active=True
+    ).exists()
+    if has_hockey:
+        update_hockey_team_stats.delay()
+
     logger.info(
         f"Dispatched stats update: {soccer_count} soccer leagues, "
         f"{'1 NBA task' if has_nba else 'no NBA teams'}, "
-        f"{'1 cricket task' if has_cricket else 'no cricket teams'}"
+        f"{'1 cricket task' if has_cricket else 'no cricket teams'}, "
+        f"{'1 NFL task' if has_football else 'no NFL teams'}, "
+        f"{'1 MLB task' if has_baseball else 'no MLB teams'}, "
+        f"{'1 NHL task' if has_hockey else 'no NHL teams'}"
     )
     return (
         f"Dispatched {soccer_count} soccer league tasks + "
         f"{'NBA' if has_nba else 'no NBA'} + "
-        f"{'cricket' if has_cricket else 'no cricket'}"
+        f"{'cricket' if has_cricket else 'no cricket'} + "
+        f"{'NFL' if has_football else 'no NFL'} + "
+        f"{'MLB' if has_baseball else 'no MLB'} + "
+        f"{'NHL' if has_hockey else 'no NHL'}"
     )
+
 
 
 @shared_task
@@ -533,6 +561,322 @@ def update_nba_standings(self):
 
     logger.info(f"NBA: updated {updated} teams for season {season_label}")
     return f"NBA: updated {updated} teams"
+
+
+@shared_task(bind=True, max_retries=3, default_retry_delay=120)
+def update_football_league_stats(self):
+    """
+    Fetch NFL standings once using StatPal, update all NFL teams.
+    """
+    season = _current_season('football')
+    cache_key = f"standings:football:{season}"
+
+    standings = cache.get(cache_key)
+
+    if standings is None:
+        result = statpal_service.get_nfl_standings()
+        if not result['success']:
+            status_code = result.get('status_code')
+            if status_code == 429:
+                raise self.retry(exc=Exception("Rate limited"), countdown=120)
+            return f"Failed to fetch NFL standings: {result.get('error')}"
+
+        standings = result['data'].get('standings', {})
+        cache.set(cache_key, standings, timeout=3600)
+
+    team_standings_by_id = {}
+    team_standings_by_name = {}
+
+    cats = standings.get('category', [])
+    if isinstance(cats, dict):
+        cats = [cats]
+
+    for cat in cats:
+        leagues = cat.get('league', [])
+        if isinstance(leagues, dict):
+            leagues = [leagues]
+        for lg in leagues:
+            divs = lg.get('division', [])
+            if isinstance(divs, dict):
+                divs = [divs]
+            for div in divs:
+                teams_list = div.get('team', [])
+                if isinstance(teams_list, dict):
+                    teams_list = [teams_list]
+                for standing in teams_list:
+                    tid = str(standing.get('id', ''))
+                    tname = standing.get('name', '')
+                    standing['_conference'] = lg.get('name', '')
+                    standing['_division'] = div.get('name', '')
+                    if tid:
+                        team_standings_by_id[tid] = standing
+                    if tname:
+                        team_standings_by_name[tname.lower()] = standing
+
+    if not team_standings_by_id and not team_standings_by_name:
+        return "No NFL standings data found"
+
+    teams = Team.objects.filter(
+        entity__sport='football',
+        entity__is_active=True,
+    ).select_related('entity')
+
+    updated = 0
+    for team in teams:
+        standing = team_standings_by_id.get(team.entity.external_id)
+        if not standing:
+            standing = team_standings_by_name.get(team.entity.name.lower())
+
+        if not standing:
+            logger.warning(f"NFL: No standing found for team {team.entity.name}")
+            continue
+
+        wins = int(standing.get('won') or 0)
+        losses = int(standing.get('lost') or 0)
+        ties = int(standing.get('ties') or 0)
+        played = wins + losses + ties
+
+        team.total_wins = wins
+        team.total_losses = losses
+        win_pct_str = standing.get('win_percentage', '0')
+        if win_pct_str.startswith('.'):
+            win_pct_str = '0' + win_pct_str
+        try:
+            win_percentage = float(win_pct_str) * 100
+        except (ValueError, TypeError):
+            win_percentage = 0.0
+        team.win_percentage = round(win_percentage, 2)
+        team.save(update_fields=['total_wins', 'total_losses', 'win_percentage'])
+
+        EntityStats.objects.update_or_create(
+            entity=team.entity,
+            season=str(season),
+            stat_type='season',
+            defaults={
+                'stats_data': {
+                    'wins': wins,
+                    'losses': losses,
+                    'ties': ties,
+                    'matches_played': played,
+                    'win_percentage': float(team.win_percentage),
+                    'points_for': int(standing.get('points_for') or 0),
+                    'points_against': int(standing.get('points_against') or 0),
+                    'conference': standing.get('_conference', ''),
+                    'division': standing.get('_division', ''),
+                    'rank': int(standing.get('position') or 0),
+                    'streak': standing.get('streak', ''),
+                    'home_record': standing.get('home_record', ''),
+                    'road_record': standing.get('road_record', ''),
+                }
+            }
+        )
+        updated += 1
+
+    logger.info(f"NFL: updated {updated} teams for season {season}")
+    return f"NFL: updated {updated} teams"
+
+
+@shared_task(bind=True, max_retries=3, default_retry_delay=120)
+def update_baseball_team_stats(self):
+    """
+    Fetch MLB standings once using StatPal, update all MLB teams.
+    """
+    season = _current_season('baseball')
+    cache_key = f"standings:baseball:{season}"
+
+    standings = cache.get(cache_key)
+
+    if standings is None:
+        result = statpal_service.get_mlb_standings()
+        if not result['success']:
+            status_code = result.get('status_code')
+            if status_code == 429:
+                raise self.retry(exc=Exception("Rate limited"), countdown=120)
+            return f"Failed to fetch MLB standings: {result.get('error')}"
+
+        standings = result['data'].get('standings', {})
+        cache.set(cache_key, standings, timeout=3600)
+
+    team_standings_by_id = {}
+    team_standings_by_name = {}
+
+    cats = standings.get('category', [])
+    if isinstance(cats, dict):
+        cats = [cats]
+
+    for cat in cats:
+        leagues = cat.get('league', [])
+        if isinstance(leagues, dict):
+            leagues = [leagues]
+        for lg in leagues:
+            divs = lg.get('division', [])
+            if isinstance(divs, dict):
+                divs = [divs]
+            for div in divs:
+                teams_list = div.get('team', [])
+                if isinstance(teams_list, dict):
+                    teams_list = [teams_list]
+                for standing in teams_list:
+                    tid = str(standing.get('id', ''))
+                    tname = standing.get('name', '')
+                    standing['_conference'] = lg.get('name', '')
+                    standing['_division'] = div.get('name', '')
+                    if tid:
+                        team_standings_by_id[tid] = standing
+                    if tname:
+                        team_standings_by_name[tname.lower()] = standing
+
+    if not team_standings_by_id and not team_standings_by_name:
+        return "No MLB standings data found"
+
+    teams = Team.objects.filter(
+        entity__sport='baseball',
+        entity__is_active=True,
+    ).select_related('entity')
+
+    updated = 0
+    for team in teams:
+        standing = team_standings_by_id.get(team.entity.external_id)
+        if not standing:
+            standing = team_standings_by_name.get(team.entity.name.lower())
+
+        if not standing:
+            logger.warning(f"MLB: No standing found for team {team.entity.name}")
+            continue
+
+        wins = int(standing.get('won') or 0)
+        losses = int(standing.get('lost') or 0)
+        played = wins + losses
+
+        team.total_wins = wins
+        team.total_losses = losses
+        team.win_percentage = round((wins / played) * 100, 2) if played else 0
+        team.save(update_fields=['total_wins', 'total_losses', 'win_percentage'])
+
+        EntityStats.objects.update_or_create(
+            entity=team.entity,
+            season=str(season),
+            stat_type='season',
+            defaults={
+                'stats_data': {
+                    'wins': wins,
+                    'losses': losses,
+                    'matches_played': played,
+                    'win_percentage': float(team.win_percentage),
+                    'runs_scored': int(standing.get('runs_scored') or 0),
+                    'runs_allowed': int(standing.get('runs_allowed') or 0),
+                    'runs_diff': int(standing.get('runs_diff') or 0),
+                    'conference': standing.get('_conference', ''),
+                    'division': standing.get('_division', ''),
+                    'rank': int(standing.get('position') or 0),
+                    'streak': standing.get('current_streak', ''),
+                    'home_record': standing.get('home_record', ''),
+                    'road_record': standing.get('road_record', ''),
+                }
+            }
+        )
+        updated += 1
+
+    logger.info(f"MLB: updated {updated} teams for season {season}")
+    return f"MLB: updated {updated} teams"
+
+
+@shared_task(bind=True, max_retries=3, default_retry_delay=120)
+def update_hockey_team_stats(self):
+    """
+    Fetch NHL standings once using StatPal, update all NHL teams.
+    """
+    season = _current_season('hockey')
+    cache_key = f"standings:hockey:{season}"
+
+    standings = cache.get(cache_key)
+
+    if standings is None:
+        result = statpal_service.get_nhl_standings()
+        if not result['success']:
+            status_code = result.get('status_code')
+            if status_code == 429:
+                raise self.retry(exc=Exception("Rate limited"), countdown=120)
+            return f"Failed to fetch NHL standings: {result.get('error')}"
+
+        standings = result['data'].get('standings', {})
+        cache.set(cache_key, standings, timeout=3600)
+
+    team_standings_by_name = {}
+
+    tourn = standings.get('tournament', {})
+    leagues = tourn.get('league', [])
+    if isinstance(leagues, dict):
+        leagues = [leagues]
+
+    for lg in leagues:
+        divs = lg.get('division', [])
+        if isinstance(divs, dict):
+            divs = [divs]
+        for div in divs:
+            teams_list = div.get('team', [])
+            if isinstance(teams_list, dict):
+                teams_list = [teams_list]
+            for standing in teams_list:
+                tname = standing.get('name', '')
+                standing['_conference'] = lg.get('name', '')
+                standing['_division'] = div.get('name', '')
+                if tname:
+                    team_standings_by_name[tname.lower()] = standing
+
+    if not team_standings_by_name:
+        return "No NHL standings data found"
+
+    teams = Team.objects.filter(
+        entity__sport='hockey',
+        entity__is_active=True,
+    ).select_related('entity')
+
+    updated = 0
+    for team in teams:
+        standing = team_standings_by_name.get(team.entity.name.lower())
+
+        if not standing:
+            logger.warning(f"Hockey name mismatch: standing not found for team '{team.entity.name}'")
+            continue
+
+        wins = int(standing.get('won') or standing.get('regular_ot_wins') or 0)
+        losses = int(standing.get('lost') or 0)
+        ot_losses = int(standing.get('ot_losses') or 0)
+        played = int(standing.get('games_played') or (wins + losses + ot_losses))
+
+        team.total_wins = wins
+        team.total_losses = losses
+        team.win_percentage = round((wins / played) * 100, 2) if played else 0
+        team.save(update_fields=['total_wins', 'total_losses', 'win_percentage'])
+
+        EntityStats.objects.update_or_create(
+            entity=team.entity,
+            season=str(season),
+            stat_type='season',
+            defaults={
+                'stats_data': {
+                    'wins': wins,
+                    'losses': losses,
+                    'ot_losses': ot_losses,
+                    'points': int(standing.get('points') or 0),
+                    'matches_played': played,
+                    'goals_for': int(standing.get('goals_for') or 0),
+                    'goals_against': int(standing.get('goals_against') or 0),
+                    'difference': standing.get('difference', ''),
+                    'conference': standing.get('_conference', ''),
+                    'division': standing.get('_division', ''),
+                    'rank': int(standing.get('position') or 0),
+                    'streak': standing.get('streak', ''),
+                    'home_record': standing.get('home_record', ''),
+                    'road_record': standing.get('road_record', ''),
+                }
+            }
+        )
+        updated += 1
+
+    logger.info(f"NHL: updated {updated} teams for season {season}")
+    return f"NHL: updated {updated} teams"
 
 
 @shared_task

@@ -206,6 +206,11 @@ class StatPalService:
         token = f"d{offset}"  # StatPal only accepts d-7..d-1, d1..d7 (no d0, no d+ prefix)
         return self._get(f"{self.base_v1}/mlb/daily/{token}")
 
+    def get_mlb_standings(self) -> dict:
+        """Response root: standings → tournament → league[] → division[] → team[]"""
+        return self._get(f"{self.base_v1}/mlb/standings")
+
+
     # ------------------------------------------------------------------ #
     # Handball (V1)
     # ------------------------------------------------------------------ #
