@@ -297,13 +297,21 @@ def get_team_stats(request, team_id):
     team_entity = get_object_or_404(Entity, id=team_id, type='team')
     team_entity = team_entity.canonical_entity or team_entity
     season = request.GET.get('season') or str(_current_season(team_entity.sport))
+    # NBA standings are stored with the full season label (for example,
+    # ``2025-26``), while StatPal requests use the season's start year.
+    stats_season = (
+        f"{season}-{str(int(season) + 1)[-2:]}"
+        if team_entity.sport == 'basketball' and '-' not in season
+        else season
+    )
+    api_season = int(str(season).split('-', 1)[0])
  
     # 1 — try DB first
-    stats = EntityStats.objects.filter(entity=team_entity, season=season).first()
+    stats = EntityStats.objects.filter(entity=team_entity, season=stats_season).first()
     if stats and stats.stats_data:
         return Response({
             'team': EntitySerializer(team_entity, context={'request': request}).data,
-            'season': season,
+            'season': stats_season,
             'stats': stats.stats_data,
             'source': 'db',
         })
@@ -313,26 +321,26 @@ def get_team_stats(request, team_id):
  
     if team_entity.sport == 'soccer':
         if team_entity.api_source == 'api_sports':
-            stats_data = _fetch_soccer_team_stats(team_entity.external_id, int(season))
+            stats_data = _fetch_soccer_team_stats(team_entity.external_id, api_season)
         else:
             # statpal or any other source
-            stats_data = _fetch_soccer_team_stats_statpal(team_entity.external_id, int(season))
+            stats_data = _fetch_soccer_team_stats_statpal(team_entity.external_id, api_season)
  
     elif team_entity.sport == 'basketball':
         # Always use StatPal standings (balldontlie is no longer in use)
-        stats_data = _fetch_nba_team_stats_statpal(team_entity.external_id, int(season))
+        stats_data = _fetch_nba_team_stats_statpal(team_entity.external_id, api_season)
  
     elif team_entity.sport == 'football':
-        stats_data = _fetch_nfl_team_stats(team_entity.external_id, int(season))
+        stats_data = _fetch_nfl_team_stats(team_entity.external_id, api_season)
  
     elif team_entity.sport == 'hockey':
-        stats_data = _fetch_nhl_team_stats(team_entity.name, int(season))
+        stats_data = _fetch_nhl_team_stats(team_entity.name, api_season)
  
     elif team_entity.sport == 'baseball':
-        stats_data = _fetch_mlb_team_stats(team_entity.external_id, int(season))
+        stats_data = _fetch_mlb_team_stats(team_entity.external_id, api_season)
  
     elif team_entity.sport == 'cricket':
-        stats_data = _fetch_cricket_team_stats(team_entity.external_id, int(season))
+        stats_data = _fetch_cricket_team_stats(team_entity.external_id, api_season)
  
     # tennis / golf / mma / f1 have no team-standings API — return empty gracefully
  
@@ -340,14 +348,14 @@ def get_team_stats(request, team_id):
     if stats_data:
         EntityStats.objects.update_or_create(
             entity=team_entity,
-            season=season,
+            season=stats_season,
             stat_type='season',
             defaults={'stats_data': stats_data},
         )
  
     return Response({
         'team': EntitySerializer(team_entity, context={'request': request}).data,
-        'season': season,
+        'season': stats_season,
         'stats': stats_data,
         'source': 'live_api' if stats_data else 'empty',
     })

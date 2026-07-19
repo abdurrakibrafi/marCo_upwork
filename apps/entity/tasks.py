@@ -1,5 +1,6 @@
 from celery import shared_task
 from celery.utils.log import get_task_logger
+from collections import defaultdict
 from django.core.cache import cache
 from datetime import datetime
 import requests as req
@@ -75,11 +76,24 @@ def update_all_team_stats():
     if has_nba:
         update_nba_standings.delay()
 
+    # Cricket does not have a league table.  Aggregate completed matches from
+    # every current tour so all cricket teams receive a current-year record.
+    has_cricket = Entity.objects.filter(
+        type='team', sport='cricket', is_active=True, api_source='statpal'
+    ).exists()
+    if has_cricket:
+        update_cricket_team_stats.delay()
+
     logger.info(
         f"Dispatched stats update: {soccer_count} soccer leagues, "
-        f"{'1 NBA task' if has_nba else 'no NBA teams'}"
+        f"{'1 NBA task' if has_nba else 'no NBA teams'}, "
+        f"{'1 cricket task' if has_cricket else 'no cricket teams'}"
     )
-    return f"Dispatched {soccer_count} soccer league tasks + {'NBA' if has_nba else 'no NBA'}"
+    return (
+        f"Dispatched {soccer_count} soccer league tasks + "
+        f"{'NBA' if has_nba else 'no NBA'} + "
+        f"{'cricket' if has_cricket else 'no cricket'}"
+    )
 
 
 @shared_task
@@ -296,6 +310,127 @@ def update_soccer_league_stats(self, league_id: int):
 
     logger.info(f"League {league_id}: updated {updated}/{len(teams)} teams")
     return f"League {league_id}: updated {updated} teams"
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# CRICKET — aggregate every current tour once for all cricket teams
+# ─────────────────────────────────────────────────────────────────────────────
+
+@shared_task(bind=True, max_retries=2, default_retry_delay=300)
+def update_cricket_team_stats(self):
+    """Store current-year cricket results for every StatPal cricket team.
+
+    Unlike league sports, cricket teams play across bilateral tours.  Fetching
+    each tour once is substantially cheaper than scanning every tour separately
+    for every team when an individual stats endpoint is requested.
+    """
+    season = str(_current_season('cricket'))
+    teams = list(
+        Team.objects.filter(
+            entity__type='team',
+            entity__sport='cricket',
+            entity__is_active=True,
+            entity__api_source='statpal',
+        ).select_related('entity')
+    )
+    if not teams:
+        return 'No active cricket teams found'
+
+    teams_by_id = {str(team.entity.external_id): team for team in teams}
+    teams_by_name = {team.entity.name.strip().lower(): team for team in teams}
+    totals = defaultdict(lambda: {
+        'wins': 0, 'losses': 0, 'draws': 0, 'no_results': 0,
+    })
+
+    result = statpal_service.get_cricket_tournaments()
+    if not result.get('success'):
+        status_code = result.get('status_code')
+        if status_code == 429:
+            raise self.retry(exc=Exception('StatPal rate limited'), countdown=300)
+        return f"Failed to fetch cricket tours: {result.get('error', 'unknown error')}"
+
+    tours = result.get('data', {}).get('tours', {}).get('category', [])
+    if isinstance(tours, dict):
+        tours = [tours]
+
+    tours_checked = 0
+    for tour in tours:
+        if not isinstance(tour, dict):
+            continue
+        tour_uri = str(tour.get('schedule_uri', '')).strip()
+        parts = [part for part in tour_uri.strip('/').split('/') if part]
+        if len(parts) < 2:
+            continue
+
+        schedule = statpal_service.get_cricket_schedule(parts[0], parts[1])
+        if not schedule.get('success'):
+            continue
+        tours_checked += 1
+
+        categories = schedule.get('data', {}).get('scores', {}).get('category', [])
+        if isinstance(categories, dict):
+            categories = [categories]
+
+        for category in categories:
+            if not isinstance(category, dict):
+                continue
+            matches = category.get('match', [])
+            if isinstance(matches, dict):
+                matches = [matches]
+            for match in matches:
+                if not isinstance(match, dict):
+                    continue
+                if str(match.get('status', '')).lower() not in ('finished', 'complete', 'completed'):
+                    continue
+
+                home = match.get('home', {}) or {}
+                away = match.get('away', {}) or {}
+                result_text = str(match.get('comment', {}).get('post', '')).lower()
+                is_draw = 'drawn' in result_text or 'draw' in result_text
+                is_no_result = 'no result' in result_text or 'abandoned' in result_text
+
+                for side in (home, away):
+                    team = teams_by_id.get(str(side.get('id', '')))
+                    if not team:
+                        team = teams_by_name.get(str(side.get('name', '')).strip().lower())
+                    if not team:
+                        continue
+
+                    record = totals[team.entity_id]
+                    if is_draw:
+                        record['draws'] += 1
+                    elif is_no_result:
+                        record['no_results'] += 1
+                    elif str(side.get('winner', '')).lower() == 'true':
+                        record['wins'] += 1
+                    else:
+                        record['losses'] += 1
+
+    for team in teams:
+        record = totals[team.entity_id]
+        played = sum(record.values())
+        stats_data = {
+            **record,
+            'matches_played': played,
+            'win_percentage': round(record['wins'] / played * 100, 1) if played else 0,
+        }
+        EntityStats.objects.update_or_create(
+            entity=team.entity,
+            season=season,
+            stat_type='season',
+            defaults={'stats_data': stats_data},
+        )
+        cache.set(
+            f'team_stats:cricket:{team.entity.external_id}:{season}:statpal',
+            stats_data,
+            timeout=3600,
+        )
+
+    logger.info(
+        'Cricket stats: updated %s teams from %s tours for season %s',
+        len(teams), tours_checked, season,
+    )
+    return f'Cricket: updated {len(teams)} teams from {tours_checked} tours for season {season}'
 
 
 # ─────────────────────────────────────────────────────────────────────────────
