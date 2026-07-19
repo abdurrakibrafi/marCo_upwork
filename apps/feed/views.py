@@ -86,7 +86,8 @@ def get_nest_feed(request):
         source_id__in=hidden_source_ids
     ).exclude(
         publisher_name__in=hidden_publishers
-    ).select_related('source').prefetch_related('entities')
+    ).select_related('source').prefetch_related('entities').distinct()
+
     
     # Apply filters
     raw_filters = request.GET.getlist('filter') or []
@@ -177,7 +178,8 @@ def get_entity_feed(request, entity_id):
         source_id__in=hidden_source_ids
     ).exclude(
         publisher_name__in=hidden_publishers
-    ).select_related('source').prefetch_related('entities').order_by('-published_at')
+    ).select_related('source').prefetch_related('entities').order_by('-published_at').distinct()
+
     
     # Paginate
     paginator = FeedPagination()
