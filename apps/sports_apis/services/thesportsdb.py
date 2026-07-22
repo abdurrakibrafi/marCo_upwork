@@ -56,10 +56,11 @@ class TheSportsDBService:
     }
 
     def __init__(self):
-        self.api_key = getattr(settings, 'THESPORTSDB_KEY', '123')
+        self.api_key = getattr(settings, 'THESPORTSDB_KEY', None) or '3'
 
     def _get(self, endpoint: str, params: dict = None, timeout: int = 15) -> dict:
-        url = f"{self.BASE_URL}/{self.api_key}/{endpoint}"
+        key = getattr(settings, 'THESPORTSDB_KEY', None) or self.api_key or '3'
+        url = f"{self.BASE_URL}/{key}/{endpoint}"
         try:
             resp = requests.get(url, params=params, timeout=timeout, stream=False)
             resp.raise_for_status()
@@ -258,7 +259,77 @@ class TheSportsDBService:
                     return player.get('strCutout', '') or player.get('strThumb', '') or ''
         return ''
 
+    def get_team_roster(self, team_name: str = None, team_id: str = None) -> list[dict]:
+        """
+        Get all players for a team by team name or team ID.
+        Returns list of player dictionaries containing name, position, headshot, DOB, nationality, height, weight.
+        """
+        players = []
+        target_id = team_id
 
+        if not target_id and team_name:
+            team_info = self.search_team(team_name)
+            if team_info:
+                target_id = team_info.get('idTeam')
+
+        if target_id:
+            data = self._get('lookup_all_players.php', {'id': target_id})
+            players = data.get('player') or []
+
+        if not players and team_name:
+            data = self._get('searchplayers.php', {'t': team_name})
+            players = data.get('player') or []
+
+        results = []
+        for p in players:
+            name = p.get('strPlayer', '')
+            if not name:
+                continue
+            results.append({
+                'id_player': p.get('idPlayer', ''),
+                'name': name,
+                'position': p.get('strPosition', '') or '',
+                'headshot_url': p.get('strCutout', '') or p.get('strThumb', '') or '',
+                'date_of_birth': p.get('dateBorn', '') or '',
+                'nationality': p.get('strNationality', '') or '',
+                'height': p.get('strHeight', '') or '',
+                'weight': p.get('strWeight', '') or '',
+                'description': p.get('strDescriptionEN', '') or '',
+                'team_name': p.get('strTeam', '') or team_name,
+                'sport': (p.get('strSport', '') or '').lower(),
+                'raw_data': p,
+            })
+        return results
+
+    def get_player_details(self, player_name: str, player_id: str = None) -> dict | None:
+        """
+        Get detailed profile for a player.
+        """
+        player = None
+        if player_id:
+            data = self._get('lookupplayer.php', {'id': player_id})
+            players = data.get('players') or data.get('player') or []
+            if players:
+                player = players[0]
+        if not player and player_name:
+            player = self.search_player(player_name)
+        if not player:
+            return None
+
+        return {
+            'id_player': player.get('idPlayer', ''),
+            'name': player.get('strPlayer', ''),
+            'position': player.get('strPosition', '') or '',
+            'headshot_url': player.get('strCutout', '') or player.get('strThumb', '') or '',
+            'date_of_birth': player.get('dateBorn', '') or '',
+            'nationality': player.get('strNationality', '') or '',
+            'height': player.get('strHeight', '') or '',
+            'weight': player.get('strWeight', '') or '',
+            'description': player.get('strDescriptionEN', '') or '',
+            'team_name': player.get('strTeam', '') or '',
+            'sport': (player.get('strSport', '') or '').lower(),
+            'raw_data': player,
+        }
 
 
 # Global instance

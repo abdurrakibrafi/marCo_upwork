@@ -551,3 +551,22 @@ def cleanup_broken_logos_task(self):
         logger.error(f"Error during broken logos cleanup: {exc}")
         raise self.retry(exc=exc)
 
+
+@shared_task(bind=True, max_retries=3, default_retry_delay=600)
+def enrich_team_rosters_thesportsdb_task(self, limit: int = None, sport: str = None):
+    """Season-start / batch task to enrich team rosters and player headshots using TheSportsDB API"""
+    from django.core.management import call_command
+    try:
+        logger.info("Starting TheSportsDB roster enrichment task...")
+        kwargs = {}
+        if limit:
+            kwargs['limit'] = limit
+        if sport:
+            kwargs['sport'] = sport
+        call_command('enrich_thesportsdb_rosters', **kwargs)
+        return "TheSportsDB roster enrichment completed successfully"
+    except Exception as exc:
+        logger.error(f"Error during TheSportsDB roster enrichment: {exc}")
+        raise self.retry(exc=exc)
+
+
