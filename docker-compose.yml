@@ -1,9 +1,9 @@
 services:
   api:
     build: .
-    container_name: shoppassport_backend
+    container_name: mysportsnest_backend
     ports:
-      - "8005:8000"
+      - "8007:8000"
     volumes:
       - .:/app
       - static_volume:/app/staticfiles
@@ -14,12 +14,10 @@ services:
       - db
       - redis
     restart: unless-stopped
-    command: gunicorn config.wsgi:application --bind 0.0.0.0:8000
 
-  # --- Celery Worker যোগ করা হলো ---
   celery:
     build: .
-    container_name: shoppassport_celery
+    container_name: mysportsnest_celery
     volumes:
       - .:/app
       - media_volume:/app/media
@@ -31,10 +29,9 @@ services:
     restart: unless-stopped
     command: celery -A config worker --loglevel=info
 
-  # --- Celery Beat যোগ করা হলো ---
   celery_beat:
     build: .
-    container_name: shoppassport_celery_beat
+    container_name: mysportsnest_celery_beat
     volumes:
       - .:/app
     env_file:
@@ -45,39 +42,61 @@ services:
     restart: unless-stopped
     command: celery -A config beat --loglevel=info
 
+  flower:
+    build: .
+    container_name: mysportsnest_flower
+    ports:
+      - "5557:5555"
+    volumes:
+      - .:/app
+    env_file:
+      - .env
+    depends_on:
+      - redis
+    restart: unless-stopped
+    entrypoint: []
+    command: celery -A config flower --port=5555 --address=0.0.0.0
+
   db:
     image: postgres:15
-    container_name: shoppassport_db
+    container_name: mysportsnest_db
     volumes:
       - postgres_data:/var/lib/postgresql/data/
     env_file:
       - .env
     ports:
-      - "5435:5432"
+      - "5437:5432"
     restart: unless-stopped
 
   redis:
     image: redis:7-alpine
-    container_name: shoppassport_redis
+    container_name: mysportsnest_redis
     ports:
-      - "6385:6379"
+      - "6387:6379"
     volumes:
       - redis_data:/data
     restart: unless-stopped
 
-  smtp4dev:
-    image: rnwood/smtp4dev:linux-amd64-v3
-    container_name: shoppassport_smtp4dev
+  nginx:
+    image: nginx:alpine
+    container_name: mysportsnest_nginx
     ports:
-      - "3005:80"
-      - "2527:25"
+      - "80:80"
+      - "443:443"
     volumes:
-      - smtp4dev_data:/smtp4dev
-    restart: unless-stopped
+      - ./nginx/sites-available:/etc/nginx/conf.d
+      - static_volume:/app/staticfiles:ro
+      - media_volume:/app/media:ro
+      - /etc/letsencrypt:/etc/letsencrypt:ro
+      - /var/lib/letsencrypt:/var/lib/letsencrypt:ro
+      - /var/www/certbot:/var/www/certbot:ro
+    depends_on:
+      - api
+    networks:
+      - default
 
 volumes:
   postgres_data:
+  redis_data:
   static_volume:
   media_volume:
-  smtp4dev_data:
-  redis_data:

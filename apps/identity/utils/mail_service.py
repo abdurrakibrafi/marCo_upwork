@@ -31,7 +31,7 @@ def send_otp_email(user, otp_code, purpose, to_email=None):
     text_content = render_to_string("accounts/otp_email.txt", context)
 
     params: resend.Emails.SendParams = {
-        "from": "MySportsNest <noreply@mail.mysportsnest.com>",
+        "from": "MySportsNest <noreply@updates.mysportsnest.com>",
         "to": [recipient],
         "subject": subject,
         "html": html_content,
