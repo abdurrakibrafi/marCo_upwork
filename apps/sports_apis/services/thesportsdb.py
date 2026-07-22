@@ -21,6 +21,7 @@ FIXES vs original:
 """
 
 import logging
+import time
 import requests
 from django.conf import settings
 
@@ -61,24 +62,37 @@ class TheSportsDBService:
     def _get(self, endpoint: str, params: dict = None, timeout: int = 15, max_retries: int = 3) -> dict:
         key = getattr(settings, 'THESPORTSDB_KEY', None) or self.api_key or '3'
         url = f"{self.BASE_URL}/{key}/{endpoint}"
+
+        # Enforce minimum delay between ALL individual HTTP requests to respect rate limit
+        time.sleep(1.5)
+
         for attempt in range(max_retries):
             try:
                 resp = requests.get(url, params=params, timeout=timeout, stream=False)
-                if resp.status_code == 429:
-                    wait_time = 5 * (attempt + 1)
-                    logger.warning(f"TheSportsDB 429 Rate Limit ({endpoint}). Waiting {wait_time}s before retry... (Attempt {attempt+1}/{max_retries})")
+                
+                # Detect rate limit via status code or body text
+                text = resp.text or ""
+                if resp.status_code == 429 or "rate limit" in text.lower() or "too many requests" in text.lower():
+                    wait_time = 8 * (attempt + 1)
+                    logger.warning(f"TheSportsDB Rate Limit hit ({endpoint}). Cooling down {wait_time}s... (Attempt {attempt+1}/{max_retries})")
                     time.sleep(wait_time)
                     continue
+
                 resp.raise_for_status()
+                if not text.strip():
+                    return {}
                 return resp.json()
-            except requests.exceptions.HTTPError as http_err:
-                if getattr(http_err.response, 'status_code', None) == 429 and attempt < max_retries - 1:
-                    time.sleep(5 * (attempt + 1))
+
+            except (requests.exceptions.HTTPError, ValueError) as err:
+                if attempt < max_retries - 1:
+                    wait_time = 8 * (attempt + 1)
+                    logger.warning(f"TheSportsDB request issue ({endpoint}): {err}. Cooling down {wait_time}s...")
+                    time.sleep(wait_time)
                     continue
-                logger.warning(f"TheSportsDB HTTP error ({endpoint}): {http_err}")
+                logger.warning(f"TheSportsDB request failed after retries ({endpoint}): {err}")
                 return {}
             except Exception as e:
-                logger.warning(f"TheSportsDB request failed ({endpoint}): {e}")
+                logger.warning(f"TheSportsDB unexpected error ({endpoint}): {e}")
                 return {}
         return {}
 
