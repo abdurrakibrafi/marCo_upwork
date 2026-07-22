@@ -58,16 +58,29 @@ class TheSportsDBService:
     def __init__(self):
         self.api_key = getattr(settings, 'THESPORTSDB_KEY', None) or '3'
 
-    def _get(self, endpoint: str, params: dict = None, timeout: int = 15) -> dict:
+    def _get(self, endpoint: str, params: dict = None, timeout: int = 15, max_retries: int = 3) -> dict:
         key = getattr(settings, 'THESPORTSDB_KEY', None) or self.api_key or '3'
         url = f"{self.BASE_URL}/{key}/{endpoint}"
-        try:
-            resp = requests.get(url, params=params, timeout=timeout, stream=False)
-            resp.raise_for_status()
-            return resp.json()
-        except Exception as e:
-            logger.warning(f"TheSportsDB request failed ({endpoint}): {e}")
-            return {}
+        for attempt in range(max_retries):
+            try:
+                resp = requests.get(url, params=params, timeout=timeout, stream=False)
+                if resp.status_code == 429:
+                    wait_time = 5 * (attempt + 1)
+                    logger.warning(f"TheSportsDB 429 Rate Limit ({endpoint}). Waiting {wait_time}s before retry... (Attempt {attempt+1}/{max_retries})")
+                    time.sleep(wait_time)
+                    continue
+                resp.raise_for_status()
+                return resp.json()
+            except requests.exceptions.HTTPError as http_err:
+                if getattr(http_err.response, 'status_code', None) == 429 and attempt < max_retries - 1:
+                    time.sleep(5 * (attempt + 1))
+                    continue
+                logger.warning(f"TheSportsDB HTTP error ({endpoint}): {http_err}")
+                return {}
+            except Exception as e:
+                logger.warning(f"TheSportsDB request failed ({endpoint}): {e}")
+                return {}
+        return {}
 
     # ── TEAM ────────────────────────────────────────────────────────────
 

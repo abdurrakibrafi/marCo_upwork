@@ -140,8 +140,8 @@ class Command(BaseCommand):
                 else:
                     total_players_updated += 1
 
-            # Respect rate limits
-            time.sleep(1.5)
+            # Respect rate limits — 2.5s delay between teams
+            time.sleep(2.5)
 
         self.stdout.write(self.style.SUCCESS(
             f"\nRoster enrichment completed: {total_players_created} players created, {total_players_updated} updated."

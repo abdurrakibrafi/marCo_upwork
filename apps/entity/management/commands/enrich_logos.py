@@ -94,8 +94,8 @@ class Command(BaseCommand):
                 not_found += 1
                 self.stdout.write(self.style.NOTICE(f"✗ Logo not found on TheSportsDB for {name}"))
 
-            # Respect rate limit — 30 req/min for free key = 1 req / 2 seconds
-            time.sleep(2.0)
+            # Respect rate limit — 2.5s delay to stay well within limits
+            time.sleep(2.5)
 
         self.stdout.write(self.style.SUCCESS(
             f"\nFinished: {updated} logos updated, {skipped} skipped, {not_found} not found."
