@@ -355,4 +355,6 @@ locale/*/LC_MESSAGES/django.mo
 celerybeat-schedule*
 celerybeat-schedule
 *.db
-*.sqlite3
+*.sqlite3sync_log.txt
+sync_logos.py
+verify_backend*.py
