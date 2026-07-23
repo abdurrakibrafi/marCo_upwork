@@ -1434,6 +1434,8 @@ def _save_event(row: dict) -> Event | None:
     if existing_event and away_score_val is None and existing_event.away_score is not None:
         away_score_val = existing_event.away_score
 
+    start_time = _parse_dt(row["date"], row["time"])
+
     event, _ = Event.objects.update_or_create(
         api_source="statpal",
         external_id=row["external_id"],
