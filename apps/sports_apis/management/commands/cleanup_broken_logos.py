@@ -16,10 +16,10 @@ class Command(BaseCommand):
         if dry_run:
             self.stdout.write(self.style.WARNING("=== DRY RUN MODE ==="))
 
-        # Find all entities of non-soccer sports that have a statpal.io logo URL
+        # Find all entities that have a broken statpal.io logo URL
         broken_entities = Entity.objects.filter(
             logo_url__contains='statpal.io'
-        ).exclude(sport='soccer')
+        )
 
         self.stdout.write(f"Found {broken_entities.count()} non-soccer entities with broken StatPal logo URLs.")
 

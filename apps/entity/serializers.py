@@ -28,7 +28,7 @@ class EntityCompactSerializer(serializers.ModelSerializer):
 
     def get_logo_url(self, obj):
         logo = obj.logo_url
-        is_invalid_logo = logo and "statpal.io" in logo and "/soccer/" not in logo
+        is_invalid_logo = logo and "statpal.io" in logo
         if (not logo or is_invalid_logo) and obj.type == 'team':
             from apps.entity.utils.matcher import find_team_logo_by_name
             logo = find_team_logo_by_name(obj.name)
@@ -59,7 +59,7 @@ class EntitySerializer(serializers.ModelSerializer):
 
     def get_logo_url(self, obj):
         logo = obj.logo_url
-        is_invalid_logo = logo and "statpal.io" in logo and "/soccer/" not in logo
+        is_invalid_logo = logo and "statpal.io" in logo
         if (not logo or is_invalid_logo) and obj.type == 'team':
             from apps.entity.utils.matcher import find_team_logo_by_name
             logo = find_team_logo_by_name(obj.name)

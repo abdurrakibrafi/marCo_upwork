@@ -54,7 +54,7 @@ class Command(BaseCommand):
         # Get only team entities with empty or invalid StatPal logo_url
         from django.db.models import Q
         entities_to_fix = Entity.objects.filter(
-            Q(logo_url="") | (Q(logo_url__contains="statpal.io") & ~Q(logo_url__contains="/soccer/")),
+            Q(logo_url="") | Q(logo_url__contains="statpal.io"),
             type="team"
         ).order_by("name")
         total_found = entities_to_fix.count()
@@ -63,7 +63,7 @@ class Command(BaseCommand):
         backfilled_count = 0
         for entity in entities_to_fix:
             current_logo = entity.logo_url
-            is_invalid = current_logo and "statpal.io" in current_logo and "/soccer/" not in current_logo
+            is_invalid = current_logo and "statpal.io" in current_logo
             if is_invalid:
                 self.stdout.write(f"Clearing invalid logo for '{entity.name}': {current_logo}")
                 if not dry_run:
