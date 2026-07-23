@@ -1426,7 +1426,13 @@ def _save_event(row: dict) -> Event | None:
             if norm_logo:
                 away.logo_url = norm_logo
                 away.save(update_fields=['logo_url'])
-    start_time = _parse_dt(row["date"], row["time"])
+    # Prevent fixture updates or incomplete rows from wiping out live scores
+    home_score_val = _clean_score(row.get("home_score"))
+    away_score_val = _clean_score(row.get("away_score"))
+    if existing_event and home_score_val is None and existing_event.home_score is not None:
+        home_score_val = existing_event.home_score
+    if existing_event and away_score_val is None and existing_event.away_score is not None:
+        away_score_val = existing_event.away_score
 
     event, _ = Event.objects.update_or_create(
         api_source="statpal",
@@ -1438,8 +1444,8 @@ def _save_event(row: dict) -> Event | None:
             "league":       league,
             "status":       status,
             "status_detail": row["status_raw"],
-            "home_score":   _clean_score(row.get("home_score")),
-            "away_score":   _clean_score(row.get("away_score")),
+            "home_score":   home_score_val,
+            "away_score":   away_score_val,
             "venue_name":   row["venue"],
             "start_time":   start_time,
             "metadata":     row["raw"],
@@ -1482,6 +1488,14 @@ def _save_livescore(row: dict, event: Event):
         away_logo_raw = ""
     away_logo_val = away_logo_raw or find_team_logo_by_name(row["away_name"])
 
+    existing_ls = LiveScore.objects.filter(sport=ls_sport, external_id=external_id).first()
+    home_score_ls = _clean_score(row.get("home_score"))
+    away_score_ls = _clean_score(row.get("away_score"))
+    if existing_ls and home_score_ls is None and existing_ls.home_score is not None:
+        home_score_ls = existing_ls.home_score
+    if existing_ls and away_score_ls is None and existing_ls.away_score is not None:
+        away_score_ls = existing_ls.away_score
+
     live_obj, _ = LiveScore.objects.update_or_create(
         sport=ls_sport,
         external_id=external_id,
@@ -1490,8 +1504,8 @@ def _save_livescore(row: dict, event: Event):
             "away_team":     row["away_name"],
             "home_logo":     home_logo_val,
             "away_logo":     away_logo_val,
-            "home_score":    _clean_score(row.get("home_score")),
-            "away_score":    _clean_score(row.get("away_score")),
+            "home_score":    home_score_ls,
+            "away_score":    away_score_ls,
             "status":        status,
             "status_detail": row["status_raw"],
             "start_time":    event.start_time,

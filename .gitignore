@@ -358,3 +358,4 @@ celerybeat-schedule
 *.sqlite3sync_log.txt
 sync_logos.py
 verify_backend*.py
+agent_task.md

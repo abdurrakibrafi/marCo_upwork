@@ -162,28 +162,9 @@ def is_valid_statpal_logo(url: str) -> bool:
 def normalize_statpal_logo_url(url: str, entity_name: str, entity_type: str, sport: str) -> str:
     if not url:
         return ""
-    if "statpal.io" not in url:
-        return url
-    if entity_type == "league":
-        return ""
-        
-    # Check if the logo is valid as-is (e.g. cricket/images)
-    if is_valid_statpal_logo(url):
-        return url
-
-    # Try dynamic sport path mapping
-    target_sport = get_statpal_sport_slug(sport)
-    import re
-    corrected_url = re.sub(r"/api/v2/[^/]+/images", f"/api/v2/{target_sport}/images", url)
-    if is_valid_statpal_logo(corrected_url):
-        return corrected_url
-
-    # Fallback to soccer for national teams or as general backup
-    fallback_url = re.sub(r"/api/v2/[^/]+/images", "/api/v2/soccer/images", url)
-    if is_valid_statpal_logo(fallback_url):
-        return fallback_url
-
-    return ""
+    if "statpal.io" in url:
+        return find_team_logo_by_name(entity_name)
+    return url
 
 
 def find_team_logo_by_name(name):
