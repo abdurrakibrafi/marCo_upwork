@@ -1097,11 +1097,13 @@ def _parse_dt(date_str: str, time_str: str) -> datetime:
         return timezone.now()
 
 
-def _safe_int(val) -> int:
+def _safe_int(val):
+    if val is None or str(val).strip() in ("", "?", "-", "None", "null", "undefined"):
+        return None
     try:
         return int(str(val).split("/")[0].split("&")[0].strip())
     except Exception:
-        return 0
+        return None
 
 
 def _soccer_rows(data: dict) -> list:
@@ -1375,7 +1377,7 @@ def _horse_racing_rows(data: dict) -> list:
 
 
 def _clean_score(val):
-    if val is None or str(val).strip() in ("", "None", "null", "undefined"):
+    if val is None or str(val).strip() in ("", "?", "-", "None", "null", "undefined"):
         return None
     try:
         return int(str(val).split("/")[0].split("&")[0].strip())
