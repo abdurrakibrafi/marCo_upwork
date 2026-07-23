@@ -98,23 +98,31 @@ class TheSportsDBService:
 
     # ── TEAM ────────────────────────────────────────────────────────────
 
-    def search_team(self, team_name: str) -> dict | None:
-        """Search for a team by name. Returns best match or None."""
+    def search_team(self, team_name: str, sport: str = None) -> dict | None:
+        """Search for a team by name and optional sport. Returns best match or None."""
         data = self._get('searchteams.php', {'t': team_name})
         teams = data.get('teams')
         if not teams:
             return None
+
+        if sport:
+            target_sport = self.SPORT_MAP.get(sport.lower(), sport).lower()
+            for team in teams:
+                str_sport = (team.get('strSport') or '').lower()
+                if str_sport == target_sport:
+                    return team
+            # If a specific sport was requested, do not return a team from a different sport
+            return None
+
         return teams[0]
 
-    def get_team_badge(self, team_name: str) -> str:
+    def get_team_badge(self, team_name: str, sport: str = None) -> str:
         """
-        Return badge URL for a team, or empty string if not found.
-        FIX: API returns 'strBadge', not 'strTeamBadge'.
+        Return badge URL for a team matching sport, or empty string if not found.
         """
-        team = self.search_team(team_name)
+        team = self.search_team(team_name, sport=sport)
         if not team:
             return ''
-        # strBadge = transparent PNG badge (correct key — was wrong before)
         return team.get('strBadge', '') or team.get('strLogo', '') or ''
 
     # ── LEAGUE ──────────────────────────────────────────────────────────

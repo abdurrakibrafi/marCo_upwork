@@ -1,10 +1,13 @@
 import time
 from django.core.management.base import BaseCommand
+from django.db.models import Q
 from apps.entity.models import Entity
+from apps.event.models import Event
+from apps.nest.models import UserNest
 from apps.sports_apis.services.thesportsdb import thesportsdb_service
 
 class Command(BaseCommand):
-    help = 'Enrich missing team and league logos from TheSportsDB API'
+    help = 'Enrich missing team and league logos from TheSportsDB API with priority ordering and sport isolation'
 
     def add_arguments(self, parser):
         parser.add_argument(
@@ -19,34 +22,72 @@ class Command(BaseCommand):
             default=None,
             help='Filter by specific sport (e.g. basketball, cricket, soccer)'
         )
+        parser.add_argument(
+            '--popular-only',
+            action='store_true',
+            help='Only process entities associated with events or user nests'
+        )
+        parser.add_argument(
+            '--force-refetch',
+            action='store_true',
+            help='Force re-fetch and overwrite logos even if logo_url is already present'
+        )
 
     def handle(self, *args, **options):
         limit = options['limit']
         sport = options['sport']
+        popular_only = options['popular_only']
+        force_refetch = options['force_refetch']
 
-        self.stdout.write("Finding entities with missing logos (logo_url is empty)...")
-        
-        query = Entity.objects.filter(logo_url='')
+        if force_refetch:
+            self.stdout.write(self.style.WARNING("=== FORCE RE-FETCH MODE: Overwriting existing logos ==="))
+            query = Entity.objects.all()
+        else:
+            self.stdout.write("Finding entities with missing logos...")
+            query = Entity.objects.filter(Q(logo_url='') | Q(logo_url__contains='statpal.io'))
+
         if sport:
             query = query.filter(sport=sport.lower())
-            
-        query = query.order_by('type', 'sport', 'name')
-        total_count = query.count()
-        self.stdout.write(f"Found {total_count} matching entities in database.")
+
+        # Collect popular entity IDs (from active/upcoming Event and UserNest)
+        event_entity_ids = set(
+            Event.objects.exclude(status='completed')
+            .values_list('home_entity_id', flat=True)
+        ) | set(
+            Event.objects.exclude(status='completed')
+            .values_list('away_entity_id', flat=True)
+        ) | set(
+            Event.objects.exclude(status='completed')
+            .values_list('league_id', flat=True)
+        )
+        event_entity_ids.discard(None)
+
+        nest_entity_ids = set(UserNest.objects.values_list('entity_id', flat=True))
+        popular_ids = event_entity_ids | nest_entity_ids
+
+        if popular_only:
+            query = query.filter(id__in=popular_ids)
+            self.stdout.write(self.style.SUCCESS(f"Filtered {query.count()} popular/active entities."))
+
+        entities = list(query)
+        # Prioritize: 1. Popular entities (in events/nest), 2. High follower count, 3. Name
+        entities.sort(key=lambda e: (0 if e.id in popular_ids else 1, -e.follower_count, e.name))
+
+        total_count = len(entities)
+        self.stdout.write(f"Found {total_count} matching entities to process.")
 
         if limit:
-            query = query[:limit]
+            entities = entities[:limit]
             self.stdout.write(f"Limiting to first {limit} entities.")
 
         updated = 0
         skipped = 0
         not_found = 0
 
-        for entity in query:
+        for entity in entities:
             name = entity.name
             self.stdout.write(f"\nSearching logo for [{entity.type.upper()}] {name} ({entity.sport})...")
             
-            # Skip obscure cricket tour series - TheSportsDB won't have them
             skip_keywords = ['tour of', 'under-19', 'under-23', 'u19', 'u23',
                              'emerging', 'a v ', ' a tour', 'tri-series',
                              'women tour', 'invite']
@@ -59,9 +100,8 @@ class Command(BaseCommand):
 
             try:
                 if entity.type == 'team':
-                    logo_url = thesportsdb_service.get_team_badge(name)
+                    logo_url = thesportsdb_service.get_team_badge(name, sport=entity.sport)
 
-                    # If no exact match, try stripping common suffixes
                     if not logo_url:
                         stripped = (name.replace(' Women', '')
                                     .replace(' Men', '')
@@ -70,7 +110,7 @@ class Command(BaseCommand):
                                     .replace(' SC', '')
                                     .strip())
                         if stripped != name:
-                            logo_url = thesportsdb_service.get_team_badge(stripped)
+                            logo_url = thesportsdb_service.get_team_badge(stripped, sport=entity.sport)
 
                 elif entity.type == 'league':
                     major_keywords = ['ipl', 'bbl', 'cpl', 'psl', 'icc', 'test',
@@ -94,7 +134,7 @@ class Command(BaseCommand):
                 not_found += 1
                 self.stdout.write(self.style.NOTICE(f"✗ Logo not found on TheSportsDB for {name}"))
 
-            # Respect rate limit — 2.5s delay to stay well within limits
+            # Respect rate limit delay
             time.sleep(2.5)
 
         self.stdout.write(self.style.SUCCESS(

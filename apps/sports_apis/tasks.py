@@ -87,7 +87,7 @@ def enrich_missing_logos(dry_run: bool = False):
         logo_url = ''
 
         if entity.type == 'team':
-            logo_url = thesportsdb_service.get_team_badge(name)
+            logo_url = thesportsdb_service.get_team_badge(name, sport=entity.sport)
 
             # If no exact match, try stripping common suffixes
             if not logo_url:
@@ -98,7 +98,7 @@ def enrich_missing_logos(dry_run: bool = False):
                             .replace(' SC', '')
                             .strip())
                 if stripped != name:
-                    logo_url = thesportsdb_service.get_team_badge(stripped)
+                    logo_url = thesportsdb_service.get_team_badge(stripped, sport=entity.sport)
 
         elif entity.type == 'league':
             # Only try major cricket leagues — skip obscure bilateral tours
