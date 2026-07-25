@@ -76,6 +76,7 @@ class FeedItemSerializer(serializers.ModelSerializer):
     source = SourceSerializer(read_only=True)
     entity_names = serializers.SerializerMethodField()
     entities = EntitySerializer(many=True, read_only=True)
+    url = serializers.SerializerMethodField()
 
     class Meta:
         model = FeedItem
@@ -88,6 +89,12 @@ class FeedItemSerializer(serializers.ModelSerializer):
     def get_entity_names(self, obj):
         return [e.name for e in obj.entities.all()]
 
+    def get_url(self, obj):
+        if obj.url and "news.google.com" in obj.url:
+            from apps.feed.utils_url import resolve_real_article_url
+            return resolve_real_article_url(obj.url)
+        return obj.url
+
 
 class FeedItemCompactSerializer(serializers.ModelSerializer):
     source_name = serializers.SerializerMethodField()
@@ -98,6 +105,7 @@ class FeedItemCompactSerializer(serializers.ModelSerializer):
     entity_logo = serializers.SerializerMethodField()
     entity_names = serializers.SerializerMethodField()
     entities = EntitySerializer(many=True, read_only=True)
+    url = serializers.SerializerMethodField()
     is_bookmarked = serializers.SerializerMethodField()
     is_liked = serializers.SerializerMethodField()
 
@@ -108,6 +116,12 @@ class FeedItemCompactSerializer(serializers.ModelSerializer):
             'entity_name', 'entity_logo', 'entity_names', 'entities', 'title', 'summary', 'thumbnail_url', 'url',
             'published_at', 'is_breaking', 'is_trending', 'views', 'is_bookmarked', 'is_liked'
         ]
+
+    def get_url(self, obj):
+        if obj.url and "news.google.com" in obj.url:
+            from apps.feed.utils_url import resolve_real_article_url
+            return resolve_real_article_url(obj.url)
+        return obj.url
 
     def get_entity_name(self, obj):
         entity = obj.entities.first()

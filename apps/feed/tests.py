@@ -26,10 +26,12 @@ class FeedTestCase(TestCase):
         self.source = Source.objects.create(name="Test Source", domain="test.com")
         
         # Create a FeedItem linked to BOTH entities
+        import hashlib
         self.feed_item = FeedItem.objects.create(
             title="Important Soccer Match",
             summary="Match summary",
             url="https://test.com/match",
+            url_hash=hashlib.md5("https://test.com/match".encode()).hexdigest(),
             source=self.source,
             published_at=timezone.now()
         )
@@ -90,4 +92,28 @@ class FeedTestCase(TestCase):
         )
         self.assertTrue(scoped_source.is_active)
         self.assertIn(brazil, scoped_source.entities.all())
+
+    def test_google_news_url_resolution(self):
+        import hashlib
+        from apps.feed.utils_url import resolve_real_article_url
+        from apps.feed.serializers import FeedItemCompactSerializer
+
+        # Test non-google URL unchanged
+        self.assertEqual(resolve_real_article_url("https://espn.com/article"), "https://espn.com/article")
+
+        # Test serializer dynamically resolves URL for Google News feed item
+        target_url = "https://test.com/direct-link"
+        item = FeedItem.objects.create(
+            title="Decoded News Article",
+            summary="Article summary",
+            url=target_url,
+            url_hash=hashlib.md5(target_url.encode()).hexdigest(),
+            source=self.source,
+            published_at=timezone.now()
+        )
+        item.entities.add(self.entity1)
+
+        serializer = FeedItemCompactSerializer(item)
+        self.assertEqual(serializer.data["url"], "https://test.com/direct-link")
+
 

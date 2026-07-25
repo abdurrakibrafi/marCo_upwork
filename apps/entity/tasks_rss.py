@@ -102,17 +102,21 @@ def fetch_rss_feed(self, rss_source_id):
         
         created_count = 0
         
+        from apps.feed.utils_url import resolve_real_article_url
+
         for entry in entries:
             try:
                 # Extract article data
                 title = entry.get('title', '')
-                link = entry.get('link', '')
+                raw_link = entry.get('link', '')
                 summary = entry.get('summary', '')
                 published = entry.get('published_parsed')
                 
-                if not title or not link:
+                if not title or not raw_link:
                     continue
                 
+                link = resolve_real_article_url(raw_link)
+
                 # Generate URL hash for deduplication
                 import hashlib
                 url_hash = hashlib.md5(link.encode()).hexdigest()

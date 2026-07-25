@@ -308,11 +308,15 @@ def poll_single_source(self, source_id: int):
     if is_global_source:
         candidate_entities = list(Entity.objects.filter(is_active=True))
 
+    from apps.feed.utils_url import resolve_real_article_url
+
     new_items = 0
     for entry in result.get('entries', []):
-        url = entry.get('url')
-        if not url:
+        raw_url = entry.get('url')
+        if not raw_url:
             continue
+
+        url = resolve_real_article_url(raw_url)
 
         text = f"{entry.get('title', '')} {entry.get('summary', '')}".lower()
 
