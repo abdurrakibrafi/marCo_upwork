@@ -389,6 +389,7 @@ def _populate_statpal_event_details(event):
                         logger.warning(f"Failed to parse or create substitution timeline entry for event {event.id}: {ex}")
 
         # Populate EventStatistics
+        from apps.event.utils_stats import normalize_event_stats
         team_stats = meta.get('team_stats', {})
         if isinstance(team_stats, dict):
             for side in ['home', 'away']:
@@ -397,14 +398,7 @@ def _populate_statpal_event_details(event):
                     continue
                 stats_dict = team_stats.get(side, {})
                 if isinstance(stats_dict, dict):
-                    flat_stats = {}
-                    for k, v in stats_dict.items():
-                        if isinstance(v, dict):
-                            val = v.get('value') or v.get('total')
-                            if val is not None:
-                                flat_stats[k] = val
-                        else:
-                            flat_stats[k] = v
+                    flat_stats = normalize_event_stats(stats_dict)
                     EventStatistics.objects.update_or_create(
                         event=event,
                         team=team_entity,
@@ -755,11 +749,12 @@ def fetch_event_details(self, event_id: int):
                 if not team_entity:
                     continue
  
-                stats_dict = {
+                raw_stats_dict = {
                     s['type'].lower().replace(' ', '_'): s['value']
                     for s in team_stats.get('statistics', [])
                     if s.get('type')
                 }
+                stats_dict = normalize_event_stats(raw_stats_dict)
  
                 EventStatistics.objects.update_or_create(
                     event=event,

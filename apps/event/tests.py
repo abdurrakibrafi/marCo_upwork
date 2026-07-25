@@ -36,3 +36,46 @@ class StatusMappingTestCase(TestCase):
         }
         self.assertEqual(_map_status("1", sport="tennis", metadata=metadata_live), "live")
         self.assertEqual(_map_status("Retired", sport="tennis", metadata=metadata_live), "completed")
+
+
+class EventStatisticsNormalizationTestCase(TestCase):
+    """Verify that event statistics normalization includes shot on goal, shot off goal, block shots, and pass accuracy."""
+
+    def test_normalize_statpal_nested_stats(self):
+        from apps.event.utils_stats import normalize_event_stats
+
+        raw_statpal = {
+            "shots": {"ongoal": 6, "offgoal": 4, "total": 14, "blocked": 4},
+            "passes": {"total": 450, "accurate": 380, "percentage": "84%"},
+            "possession_percent": {"total": 58},
+            "fouls": {"total": 8},
+            "corners": {"total": 5}
+        }
+
+        normalized = normalize_event_stats(raw_statpal)
+
+        self.assertEqual(normalized["shot_on_goal"], 6)
+        self.assertEqual(normalized["shots_on_goal"], 6)
+        self.assertEqual(normalized["shot_off_goal"], 4)
+        self.assertEqual(normalized["shots_off_goal"], 4)
+        self.assertEqual(normalized["block_shots"], 4)
+        self.assertEqual(normalized["blocked_shots"], 4)
+        self.assertEqual(normalized["pass_accuracy"], "84%")
+
+    def test_normalize_api_sports_flat_stats(self):
+        from apps.event.utils_stats import normalize_event_stats
+
+        raw_api_sports = {
+            "shots_on_goal": 7,
+            "shots_off_goal": 3,
+            "blocked_shots": 2,
+            "pass_accuracy": "88%"
+        }
+
+        normalized = normalize_event_stats(raw_api_sports)
+
+        self.assertEqual(normalized["shot_on_goal"], 7)
+        self.assertEqual(normalized["shot_off_goal"], 3)
+        self.assertEqual(normalized["block_shots"], 2)
+        self.assertEqual(normalized["pass_accuracy"], "88%")
+

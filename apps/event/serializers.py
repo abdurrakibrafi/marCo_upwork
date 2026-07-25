@@ -48,10 +48,15 @@ class EventLineupSerializer(serializers.ModelSerializer):
 
 class EventStatisticsSerializer(serializers.ModelSerializer):
     team = EntityMinimalSerializer(read_only=True)
+    stats = serializers.SerializerMethodField()
 
     class Meta:
         model = EventStatistics
         fields = ['team', 'stats']
+
+    def get_stats(self, obj):
+        from apps.event.utils_stats import normalize_event_stats
+        return normalize_event_stats(obj.stats)
 
 
 class EventPlayerStatsSerializer(serializers.ModelSerializer):
