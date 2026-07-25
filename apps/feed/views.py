@@ -90,19 +90,19 @@ def get_nest_feed(request):
 
     
     # Apply filters
-    raw_filters = request.GET.getlist('filter') or []
-    # support comma-separated string too
-    if not raw_filters:
-        raw_filter_value = request.GET.get('filter')
-        if raw_filter_value:
-            raw_filters = [v.strip() for v in raw_filter_value.split(',') if v.strip()]
+    raw_filters = request.GET.getlist('filter')
+    filters = []
+    for rf in raw_filters:
+        if rf:
+            filters.extend([v.strip().lower() for v in rf.split(',') if v.strip()])
 
-    filters = [v.lower() for v in raw_filters]
-
-    # entity type filters (Teams/Athletes/Leagues)
+    # entity type filters (Teams/Athletes/Leagues - singular & plural)
     entity_type_map = {
+        'team': 'team',
         'teams': 'team',
+        'athlete': 'athlete',
         'athletes': 'athlete',
+        'league': 'league',
         'leagues': 'league',
     }
     selected_entity_types = [entity_type_map.get(f) for f in filters if f in entity_type_map]
@@ -110,11 +110,18 @@ def get_nest_feed(request):
         feed = feed.filter(entities__type__in=selected_entity_types)
 
     # content type filters (News/Videos/Articles)
-    if 'videos' in filters:
-        feed = feed.filter(source__domain__icontains='youtube')
-    if 'news' in filters or 'articles' in filters:
-        # Exclude explicit Video source domain as a proxy
-        feed = feed.exclude(source__domain__icontains='youtube')
+    if 'video' in filters or 'videos' in filters:
+        feed = feed.filter(
+            Q(source__domain__icontains='youtube') | 
+            Q(url__icontains='youtube') | 
+            Q(url__icontains='youtu.be')
+        )
+    if 'news' in filters or 'article' in filters or 'articles' in filters:
+        feed = feed.exclude(
+            Q(source__domain__icontains='youtube') | 
+            Q(url__icontains='youtube') | 
+            Q(url__icontains='youtu.be')
+        )
 
     # existing feed flags
     if 'breaking' in filters:
@@ -133,7 +140,7 @@ def get_nest_feed(request):
         )
 
     # Apply sorting
-    sort = request.GET.get('sort', 'newest')
+    sort = request.GET.get('sort', 'newest').strip().lower()
     if sort == 'newest':
         feed = feed.order_by('-published_at')
     elif sort == 'oldest':
@@ -141,9 +148,8 @@ def get_nest_feed(request):
     elif sort == 'popular':
         feed = feed.order_by('-views', '-published_at')
     elif sort == 'trending':
-        feed = feed.filter(is_trending=True).order_by('-views', '-published_at')
+        feed = feed.order_by('-is_trending', '-views', '-published_at')
     else:
-        # fallback safe order
         feed = feed.order_by('-published_at')
     
     # Paginate
