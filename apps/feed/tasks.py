@@ -506,8 +506,8 @@ def ensure_entity_has_rss_source(entity_id: int):
         return f"Entity {entity_id} not found"
 
     from apps.entity.utils.matcher import is_national_team
-    if is_national_team(entity.name):
-        sport_term = entity.sport
+    sport_term = (entity.sport or '').strip()
+    if is_national_team(entity.name) and sport_term and sport_term.lower() != 'none':
         if sport_term == 'soccer':
             sport_term = 'soccer OR football'
         elif sport_term == 'football':
@@ -516,7 +516,7 @@ def ensure_entity_has_rss_source(entity_id: int):
             sport_term = 'nba OR basketball'
         query_str = f'"{entity.name}" AND ({sport_term})'
     else:
-        query_str = entity.name
+        query_str = f'"{entity.name}"'
 
     query = urllib.parse.quote(query_str)
     google_news_url = f"https://news.google.com/rss/search?q={query}&hl=en&gl=US&ceid=US:en"

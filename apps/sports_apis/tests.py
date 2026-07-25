@@ -270,3 +270,55 @@ class BackfillRostersTestCase(TestCase):
         self.assertEqual(mem.jersey_number, 10)
         self.assertEqual(mem.current_team, handball_team)
 
+
+class NonSportsNewsFetchingTestCase(TestCase):
+    """Verify query building and relevance matching for non-sports / general entities."""
+
+    def test_brave_news_queries_for_non_sports(self):
+        from apps.sports_apis.services.brave_news import brave_news_service
+        
+        # Test when sport is None or empty or 'None' string
+        queries_none = brave_news_service._build_queries("Elon Musk", "person", None)
+        self.assertEqual(queries_none, ['"Elon Musk" news'])
+        self.assertNotIn("None", queries_none[0])
+
+        queries_empty = brave_news_service._build_queries("Apple Inc", "company", "")
+        self.assertEqual(queries_empty, ['"Apple Inc" news'])
+
+        queries_str_none = brave_news_service._build_queries("SpaceX", "company", "None")
+        self.assertEqual(queries_str_none, ['"SpaceX" news'])
+
+        # Test when sport is valid
+        queries_sport = brave_news_service._build_queries("Lakers", "team", "basketball")
+        self.assertIn('"Lakers" basketball news', queries_sport)
+
+    def test_brave_search_queries_for_non_sports(self):
+        from apps.sports_apis.services.brave import brave_service
+
+        # Non-sports entity types (e.g. company, person, topic)
+        queries_company = brave_service._build_queries("Tesla", "company", None)
+        self.assertTrue(len(queries_company) > 0)
+        self.assertIn('"Tesla" news', queries_company)
+
+        queries_person = brave_service._build_queries("Taylor Swift", "person", "")
+        self.assertTrue(len(queries_person) > 0)
+        self.assertIn('"Taylor Swift" news', queries_person)
+
+    @patch('apps.sports_apis.services.brave_news.brave_news_service._search_news')
+    def test_relevance_matching_multiword(self, mock_search):
+        from apps.sports_apis.services.brave_news import brave_news_service
+
+        mock_search.return_value = [
+            {
+                'url': 'https://news.com/article1',
+                'title': 'Elon Musk Announces New AI Model',
+                'description': 'Latest updates from xAI and Tesla founder.',
+                'page_age': '2026-07-25T10:00:00Z',
+            }
+        ]
+
+        articles = brave_news_service.fetch_news_for_entity("Elon Musk", "person", None)
+        self.assertEqual(len(articles), 1)
+        self.assertEqual(articles[0]['url'], 'https://news.com/article1')
+
+

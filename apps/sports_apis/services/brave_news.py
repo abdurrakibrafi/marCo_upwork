@@ -53,9 +53,11 @@ class BraveNewsService:
                 description = (item.get('description', '') or '').lower()
                 name_lower = entity_name.lower()
                 
-                # Skip if entity name not mentioned at all
+                # Skip if entity name not mentioned at all (or token matching for multi-word names)
                 if name_lower not in title and name_lower not in description:
-                    continue
+                    words = [w for w in name_lower.split() if len(w) >= 3 and w not in ('the', 'and', 'for', 'inc', 'org')]
+                    if not words or not all(w in title or w in description for w in words):
+                        continue
                 # ─────────────────────────────────────────────────
                 
                 seen_urls.add(url)
@@ -66,8 +68,11 @@ class BraveNewsService:
         return articles
 
     def _build_queries(self, name: str, entity_type: str, sport: str) -> list[str]:
-        """Build search queries based on entity type."""
-        return [f"{name} {sport} news"]
+        """Build search queries based on entity type and sport availability."""
+        sport_clean = (sport or '').strip()
+        if sport_clean and sport_clean.lower() != 'none':
+            return [f'"{name}" {sport_clean} news', f'"{name}" news']
+        return [f'"{name}" news']
 
     def _search_news(self, query: str) -> list[dict]:
         """Call Brave news search endpoint."""

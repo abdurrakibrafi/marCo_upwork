@@ -49,18 +49,35 @@ class BraveSearchService:
 
     def _build_queries(self, name: str, entity_type: str, sport: str) -> list[str]:
         queries = []
+        sport_clean = (sport or '').strip()
+        has_sport = bool(sport_clean and sport_clean.lower() != 'none')
 
         if entity_type == 'team':
-            queries.append(f'"{name}" {sport}')           # exact match
-            queries.append(f'"{name}" match results {sport}')
+            if has_sport:
+                queries.append(f'"{name}" {sport_clean}')           # exact match
+                queries.append(f'"{name}" match results {sport_clean}')
+            else:
+                queries.append(f'"{name}" news')
+                queries.append(f'"{name}" updates')
         
         elif entity_type == 'athlete':
-            queries.append(f'"{name}" footballer')         # exact match + context
-            queries.append(f'"{name}" {sport} player')
+            if has_sport:
+                queries.append(f'"{name}" footballer')         # exact match + context
+                queries.append(f'"{name}" {sport_clean} player')
+            else:
+                queries.append(f'"{name}" news')
         
         elif entity_type == 'league':
-            queries.append(f'"{name}" {sport} standings')
-            queries.append(f'"{name}" table results')
+            if has_sport:
+                queries.append(f'"{name}" {sport_clean} standings')
+                queries.append(f'"{name}" table results')
+            else:
+                queries.append(f'"{name}" standings')
+        
+        else:
+            # Fallback for general or non-sports entity types (person, company, topic, entertainment, etc.)
+            queries.append(f'"{name}" news')
+            queries.append(f'"{name}" latest updates')
 
         return queries
 
