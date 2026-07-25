@@ -6,7 +6,7 @@ from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from django.db.models import Q
 from datetime import datetime, timedelta
-from apps.event.models import Event
+from apps.event.models import Event, EventStatistics
 from apps.event.serializers import EventSerializer, EventDetailSerializer
 from apps.core.utils.mixins import BaseResponseMixin
 from apps.nest.models import UserNest
@@ -330,6 +330,28 @@ def get_event_detail(request, event_id: int):
                     event.save(update_fields=["metadata"])
                 except Exception:
                     pass
+
+        # Auto-ensure EventStatistics exist for any sport (Cricket, Tennis, etc.) if scores exist
+        if (event.home_score is not None or event.away_score is not None) and event.home_entity and event.away_entity:
+            has_valid = any(s.stats for s in event.statistics.all() if s.stats)
+            if not has_valid:
+                score_label = 'runs' if event.sport == 'cricket' else 'score'
+                EventStatistics.objects.update_or_create(
+                    event=event,
+                    team=event.home_entity,
+                    defaults={'stats': {score_label: event.home_score, 'ft_home': event.home_score, 'ft_away': event.away_score, 'side': 'home'}}
+                )
+                EventStatistics.objects.update_or_create(
+                    event=event,
+                    team=event.away_entity,
+                    defaults={'stats': {score_label: event.away_score, 'ft_home': event.home_score, 'ft_away': event.away_score, 'side': 'away'}}
+                )
+                event = Event.objects.select_related(
+                    "home_entity", "away_entity", "league"
+                ).prefetch_related(
+                    "timeline", "lineups", "statistics",
+                    "player_stats", "highlights"
+                ).get(id=event_id)
 
         return mixin.success_response(data=EventDetailSerializer(event).data)
     except Exception as exc:

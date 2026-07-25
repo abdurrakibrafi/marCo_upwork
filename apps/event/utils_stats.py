@@ -22,9 +22,23 @@ def normalize_event_stats(stats_dict: dict) -> dict:
       - shot_off_goal
       - block_shots
       - pass_accuracy
+    Returns {} if no real match statistics exist.
     """
     if not stats_dict or not isinstance(stats_dict, dict):
-        stats_dict = {}
+        return {}
+
+    # Check if there is at least one meaningful match stat in stats_dict
+    has_real_data = False
+    for k, v in stats_dict.items():
+        if isinstance(v, dict) and v:
+            has_real_data = True
+            break
+        if v is not None and v != "" and v != 0 and v != "0" and v != "0%":
+            has_real_data = True
+            break
+
+    if not has_real_data:
+        return {}
 
     normalized = {}
 

@@ -144,10 +144,20 @@ class EventDetailSerializer(serializers.ModelSerializer):
             status_det = str(data.get('status_detail') or '')
             if status_det in ('Not Started', '') or ':' in status_det:
                 data['status_detail'] = 'FT'
+
+        # Exclude empty stats objects (e.g. when API has no stats for a minor league match)
+        if data.get('statistics'):
+            valid_stats = [s for s in data['statistics'] if s.get('stats')]
+            data['statistics'] = valid_stats
+            data['has_stats'] = len(valid_stats) > 0
+        else:
+            data['has_stats'] = False
+
         return data
 
     def get_has_stats(self, obj):
-        return obj.statistics.exists()
+        from apps.event.utils_stats import normalize_event_stats
+        return any(normalize_event_stats(s.stats) for s in obj.statistics.all() if s.stats)
 
     def get_has_lineups(self, obj):
         return obj.lineups.exists()
