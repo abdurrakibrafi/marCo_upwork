@@ -22,14 +22,20 @@ def normalize_event_stats(stats_dict: dict) -> dict:
     if not stats_dict or not isinstance(stats_dict, dict):
         stats_dict = {}
 
-    def _get_first(keys, default=0):
+    def _get_val(keys, default=0):
         for k in keys:
             if k in stats_dict and stats_dict[k] is not None and stats_dict[k] != "":
-                return stats_dict[k]
+                val = stats_dict[k]
+                try:
+                    if isinstance(val, str) and val.strip().replace('.', '', 1).isdigit():
+                        return float(val) if '.' in val else int(val)
+                except Exception:
+                    pass
+                return val
         return default
 
-    shots = stats_dict.get("shots") if isinstance(stats_dict.get("shots"), dict) else {}
-    passes = stats_dict.get("passes") if isinstance(stats_dict.get("passes"), dict) else {}
+    shots_nested = stats_dict.get("shots") if isinstance(stats_dict.get("shots"), dict) else {}
+    passes_nested = stats_dict.get("passes") if isinstance(stats_dict.get("passes"), dict) else {}
 
     normalized = {}
 
@@ -41,59 +47,93 @@ def normalize_event_stats(stats_dict: dict) -> dict:
             normalized[score_key] = stats_dict[score_key]
 
     # 2. Key match metrics with clean snake_case names
-    pos = _get_first(["possession", "ball_possession", "possession_percent", "Ball Possession"], "0%")
+    pos = _get_val(["possession", "ball_possession", "possession_percent", "Ball Possession"], "0%")
     pos_str = f"{pos}%" if isinstance(pos, (int, float)) or (isinstance(pos, str) and "%" not in pos) else str(pos)
     normalized["possession"] = pos_str
 
-    normalized["total_shots"] = _get_first(["total_shots", "Total Shots", "shots"], 0)
+    normalized["total_shots"] = _get_val(["total_shots", "Total Shots", "shots_total"], 0)
+    if normalized["total_shots"] == 0 and not isinstance(stats_dict.get("shots"), dict):
+        normalized["total_shots"] = _get_val(["shots"], 0)
 
-    # Shot breakdowns
+    # 1. Shot on Goal
     shot_on_goal = (
-        shots.get("ongoal") or 
-        _get_first(["shot_on_goal", "shots_on_goal", "Shots on Goal", "shots_on_target"], 0)
+        shots_nested.get("ongoal") or 
+        shots_nested.get("on_target") or 
+        shots_nested.get("on") or 
+        _get_val([
+            "shot_on_goal", "shots_on_goal", "Shots on Goal", 
+            "shots_on_target", "Shots on Target", "on_target", 
+            "shots_ongoal", "shots_target"
+        ], 0)
     )
     normalized["shot_on_goal"] = shot_on_goal
 
+    # 2. Shot off Goal
     shot_off_goal = (
-        shots.get("offgoal") or 
-        _get_first(["shot_off_goal", "shots_off_goal", "Shots off Goal"], 0)
+        shots_nested.get("offgoal") or 
+        shots_nested.get("off_target") or 
+        shots_nested.get("off") or 
+        _get_val([
+            "shot_off_goal", "shots_off_goal", "Shots off Goal", 
+            "shots_off_target", "Shots off Target", "off_target", 
+            "shots_offgoal"
+        ], 0)
     )
     normalized["shot_off_goal"] = shot_off_goal
 
+    # 3. Block Shots
     block_shots = (
-        shots.get("blocked") or 
-        _get_first(["block_shots", "blocked_shots", "shots_blocked", "Blocked Shots"], 0)
+        shots_nested.get("blocked") or 
+        shots_nested.get("block") or 
+        _get_val([
+            "block_shots", "blocked_shots", "shots_blocked", 
+            "Blocked Shots", "Blocked shots", "blocked"
+        ], 0)
     )
     normalized["block_shots"] = block_shots
 
-    # Pass metrics
-    normalized["total_passes"] = _get_first(["total_passes", "Total passes", "passes"], 0)
+    # 4. Total Passes & Pass Accuracy
+    normalized["total_passes"] = _get_val(["total_passes", "Total passes", "passes_total"], 0)
+    if normalized["total_passes"] == 0 and not isinstance(stats_dict.get("passes"), dict):
+        normalized["total_passes"] = _get_val(["passes"], 0)
 
     pct = None
-    if passes:
-        pct = passes.get("percentage") or passes.get("percent")
-        if pct is None and passes.get("accurate") is not None and passes.get("total"):
+    if passes_nested:
+        pct = passes_nested.get("percentage") or passes_nested.get("percent") or passes_nested.get("pct")
+        if pct is None and passes_nested.get("accurate") is not None and passes_nested.get("total"):
             try:
-                acc = float(passes["accurate"])
-                tot = float(passes["total"])
+                acc = float(passes_nested["accurate"])
+                tot = float(passes_nested["total"])
                 if tot > 0:
                     pct = f"{int(round((acc / tot) * 100))}%"
             except (ValueError, TypeError, ZeroDivisionError):
                 pass
 
     if pct is None:
-        pct = _get_first(["pass_accuracy", "pass_accuracy_percent", "passes_percentage", "Pass Accuracy", "Passes %"], "0%")
+        acc_p = _get_val(["accurate_passes", "passes_accurate", "accurate"], None)
+        tot_p = normalized["total_passes"]
+        if acc_p is not None and tot_p and float(tot_p) > 0:
+            try:
+                pct = f"{int(round((float(acc_p) / float(tot_p)) * 100))}%"
+            except (ValueError, TypeError, ZeroDivisionError):
+                pass
+
+    if pct is None:
+        pct = _get_val([
+            "pass_accuracy", "pass_accuracy_percent", "passes_percentage", 
+            "Pass Accuracy", "Passes %", "pass_pct", "accuracy"
+        ], "0%")
 
     val_str = f"{pct}%" if isinstance(pct, (int, float)) or (isinstance(pct, str) and "%" not in pct) else str(pct)
     normalized["pass_accuracy"] = val_str
 
     # Discipline & match events
-    normalized["fouls"] = _get_first(["fouls", "Fouls"], 0)
-    normalized["corners"] = _get_first(["corners", "corner_kicks", "Corner Kicks"], 0)
-    normalized["offsides"] = _get_first(["offsides", "Offsides"], 0)
-    normalized["yellow_cards"] = _get_first(["yellow_cards", "yellowcards", "Yellow Cards"], 0)
-    normalized["red_cards"] = _get_first(["red_cards", "redcards", "Red Cards"], 0)
-    normalized["goalkeeper_saves"] = _get_first(["goalkeeper_saves", "saves", "Goalkeeper Saves"], 0)
+    normalized["fouls"] = _get_val(["fouls", "Fouls"], 0)
+    normalized["corners"] = _get_val(["corners", "corner_kicks", "Corner Kicks"], 0)
+    normalized["offsides"] = _get_val(["offsides", "Offsides"], 0)
+    normalized["yellow_cards"] = _get_val(["yellow_cards", "yellowcards", "Yellow Cards"], 0)
+    normalized["red_cards"] = _get_val(["red_cards", "redcards", "Red Cards"], 0)
+    normalized["goalkeeper_saves"] = _get_val(["goalkeeper_saves", "saves", "Goalkeeper Saves"], 0)
 
     # Advanced metrics if present
     if "expected_goals" in stats_dict:
