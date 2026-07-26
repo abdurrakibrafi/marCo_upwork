@@ -16,10 +16,10 @@ app.conf.beat_schedule = {
         'schedule': 60.0,
     },
 
-    # ── NFL live scores (BallDontLie — only source for NFL) ──────────────
+    # ── NFL live scores (BallDontLie — active Sep-Feb) ───────────────────
     'live-scores-nfl': {
         'task': 'apps.sports_apis.tasks.update_nfl_live_scores',
-        'schedule': 120.0,
+        'schedule': crontab(minute='*/5', month_of_year='9,10,11,12,1,2'),
     },
 
     # ── Fixtures ─────────────────────────────────────────────────────────
@@ -37,7 +37,7 @@ app.conf.beat_schedule = {
     # ── RSS / news ────────────────────────────────────────────────────────
     'poll-rss-sources': {
         'task': 'apps.feed.tasks.poll_all_active_sources',
-        'schedule': 300.0,
+        'schedule': 900.0,  # every 15 minutes
     },
     
     'brave-news-all-entities-weekly': {
@@ -82,7 +82,7 @@ app.conf.beat_schedule = {
     },
     'fetch-highlights-recently-completed': {
         'task': 'apps.sports_apis.tasks.fetch_highlights_for_recently_completed_events',
-        'schedule': 1800.0,  # every 30 minutes
+        'schedule': 7200.0,  # every 2 hours
     },
     # ── Season-start roster backfills ────────────────────────────────────
     # Each runs once at the start of that sport's new season.

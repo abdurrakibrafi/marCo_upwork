@@ -1,6 +1,6 @@
 from .base import *
 
-print("🔧 Running in DEVELOPMENT mode")
+print("Running in DEVELOPMENT mode")
 
 DEBUG = True
 

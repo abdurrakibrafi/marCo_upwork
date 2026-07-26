@@ -1,6 +1,6 @@
 from .base import *
 
-print("🚀 Running in PRODUCTION mode")
+print("Running in PRODUCTION mode")
 
 DEBUG = False
 
