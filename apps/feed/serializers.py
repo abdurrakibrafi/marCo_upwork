@@ -108,13 +108,14 @@ class FeedItemCompactSerializer(serializers.ModelSerializer):
     url = serializers.SerializerMethodField()
     is_bookmarked = serializers.SerializerMethodField()
     is_liked = serializers.SerializerMethodField()
+    like_count = serializers.SerializerMethodField()
 
     class Meta:
         model = FeedItem
         fields = [
             'id', 'source_name', 'source_logo', 'publisher_name', 'publisher_logo',
             'entity_name', 'entity_logo', 'entity_names', 'entities', 'title', 'summary', 'thumbnail_url', 'url',
-            'published_at', 'is_breaking', 'is_trending', 'views', 'is_bookmarked', 'is_liked'
+            'published_at', 'is_breaking', 'is_trending', 'views', 'is_bookmarked', 'is_liked', 'like_count'
         ]
 
     def get_url(self, obj):
@@ -187,6 +188,11 @@ class FeedItemCompactSerializer(serializers.ModelSerializer):
         if request and request.user.is_authenticated:
             return Like.objects.filter(user=request.user, feed_item=obj).exists()
         return False
+
+    def get_like_count(self, obj):
+        if hasattr(obj, 'like_count'):
+            return obj.like_count
+        return Like.objects.filter(feed_item=obj).count()
 
 
 class UserSourceSerializer(serializers.ModelSerializer):

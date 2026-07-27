@@ -4,7 +4,7 @@ from rest_framework.response import Response
 from rest_framework import status
 from rest_framework.pagination import PageNumberPagination
 from django.shortcuts import get_object_or_404
-from django.db.models import Q
+from django.db.models import Q, Count
 from apps.feed.models import FeedItem, Source, UserSource, HiddenSource, Bookmark, Like
 from apps.feed.serializers import (
     FeedItemSerializer, FeedItemCompactSerializer,
@@ -172,6 +172,10 @@ def get_nest_feed(request):
         feed = feed.order_by('-views', '-published_at')
     elif sort == 'trending':
         feed = feed.order_by('-is_trending', '-views', '-published_at')
+    elif sort in ['least', 'likes', 'most_liked', 'most_likes', 'liked']:
+        feed = feed.annotate(like_count=Count('liked_by')).order_by('-like_count', '-published_at')
+    elif sort in ['least_liked', 'least_likes']:
+        feed = feed.annotate(like_count=Count('liked_by')).order_by('like_count', '-published_at')
     else:
         feed = feed.order_by('-published_at')
     

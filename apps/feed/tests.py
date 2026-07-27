@@ -3,7 +3,7 @@ from django.test import TestCase
 from django.contrib.auth import get_user_model
 from rest_framework.test import APIClient
 from apps.entity.models import Entity
-from apps.feed.models import FeedItem, Source
+from apps.feed.models import FeedItem, Source, Like
 from apps.nest.models import UserNest
 
 User = get_user_model()
@@ -115,5 +115,33 @@ class FeedTestCase(TestCase):
 
         serializer = FeedItemCompactSerializer(item)
         self.assertEqual(serializer.data["url"], "https://test.com/direct-link")
+
+    def test_nest_feed_sort_by_likes(self):
+        import hashlib
+        # Create a second feed item with more likes
+        item2 = FeedItem.objects.create(
+            title="Second Match",
+            summary="Match summary 2",
+            url="https://test.com/match2",
+            url_hash=hashlib.md5("https://test.com/match2".encode()).hexdigest(),
+            source=self.source,
+            published_at=timezone.now()
+        )
+        item2.entities.add(self.entity1)
+
+        # Add 2 likes to item2
+        user2 = User.objects.create_user(username="user2", email="user2@example.com", password="password")
+        Like.objects.create(user=self.user, feed_item=item2)
+        Like.objects.create(user=user2, feed_item=item2)
+
+        # Query GET /api/feed/nest/?sort=least
+        response = self.client.get("/api/feed/nest/?sort=least")
+        self.assertEqual(response.status_code, 200)
+        results = response.data.get("results", [])
+        self.assertGreaterEqual(len(results), 2)
+        # item2 should be first because it has 2 likes vs 0
+        self.assertEqual(results[0]["id"], item2.id)
+        self.assertEqual(results[0]["like_count"], 2)
+
 
 
