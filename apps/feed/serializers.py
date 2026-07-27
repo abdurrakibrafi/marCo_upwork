@@ -179,19 +179,28 @@ class FeedItemCompactSerializer(serializers.ModelSerializer):
 
     def get_is_bookmarked(self, obj):
         request = self.context.get('request')
-        if request and request.user.is_authenticated:
-            return Bookmark.objects.filter(user=request.user, feed_item=obj).exists()
-        return False
+        if not request or not request.user.is_authenticated:
+            return False
+        user_bookmarked_ids = self.context.get('user_bookmarked_ids')
+        if user_bookmarked_ids is not None:
+            return obj.id in user_bookmarked_ids
+        return Bookmark.objects.filter(user=request.user, feed_item=obj).exists()
 
     def get_is_liked(self, obj):
         request = self.context.get('request')
-        if request and request.user.is_authenticated:
-            return Like.objects.filter(user=request.user, feed_item=obj).exists()
-        return False
+        if not request or not request.user.is_authenticated:
+            return False
+        user_liked_ids = self.context.get('user_liked_ids')
+        if user_liked_ids is not None:
+            return obj.id in user_liked_ids
+        return Like.objects.filter(user=request.user, feed_item=obj).exists()
 
     def get_like_count(self, obj):
         if hasattr(obj, 'like_count'):
             return obj.like_count
+        like_counts_map = self.context.get('like_counts_map')
+        if like_counts_map is not None:
+            return like_counts_map.get(obj.id, 0)
         return Like.objects.filter(feed_item=obj).count()
 
 

@@ -34,6 +34,35 @@ class FeedPagination(PageNumberPagination):
     max_page_size = 50
 
 
+def build_feed_serializer_context(request, paginated_feed):
+    context = {'request': request}
+    if not paginated_feed:
+        return context
+
+    items_list = list(paginated_feed)
+    if not items_list:
+        return context
+
+    page_item_ids = [item.id for item in items_list]
+
+    if request and request.user and request.user.is_authenticated:
+        context['user_bookmarked_ids'] = set(
+            Bookmark.objects.filter(user=request.user, feed_item_id__in=page_item_ids)
+            .values_list('feed_item_id', flat=True)
+        )
+        context['user_liked_ids'] = set(
+            Like.objects.filter(user=request.user, feed_item_id__in=page_item_ids)
+            .values_list('feed_item_id', flat=True)
+        )
+
+    first_item = items_list[0]
+    if not hasattr(first_item, 'like_count'):
+        likes_qs = Like.objects.filter(feed_item_id__in=page_item_ids).values('feed_item_id').annotate(c=Count('id'))
+        context['like_counts_map'] = {row['feed_item_id']: row['c'] for row in likes_qs}
+
+    return context
+
+
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def get_nest_feed(request):
@@ -42,7 +71,7 @@ def get_nest_feed(request):
     GET /api/feed/nest?page=1&limit=10&sort=newest&filter=breaking
 
     filter values: breaking, trending
-    sort values: newest, oldest, popular, trending
+    sort values: newest, oldest, popular, trending, least, likes, most_liked, least_liked
 
     Response:
     {
@@ -91,25 +120,21 @@ def get_nest_feed(request):
         is_active=True,
     ).values_list('source_id', flat=True))
  
-    # Ultra-fast junction table lookup (Sub-50ms DB execution without heavy JOINs)
-    nest_item_ids = set(
-        FeedItem.entities.through.objects.filter(
-            entity_id__in=nest_entity_ids
-        ).values_list('feeditem_id', flat=True)
-    )
-    if user_custom_source_ids:
-        custom_item_ids = set(
-            FeedItem.objects.filter(
-                source_id__in=user_custom_source_ids
-            ).values_list('id', flat=True)
-        )
-        matched_item_ids = list(nest_item_ids.union(custom_item_ids))
-    else:
-        matched_item_ids = list(nest_item_ids)
+    # Subquery lookup for max performance
+    nest_item_ids_qs = FeedItem.entities.through.objects.filter(
+        entity_id__in=nest_entity_ids
+    ).values_list('feeditem_id', flat=True)
 
-    feed = FeedItem.objects.filter(
-        id__in=matched_item_ids
-    ).exclude(
+    if user_custom_source_ids:
+        feed = FeedItem.objects.filter(
+            Q(id__in=nest_item_ids_qs) | Q(source_id__in=user_custom_source_ids)
+        ).distinct()
+    else:
+        feed = FeedItem.objects.filter(
+            id__in=nest_item_ids_qs
+        )
+
+    feed = feed.exclude(
         source_id__in=hidden_source_ids
     ).exclude(
         publisher_name__in=hidden_publishers
@@ -183,7 +208,8 @@ def get_nest_feed(request):
     paginator = FeedPagination()
     paginated_feed = paginator.paginate_queryset(feed, request)
     
-    serializer = FeedItemCompactSerializer(paginated_feed, many=True, context={'request': request})
+    context = build_feed_serializer_context(request, paginated_feed)
+    serializer = FeedItemCompactSerializer(paginated_feed, many=True, context=context)
     
     res_data = paginator.get_paginated_response(serializer.data).data
     cache.set(cache_key, res_data, timeout=60)
@@ -220,7 +246,8 @@ def get_entity_feed(request, entity_id):
     paginator = FeedPagination()
     paginated_feed = paginator.paginate_queryset(feed, request)
     
-    serializer = FeedItemCompactSerializer(paginated_feed, many=True, context={'request': request})
+    context = build_feed_serializer_context(request, paginated_feed)
+    serializer = FeedItemCompactSerializer(paginated_feed, many=True, context=context)
     
     return paginator.get_paginated_response(serializer.data)
 
@@ -429,7 +456,8 @@ def get_breaking_news(request):
         publisher_name__in=hidden_publishers
     ).select_related('source').prefetch_related('entities').order_by('-published_at')[:50]
     
-    serializer = FeedItemCompactSerializer(feed, many=True, context={'request': request})
+    context = build_feed_serializer_context(request, feed)
+    serializer = FeedItemCompactSerializer(feed, many=True, context=context)
     
     return Response({
         'count': len(feed),
@@ -459,7 +487,8 @@ def get_trending_feed(request):
         publisher_name__in=hidden_publishers
     ).select_related('source').prefetch_related('entities').order_by('-views', '-published_at')[:50]
     
-    serializer = FeedItemCompactSerializer(feed, many=True, context={'request': request})
+    context = build_feed_serializer_context(request, feed)
+    serializer = FeedItemCompactSerializer(feed, many=True, context=context)
     
     return Response({
         'count': len(feed),
