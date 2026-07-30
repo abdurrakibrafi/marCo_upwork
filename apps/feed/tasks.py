@@ -15,6 +15,7 @@ from apps.sports_apis.services.rss import rss_discovery_service, rss_polling_ser
 
 import hashlib
 import logging
+import urllib.parse
 from urllib.parse import urlparse
 
 logger = logging.getLogger(__name__)
@@ -290,6 +291,17 @@ def poll_single_source(self, source_id: int):
     
     if not source.rss_url:
         return f"Source {source_id} has no RSS url — skipping (Brave-only source)"
+
+    # Auto-fix old YouTube RSS query URLs on the fly
+    if source.domain == 'youtube.com' or 'site:youtube.com' in source.rss_url:
+        entity = source.entities.first()
+        if entity:
+            clean_query = urllib.parse.quote(f'"{entity.name}" site:youtube.com')
+            clean_url = f"https://news.google.com/rss/search?q={clean_query}&hl=en&gl=US&ceid=US:en"
+            if source.rss_url != clean_url:
+                source.rss_url = clean_url
+                source.poll_failures = 0
+                source.save(update_fields=['rss_url', 'poll_failures'])
 
     result = rss_polling_service.poll_feed(source)
     if not result.get('success'):
