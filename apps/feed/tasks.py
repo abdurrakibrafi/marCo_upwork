@@ -497,9 +497,24 @@ def ensure_entity_has_rss_source(entity_id: int):
         for old_source in old_sources:
             old_source.is_active = False
             old_source.save(update_fields=['is_active'])
-            logger.info(f"Deactivated old unscoped Google News source {old_source.id} for {entity.name}")
-
     poll_single_source.delay(source.id)
+
+    # ── Also create YouTube Video RSS source for video feeds (filter=videos) ──
+    video_query_str = f'{query_str} site:youtube.com'
+    query_video = urllib.parse.quote(video_query_str)
+    google_video_url = f"https://news.google.com/rss/search?q={query_video}&hl=en&gl=US&ceid=US:en"
+
+    video_source, _ = Source.objects.get_or_create(
+        rss_url=google_video_url,
+        defaults={
+            'name': f'YouTube Video - {entity.name}',
+            'domain': 'youtube.com',
+            'is_active': True,
+            'discovery_source': 'known',
+        }
+    )
+    video_source.entities.add(entity)
+    poll_single_source.delay(video_source.id)
 
     linked = 0
     for item in FeedItem.objects.filter(entities__isnull=True).iterator():
