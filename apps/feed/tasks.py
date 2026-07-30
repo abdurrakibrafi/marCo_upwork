@@ -500,7 +500,7 @@ def ensure_entity_has_rss_source(entity_id: int):
     poll_single_source.delay(source.id)
 
     # ── Also create YouTube Video RSS source for video feeds (filter=videos) ──
-    video_query_str = f'{query_str} site:youtube.com'
+    video_query_str = f'"{entity.name}" site:youtube.com'
     query_video = urllib.parse.quote(video_query_str)
     google_video_url = f"https://news.google.com/rss/search?q={query_video}&hl=en&gl=US&ceid=US:en"
 
