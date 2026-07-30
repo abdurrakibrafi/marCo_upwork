@@ -93,8 +93,8 @@ class FeedItem(models.Model):
 
     # Feed metadata
     is_trending = models.BooleanField(default=False, db_index=True)
-    is_breaking = models.BooleanField(default=False)
-    views = models.PositiveIntegerField(default=0)
+    is_breaking = models.BooleanField(default=False, db_index=True)
+    views = models.PositiveIntegerField(default=0, db_index=True)
 
     # Raw data intentionally NOT stored (Brave API policy compliance)
     raw_data = models.JSONField(default=dict, blank=True)
@@ -105,6 +105,8 @@ class FeedItem(models.Model):
         ordering = ['-published_at']
         indexes = [
             models.Index(fields=['-published_at']),
+            models.Index(fields=['-views', '-published_at']),
+            models.Index(fields=['-is_trending', '-views', '-published_at']),
             models.Index(fields=['url_hash']),
             models.Index(fields=['content_fetched']),
         ]

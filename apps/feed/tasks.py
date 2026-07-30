@@ -316,17 +316,16 @@ def poll_single_source(self, source_id: int):
         if not raw_url:
             continue
 
-        url = resolve_real_article_url(raw_url)
-
         text = f"{entry.get('title', '')} {entry.get('summary', '')}".lower()
 
-        # Match entry text against candidate entities
+        # Match entry text against candidate entities first
         matched_entities = [e for e in candidate_entities if _entity_matches_text(e, text)]
 
         # If article doesn't match any entity, skip it
         if not matched_entities:
             continue
 
+        url = resolve_real_article_url(raw_url)
         url_hash = hashlib.md5(url.encode()).hexdigest()
 
         # Resolve thumbnail

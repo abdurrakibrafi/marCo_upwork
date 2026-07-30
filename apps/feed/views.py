@@ -212,7 +212,7 @@ def get_nest_feed(request):
     serializer = FeedItemCompactSerializer(paginated_feed, many=True, context=context)
     
     res_data = paginator.get_paginated_response(serializer.data).data
-    cache.set(cache_key, res_data, timeout=60)
+    cache.set(cache_key, res_data, timeout=300)
     return Response(res_data)
 
 
