@@ -164,14 +164,16 @@ def get_nest_feed(request):
     if 'video' in filters or 'videos' in filters:
         feed = feed.filter(
             Q(source__domain__icontains='youtube') | 
-            Q(url__icontains='youtube') | 
-            Q(url__icontains='youtu.be')
+            Q(url__icontains='youtube.com/watch') | 
+            Q(url__icontains='youtube.com/shorts') | 
+            Q(url__icontains='youtu.be/')
         )
     if 'news' in filters or 'article' in filters or 'articles' in filters:
         feed = feed.exclude(
             Q(source__domain__icontains='youtube') | 
-            Q(url__icontains='youtube') | 
-            Q(url__icontains='youtu.be')
+            Q(url__icontains='youtube.com/watch') | 
+            Q(url__icontains='youtube.com/shorts') | 
+            Q(url__icontains='youtu.be/')
         )
 
     # existing feed flags

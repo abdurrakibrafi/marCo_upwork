@@ -296,12 +296,9 @@ def poll_single_source(self, source_id: int):
         source.poll_failures += 1
         source.save(update_fields=['poll_failures'])
         logger.warning(f"Polling failed for source {source.id}: {result.get('error')}")
-        # Don't retry for permanent failures like bad URLs
-        if result.get('error') == 'no feed url':
-            source.is_active = False
-            source.save(update_fields=['is_active'])
-            return f"Deactivated source {source.id} — no feed url"
-        raise self.retry(exc=Exception(result.get('error')))
+        if getattr(self, 'request', None) and self.request.id:
+            raise self.retry(exc=Exception(result.get('error')))
+        return f"Polling failed for source {source.id}: {result.get('error')}"
 
     candidate_entities = list(source.entities.all())
     is_global_source = not candidate_entities
