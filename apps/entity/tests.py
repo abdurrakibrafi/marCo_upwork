@@ -252,3 +252,22 @@ class FallbackLogoTestCase(TestCase):
         serializer = EntitySerializer(blank_team)
         self.assertEqual(serializer.data["logo_url"], "https://flags.com/bangladesh.png")
 
+
+class GlobalEntitySearchTestCase(TestCase):
+    def setUp(self):
+        self.client = APIClient()
+        self.team = Entity.objects.create(
+            name="Manchester United",
+            sport="soccer",
+            type="team"
+        )
+
+    def test_global_search_returns_team_when_type_athlete_param_passed(self):
+        # agent_task.md Section 13: If Trending Athletes tab is selected and user searches "Manchester United",
+        # Manchester United (team) must still appear.
+        url = "/api/entities/search/?q=Manchester%20United&type=athlete"
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, 200)
+        results = response.data.get("results", [])
+        self.assertTrue(any(e["name"] == "Manchester United" for e in results))
+

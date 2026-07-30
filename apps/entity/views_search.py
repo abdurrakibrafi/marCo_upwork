@@ -50,18 +50,23 @@ def search_entities(request):
         logger.info(f"Search cache hit: {query}")
         return Response(cached)
     
-    # Build filter
+    # Build filter — Global search for active queries (agent_task.md Section 13)
     filters = Q(is_active=True)
     if sport:
         filters &= Q(sport=sport)
-    if entity_type:
-        filters &= Q(type=entity_type)
     
-    # Exact match first (on normalized name)
+    # Exact match first (on normalized name, global across types)
     exact = Entity.objects.filter(
         filters,
         normalized_name=normalized_query
     )[:1]
+    
+    # If no exact match and type was specified, try exact with type
+    if not exact.exists() and entity_type:
+        exact = Entity.objects.filter(
+            filters & Q(type=entity_type),
+            normalized_name=normalized_query
+        )[:1]
     
     if exact.exists():
         result = {
@@ -73,13 +78,11 @@ def search_entities(request):
         cache.set(cache_key, result, 300)
         return Response(result)
     
-    # Fuzzy match (similar names)
-    # First, find entities whose name or normalized name contains the query words (excluding common noise words)
+    # Fuzzy match (similar names across all types)
     words = [w.lower() for w in query.split() if len(w) > 2]
     NOISE = {'fc', 'united', 'city', 'real', 'club', 'town', 'athletic', 'rovers', 'wanderers', 'county', 'saint', 'st', 'de', 'la', 'sports', 'league', 'team'}
     search_words = [w for w in words if w not in NOISE]
     
-    # Fallback to all words if query consists only of noise words
     if not search_words:
         search_words = words
 
@@ -90,6 +93,7 @@ def search_entities(request):
     else:
         word_filter = Q(name__icontains=query) | Q(normalized_name__icontains=normalized_query)
 
+    # Search globally across all types (teams, athletes, leagues)
     matched_qs = Entity.objects.filter(
         filters
     ).filter(
@@ -97,11 +101,9 @@ def search_entities(request):
     ).order_by('-follower_count')[:50]
 
     if matched_qs.exists():
-        # Mix in some top followed entities to support typo/spelling correction too
         top_entities = Entity.objects.filter(filters).order_by('-follower_count')[:50]
         all_entities = list(matched_qs) + [e for e in top_entities if e not in matched_qs]
     else:
-        # No contains match, fallback to top followed entities for spelling correction
         all_entities = Entity.objects.filter(filters).order_by('-follower_count')[:100]
     
     matches = []
@@ -116,6 +118,11 @@ def search_entities(request):
                 score += 1.0
             elif entity_norm.startswith(normalized_query):
                 score += 0.5
+            
+            # Prioritize tab type preference if provided, without filtering out other types
+            if entity_type and entity.type == entity_type:
+                score += 0.3
+
             matches.append((entity, score))
     
     # Sort by score

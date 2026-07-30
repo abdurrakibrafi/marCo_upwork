@@ -12,16 +12,25 @@ class Entity(models.Model):
     ]
     
     SPORT_CHOICES = [
-        ('basketball', 'Basketball'),
-        ('football', 'American Football'),
         ('soccer', 'Soccer'),
+        ('basketball', 'Basketball'),
+        ('american_football', 'American Football'),
+        ('football', 'American Football'),
         ('baseball', 'Baseball'),
+        ('ice_hockey', 'Ice Hockey'),
         ('hockey', 'Hockey'),
         ('cricket', 'Cricket'),
-        ('tennis', 'Tennis'),
+        ('rugby', 'Rugby'),
         ('f1', 'Formula 1'),
+        ('formula1', 'Formula 1'),
+        ('tennis', 'Tennis'),
+        ('combat_sports', 'Combat Sports'),
         ('mma', 'MMA'),
         ('golf', 'Golf'),
+        ('motorsports', 'Motorsports'),
+        ('esports', 'eSports'),
+        ('handball', 'Handball'),
+        ('volleyball', 'Volleyball'),
     ]
     
     # Core fields

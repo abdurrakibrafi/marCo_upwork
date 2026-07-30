@@ -156,6 +156,25 @@ def get_nest_calendar(request):
                 message="No entities in your nest.",
             )
 
+        # Optional single entity filter for Nest Calendar (agent_task.md Section 14)
+        entity_id_param = request.query_params.get("entity_id")
+        if entity_id_param:
+            try:
+                target_entity_id = int(entity_id_param)
+                if target_entity_id not in base_entity_ids:
+                    return mixin.success_response(
+                        data={
+                            "start_date": timezone.now().date().isoformat(),
+                            "total_count": 0,
+                            "events_by_date": {},
+                            "events": [],
+                        },
+                        message="Specified entity is not in your nest.",
+                    )
+                base_entity_ids = [target_entity_id]
+            except ValueError:
+                pass
+
         # Include duplicate / canonical entities to handle cross-source data variations robustly
         from apps.entity.models import Entity
         nest_entities = Entity.objects.filter(id__in=base_entity_ids)
@@ -250,7 +269,11 @@ def get_nest_calendar(request):
 
         # 6. Deduplicate and Serialize
         events_list = _deduplicate_events(list(qs))
-        serialized   = EventSerializer(events_list, many=True).data
+        serialized   = EventSerializer(
+            events_list,
+            many=True,
+            context={'request': request, 'nest_entity_ids': set(nest_entity_ids)}
+        ).data
 
         # 7. Group by date
         events_by_date: dict = {}

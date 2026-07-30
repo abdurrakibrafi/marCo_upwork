@@ -64,7 +64,7 @@ class SourceSerializer(serializers.ModelSerializer):
     class Meta:
         model = Source
         fields = [
-            'id', 'name', 'rss_url', 'domain', 'favicon_url',
+            'id', 'name', 'rss_url', 'canonical_url', 'sitemap_url', 'domain', 'favicon_url',
             'is_verified', 'is_active', 'entity_ids',
         ]
 

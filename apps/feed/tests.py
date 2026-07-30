@@ -143,5 +143,15 @@ class FeedTestCase(TestCase):
         self.assertEqual(results[0]["id"], item2.id)
         self.assertEqual(results[0]["like_count"], 2)
 
+    def test_url_tracking_parameter_clean(self):
+        from apps.feed.utils_url import clean_tracking_parameters
+        raw_url = "https://www.bbc.com/sport/football/123456?utm_source=rss&utm_medium=feed&fbclid=XYZ123&id=99"
+        cleaned = clean_tracking_parameters(raw_url)
+        self.assertNotIn("utm_source", cleaned)
+        self.assertNotIn("utm_medium", cleaned)
+        self.assertNotIn("fbclid", cleaned)
+        self.assertIn("id=99", cleaned)
+        self.assertTrue(cleaned.startswith("https://www.bbc.com/sport/football/123456"))
+
 
 

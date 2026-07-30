@@ -878,12 +878,11 @@ def bootstrap_all_entities():
     entities = Entity.objects.filter(is_active=True)
     total = entities.count()
     
-    logger.info(f"Starting bootstrap of {total} entities")
-    
+    from apps.feed.tasks import discover_rss_feeds_for_entity
     for i, entity in enumerate(entities):
-        # Fetch news only if the entity is followed, to conserve Brave Search API quota
-        if entity.follower_count > 0:
-            fetch_brave_news_for_entity.apply_async(
+        # Discover RSS feeds via Brave Search for entities missing RSS discovery
+        if not entity.rss_discovery_done and entity.follower_count > 0:
+            discover_rss_feeds_for_entity.apply_async(
                 args=[entity.id],
                 countdown=i * 3
             )

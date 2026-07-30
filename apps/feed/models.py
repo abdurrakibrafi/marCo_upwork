@@ -30,6 +30,8 @@ class Source(models.Model):
     # Core fields
     name = models.CharField(max_length=255, blank=True)
     rss_url = models.URLField(unique=True, default='', blank=True, null=True)
+    canonical_url = models.URLField(blank=True, default='', max_length=5000)
+    sitemap_url = models.URLField(blank=True, default='', max_length=5000)
     domain = models.CharField(max_length=5000, blank=True)
     favicon_url = models.URLField(blank=True, max_length=5000)
 

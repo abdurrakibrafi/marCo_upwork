@@ -1,18 +1,59 @@
 import logging
 import hashlib
+import urllib.parse
 from functools import lru_cache
 from django.core.cache import cache
 
 logger = logging.getLogger(__name__)
+
+TRACKING_PARAMS = {
+    'utm_source', 'utm_medium', 'utm_campaign', 'utm_term', 'utm_content', 'utm_id', 'utm_name', 'utm_reader',
+    'fbclid', 'gclid', 'gclsrc', 'dclid', 'msclkid', 'twclid', 'mc_cid', 'mc_eid', 'igshid',
+    'ref', 'referrer', 'at_medium', 'at_campaign', 'cmpid', 'feature', 'ncid', 'sr_share'
+}
+
+
+def clean_tracking_parameters(url: str) -> str:
+    """
+    Strips marketing and analytics tracking parameters (e.g. utm_source, fbclid, gclid)
+    from a URL to normalize it for canonical article deduplication (agent_task.md Section 9).
+    """
+    if not url or not isinstance(url, str):
+        return ""
+
+    try:
+        url_str = url.strip()
+        parsed = urllib.parse.urlparse(url_str)
+        if not parsed.query:
+            return url_str
+
+        params = urllib.parse.parse_qs(parsed.query, keep_blank_values=True)
+        filtered_params = {
+            k: v for k, v in params.items()
+            if k.lower() not in TRACKING_PARAMS and not k.lower().startswith('utm_')
+        }
+
+        new_query = urllib.parse.urlencode(filtered_params, doseq=True)
+        cleaned_url = urllib.parse.urlunparse((
+            parsed.scheme,
+            parsed.netloc,
+            parsed.path,
+            parsed.params,
+            new_query,
+            parsed.fragment
+        ))
+        return cleaned_url
+    except Exception as e:
+        logger.debug(f"URL tracking clean failed for {url}: {e}")
+        return url.strip()
 
 
 @lru_cache(maxsize=4096)
 def resolve_real_article_url(url: str) -> str:
     """
     Decodes Google News RSS redirect URLs (e.g. news.google.com/rss/articles/...)
-    to the actual publisher source URL (e.g. tbsnews.net, espn.com, reuters.com).
-    Returns original url if decoding fails or if not a Google News URL.
-    Results are cached in memory (lru_cache) and Redis/Django cache to eliminate HTTP latency during serialization.
+    to the actual publisher source URL (e.g. tbsnews.net, espn.com, reuters.com)
+    and strips tracking parameters for canonical URL deduplication.
     """
     if not url or not isinstance(url, str):
         return ""
@@ -22,15 +63,15 @@ def resolve_real_article_url(url: str) -> str:
         cache_key = f"decoded_gnews_url:{hashlib.md5(url_str.encode()).hexdigest()}"
         cached_url = cache.get(cache_key)
         if cached_url:
-            return cached_url
+            return clean_tracking_parameters(cached_url)
         try:
             from googlenewsdecoder import new_decoderv1
             decoded = new_decoderv1(url_str)
             if isinstance(decoded, dict) and decoded.get("status") and decoded.get("decoded_url"):
-                res = decoded["decoded_url"]
+                res = clean_tracking_parameters(decoded["decoded_url"])
                 cache.set(cache_key, res, timeout=604800)  # Cache for 7 days
                 return res
         except Exception as e:
             logger.debug(f"Google news decoding failed for {url_str}: {e}")
 
-    return url_str
+    return clean_tracking_parameters(url_str)

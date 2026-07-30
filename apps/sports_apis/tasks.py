@@ -54,7 +54,7 @@ def _name_similarity(a: str, b: str) -> float:
 
 
 @shared_task
-def enrich_missing_logos(dry_run: bool = False):
+def enrich_missing_logos(dry_run: bool = False, limit: int = 100):
     """
     Find all entities with no logo_url and try to fill from TheSportsDB.
     Focuses on: cricket teams, cricket leagues (major ones only), NBA teams.
@@ -64,10 +64,14 @@ def enrich_missing_logos(dry_run: bool = False):
     from apps.entity.models import Entity
     from apps.sports_apis.services.thesportsdb import thesportsdb_service
 
-    missing = Entity.objects.filter(
+    missing_qs = Entity.objects.filter(
         logo_url='').order_by('type', 'sport', 'name')
-    total = missing.count()
-    logger.info(f"enrich_missing_logos: {total} entities need logos")
+    if limit and limit > 0:
+        missing_qs = missing_qs[:limit]
+
+    missing = list(missing_qs)
+    total = len(missing)
+    logger.info(f"enrich_missing_logos: {total} entities need logos (limit={limit})")
 
     updated = 0
     skipped = 0

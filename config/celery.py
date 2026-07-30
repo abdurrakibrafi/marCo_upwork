@@ -39,11 +39,6 @@ app.conf.beat_schedule = {
         'task': 'apps.feed.tasks.poll_all_active_sources',
         'schedule': 900.0,  # every 15 minutes
     },
-    
-    'brave-news-all-entities-weekly': {
-        'task': 'apps.feed.tasks.fetch_brave_news_for_all_entities',
-        'schedule': crontab(hour=3, minute=0, day_of_week=0),  # Sunday 3am
-    },
 
     # ── Bootstrap (monthly) ────────────────────────────────────────────
     'bootstrap-all-entities': {

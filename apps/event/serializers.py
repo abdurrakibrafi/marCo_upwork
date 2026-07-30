@@ -99,6 +99,23 @@ class EventSerializer(serializers.ModelSerializer):
             status_det = str(data.get('status_detail') or '')
             if status_det in ('Not Started', '') or ':' in status_det:
                 data['status_detail'] = 'FT'
+
+        # Highlight followed Nest entity logo and ID for calendar entries (agent_task.md Section 14)
+        nest_entity_ids = self.context.get('nest_entity_ids')
+        if nest_entity_ids:
+            if instance.home_entity_id in nest_entity_ids:
+                data['nest_entity_id'] = instance.home_entity_id
+                data['nest_entity_logo'] = instance.home_entity.logo_url if instance.home_entity else ''
+            elif instance.away_entity_id in nest_entity_ids:
+                data['nest_entity_id'] = instance.away_entity_id
+                data['nest_entity_logo'] = instance.away_entity.logo_url if instance.away_entity else ''
+            else:
+                data['nest_entity_id'] = instance.home_entity_id
+                data['nest_entity_logo'] = instance.home_entity.logo_url if instance.home_entity else ''
+        else:
+            data['nest_entity_id'] = instance.home_entity_id
+            data['nest_entity_logo'] = instance.home_entity.logo_url if instance.home_entity else ''
+
         return data
 
 

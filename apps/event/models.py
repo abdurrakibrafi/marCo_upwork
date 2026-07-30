@@ -13,19 +13,26 @@ class Event(models.Model):
     ]
     
     SPORT_CHOICES = [
-        ('basketball', 'Basketball'),
-        ('football', 'American Football'),
         ('soccer', 'Soccer'),
+        ('basketball', 'Basketball'),
+        ('american_football', 'American Football'),
+        ('football', 'American Football'),
         ('baseball', 'Baseball'),
+        ('ice_hockey', 'Ice Hockey'),
         ('hockey', 'Hockey'),
         ('handball', 'Handball'),
         ('volleyball', 'Volleyball'),
         ('cricket', 'Cricket'),
+        ('rugby', 'Rugby'),
         ('tennis', 'Tennis'),
         ('horse_racing', 'Horse Racing'),
+        ('f1', 'Formula 1'),
         ('formula1', 'Formula 1'),
+        ('combat_sports', 'Combat Sports'),
         ('mma', 'MMA'),
         ('golf', 'Golf'),
+        ('motorsports', 'Motorsports'),
+        ('esports', 'eSports'),
     ]
     
     # Basic info

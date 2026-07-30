@@ -388,71 +388,21 @@ def mark_trending_items():
 
 @shared_task
 def fetch_brave_news_for_entity(entity_id: int):
-    from apps.sports_apis.services.brave_news import brave_news_service
-
+    """
+    Brave Search Policy (agent_task.md Sections 2, 5, 6, 18):
+    Brave Search is used for source discovery (finding RSS feeds for an entity),
+    NOT for continuous article searching.
+    """
     try:
         entity = Entity.objects.get(id=entity_id, is_active=True)
     except Entity.DoesNotExist:
         return f"Entity {entity_id} not found"
 
-    articles = brave_news_service.fetch_news_for_entity(
-        entity.name, entity.type, entity.sport
-    )
+    if not entity.rss_discovery_done:
+        discover_rss_feeds_for_entity.delay(entity_id)
+        return f"Triggered Brave RSS source discovery for {entity.name}"
 
-    if not articles:
-        return f"No articles found for {entity.name}"
-
-    new_count = 0
-    for article in articles:
-        source_domain = article.get('source_domain', '')
-        source_name = article.get('source_name', 'Unknown')
-
-        if source_domain:
-            # BUG FIX: Brave news sources have no rss_url — using get_or_create
-            # on rss_url=None caused unique constraint violations in Postgres
-            # (multiple NULL rows). Match on domain instead, and only set
-            # rss_url if it doesn't conflict.
-            source, _ = Source.objects.get_or_create(
-                domain=source_domain,
-                rss_url=None,   # explicitly None = Brave-only source
-                defaults={
-                    'name': source_name,
-                    'is_active': True,
-                    'discovery_source': 'brave',
-                }
-            )
-        else:
-            source, _ = Source.objects.get_or_create(
-                name='Brave News',
-                rss_url=None,
-                defaults={
-                    'domain': 'brave.com',
-                    'is_active': True,
-                    'discovery_source': 'brave',
-                }
-            )
-
-        obj, created = FeedItem.objects.get_or_create(
-            url_hash=article['url_hash'],
-            defaults={
-                'source': source,
-                'title': article['title'],
-                'url': article['url'],
-                'summary': _strip_html(article['summary']),
-                'publisher_name': _extract_publisher(article.get('raw_summary', article['summary'])),
-                'thumbnail_url': article['thumbnail_url'],
-                'published_at': article['published_at'],
-            }
-        )
-
-        if created:
-            obj.entities.add(entity)
-            new_count += 1
-        else:
-            obj.entities.add(entity)
-
-    logger.info(f"Brave news for {entity.name}: {new_count} new articles")
-    return f"Fetched {len(articles)} articles for {entity.name}, {new_count} new"
+    return f"Entity {entity.name} already has RSS sources discovered — skipping Brave news search"
 
 
 @shared_task
