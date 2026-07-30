@@ -504,15 +504,29 @@ def ensure_entity_has_rss_source(entity_id: int):
     query_video = urllib.parse.quote(video_query_str)
     google_video_url = f"https://news.google.com/rss/search?q={query_video}&hl=en&gl=US&ceid=US:en"
 
-    video_source, _ = Source.objects.get_or_create(
-        rss_url=google_video_url,
-        defaults={
-            'name': f'YouTube Video - {entity.name}',
-            'domain': 'youtube.com',
-            'is_active': True,
-            'discovery_source': 'known',
-        }
-    )
+    video_source = Source.objects.filter(rss_url=google_video_url).first()
+
+    if not video_source:
+        video_source = Source.objects.filter(
+            entities=entity,
+            domain='youtube.com'
+        ).first()
+
+    if not video_source:
+        video_source = Source.objects.create(
+            rss_url=google_video_url,
+            name=f'YouTube Video - {entity.name}',
+            domain='youtube.com',
+            is_active=True,
+            discovery_source='known',
+        )
+    else:
+        if video_source.rss_url != google_video_url:
+            video_source.rss_url = google_video_url
+        video_source.is_active = True
+        video_source.poll_failures = 0
+        video_source.save(update_fields=['rss_url', 'is_active', 'poll_failures'])
+
     video_source.entities.add(entity)
     poll_single_source.delay(video_source.id)
 
