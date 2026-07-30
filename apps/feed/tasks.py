@@ -293,10 +293,11 @@ def poll_single_source(self, source_id: int):
         return f"Source {source_id} has no RSS url — skipping (Brave-only source)"
 
     # Auto-fix old YouTube RSS query URLs on the fly
-    if source.domain == 'youtube.com' or 'site:youtube.com' in source.rss_url:
+    if source.domain == 'youtube.com' or 'site:youtube.com' in (source.rss_url or ''):
         entity = source.entities.first()
-        if entity:
-            clean_query = urllib.parse.quote(f'"{entity.name}" site:youtube.com')
+        entity_name = entity.name if entity else source.name.replace('YouTube Video - ', '').strip()
+        if entity_name:
+            clean_query = urllib.parse.quote(f'"{entity_name}" site:youtube.com')
             clean_url = f"https://news.google.com/rss/search?q={clean_query}&hl=en&gl=US&ceid=US:en"
             if source.rss_url != clean_url:
                 source.rss_url = clean_url
