@@ -151,10 +151,10 @@ def update_statpal_fixtures_for_dates(dates: list[str] = None):
 
 @shared_task
 def update_all_fixtures():
-    """Update fixtures for all sports — past 7 days to next 30 days"""
+    """Update fixtures for all sports — past 30 days to next 60 days (agent_task.md Section 14)"""
     dates = [
         (timezone.now().date() + timedelta(days=i)).isoformat()
-        for i in range(-7, 31)
+        for i in range(-30, 61)
     ]
     update_statpal_fixtures_for_dates.delay(dates)
     logger.info(f"update_all_fixtures: Triggered update_statpal_fixtures_for_dates for {len(dates)} days.")
@@ -1273,6 +1273,35 @@ def _cricket_rows(data: dict) -> list:
                 "venue": match.get("venue", ""),
                 "raw":   match,
             })
+def _f1_rows(data: dict) -> list:
+    races_data = data.get("livescores", {}).get("tournament") or data.get("tournament") or data.get("races")
+    if not races_data:
+        return []
+
+    tournaments = races_data if isinstance(races_data, list) else [races_data]
+    rows = []
+    for tour in tournaments:
+        if not isinstance(tour, dict):
+            continue
+        race_id = str(tour.get("id", ""))
+        race_name = tour.get("name", "Formula 1 Grand Prix")
+        rows.append({
+            "external_id": f"f1_{race_id}",
+            "sport": "f1",
+            "league_id": race_id,
+            "league_name": "Formula 1",
+            "home_id": f"f1_{race_id}",
+            "home_name": race_name,
+            "away_id": None,
+            "away_name": None,
+            "home_score": None,
+            "away_score": None,
+            "status_raw": tour.get("status", "NS"),
+            "date": tour.get("date", tour.get("start_date", "")),
+            "time": tour.get("time", "00:00"),
+            "venue": tour.get("circuit", tour.get("venue", "")),
+            "raw": tour,
+        })
     return rows
 
 
@@ -1548,6 +1577,7 @@ def sync_statpal_data(self):
             ("handball", statpal_service.get_handball_fixtures, _handball_rows, {'offset': 0}),
             ("volleyball", statpal_service.get_volleyball_live, _volleyball_rows, {}),
             ("golf", statpal_service.get_golf_live, _golf_rows, {}),
+            ("f1", statpal_service.get_f1_live, _f1_rows, {}),
             ("horse_racing", lambda: statpal_service.get_horse_racing_live('uk'), _horse_racing_rows, {}),
             ("horse_racing", lambda: statpal_service.get_horse_racing_live('usa'), _horse_racing_rows, {}),
             # ("horse_racing", lambda: statpal_service.get_horse_racing_live('aus'), _horse_racing_rows, {}), # Returns HTTP 500

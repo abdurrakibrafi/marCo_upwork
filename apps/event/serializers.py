@@ -105,17 +105,38 @@ class EventSerializer(serializers.ModelSerializer):
         if nest_entity_ids:
             if instance.home_entity_id in nest_entity_ids:
                 data['nest_entity_id'] = instance.home_entity_id
+                data['nest_entity_name'] = instance.home_entity.name if instance.home_entity else ''
                 data['nest_entity_logo'] = instance.home_entity.logo_url if instance.home_entity else ''
+                data['is_nest_entity_home'] = True
+                data['opponent_entity_id'] = instance.away_entity_id
+                data['opponent_entity_name'] = instance.away_entity.name if instance.away_entity else ''
+                data['opponent_entity_logo'] = instance.away_entity.logo_url if instance.away_entity else ''
             elif instance.away_entity_id in nest_entity_ids:
                 data['nest_entity_id'] = instance.away_entity_id
+                data['nest_entity_name'] = instance.away_entity.name if instance.away_entity else ''
                 data['nest_entity_logo'] = instance.away_entity.logo_url if instance.away_entity else ''
+                data['is_nest_entity_home'] = False
+                data['opponent_entity_id'] = instance.home_entity_id
+                data['opponent_entity_name'] = instance.home_entity.name if instance.home_entity else ''
+                data['opponent_entity_logo'] = instance.home_entity.logo_url if instance.home_entity else ''
             else:
                 data['nest_entity_id'] = instance.home_entity_id
+                data['nest_entity_name'] = instance.home_entity.name if instance.home_entity else ''
                 data['nest_entity_logo'] = instance.home_entity.logo_url if instance.home_entity else ''
+                data['is_nest_entity_home'] = True
+                data['opponent_entity_id'] = instance.away_entity_id
+                data['opponent_entity_name'] = instance.away_entity.name if instance.away_entity else ''
+                data['opponent_entity_logo'] = instance.away_entity.logo_url if instance.away_entity else ''
         else:
             data['nest_entity_id'] = instance.home_entity_id
+            data['nest_entity_name'] = instance.home_entity.name if instance.home_entity else ''
             data['nest_entity_logo'] = instance.home_entity.logo_url if instance.home_entity else ''
+            data['is_nest_entity_home'] = True
+            data['opponent_entity_id'] = instance.away_entity_id
+            data['opponent_entity_name'] = instance.away_entity.name if instance.away_entity else ''
+            data['opponent_entity_logo'] = instance.away_entity.logo_url if instance.away_entity else ''
 
+        data['primary_logo_url'] = data.get('nest_entity_logo') or (instance.home_entity.logo_url if instance.home_entity else '')
         return data
 
 
