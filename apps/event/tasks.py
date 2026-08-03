@@ -1154,14 +1154,14 @@ def _soccer_rows(data: dict) -> list:
 
 
 def _generic_sport_rows(data: dict, sport_name: str) -> list:
-    """NBA, Hockey, Baseball ইত্যাদির জন্য জেনেরিক পার্সার"""
+    """Generic parser for NBA, Hockey, Baseball, etc."""
     tournaments_data = (
         data.get("livescores", {}).get("tournament")
         or data.get("scores", {}).get("tournament", {})
         or []
     )
 
-    # API কখনও dict পাঠায়, কখনও list of dicts. সবসময় list হিসেবে কাজ করা হবে।
+    # API sometimes sends dict, sometimes list of dicts. Normalize to list.
     if isinstance(tournaments_data, dict):
         tournaments_data = [tournaments_data]
 
@@ -1306,7 +1306,7 @@ def _f1_rows(data: dict) -> list:
 
 
 def _golf_position_sort_key(p):
-    """পজিশন safely int এ কনভার্ট করে। blank/'T1'/'CUT' ইত্যাদি হ্যান্ডল করে।"""
+    """Safely converts position to int. Handles blank/'T1'/'CUT', etc."""
     pos = p.get('pos', '999')
     if not pos:
         return 999
@@ -1490,8 +1490,8 @@ def _save_livescore(row: dict, event: Event):
     ls_sport = row["sport"]
     external_id = row["external_id"]
 
-    # শুধুমাত্র লাইভ ম্যাচগুলো LiveScore মডেলে রাখব।
-    # খেলা শেষ হয়ে গেলে LiveScore থেকে মুছে ফেলা হবে।
+    # Keep only live matches in LiveScore model.
+    # Delete from LiveScore once match is completed.
     if status != "live":
         LiveScore.objects.filter(sport=ls_sport, external_id=external_id).delete()
         return None

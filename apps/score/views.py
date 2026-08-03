@@ -714,7 +714,7 @@ def live_score_detail(request, score_id):
                         live_all = live_result['data'].get('live_matches', {}).get('league', [])
                         if isinstance(live_all, dict):
                             live_all = [live_all]
-                        cache.set(cache_key, live_all, 30)  # 30 সেকেন্ড cache
+                        cache.set(cache_key, live_all, 30)  # 30 seconds cache
 
                 if live_all:
                     ext_id = str(game.external_id)

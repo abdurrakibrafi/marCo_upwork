@@ -78,17 +78,13 @@ from apps.nest.models import UserNest
 
 
 """
-apps/event/views.py  — get_nest_calendar এবং get_event_detail
-
-তোমার existing views-এর সাথে merge করো।
-BaseResponseMixin, EventSerializer, UserNest — তোমার existing imports রাখো।
+apps/event/views.py — get_nest_calendar and get_event_detail
 """
 from django.db.models import Q
 from django.utils import timezone
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 
-# তোমার existing imports অনুযায়ী রাখো — নিচের lines পরিবর্তন করো না
 from apps.core.utils.mixins import BaseResponseMixin
 from apps.event.models import Event
 from apps.event.serializers import EventSerializer
@@ -264,7 +260,7 @@ def get_nest_calendar(request):
         # 5. Optional sport filter
         sport = request.query_params.get("sport")
         if sport:
-            # Entity.sport 'basketball' কিন্তু Event.sport 'nba' — তাই raw slug দিয়ে filter
+            # Entity.sport is 'basketball' but Event.sport is 'nba' — filter using raw slug
             qs = qs.filter(sport=sport.lower())
 
         # 6. Deduplicate and Serialize
