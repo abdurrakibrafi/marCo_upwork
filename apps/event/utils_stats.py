@@ -42,10 +42,26 @@ def normalize_event_stats(stats_dict: dict) -> dict:
 
     normalized = {}
 
-    # Preserve all existing primitive keys from original API response
+    # Preserve primitive keys and extract StatPal sub-dict values (e.g. {'total': '5'})
     for k, v in stats_dict.items():
         if not isinstance(v, dict):
             normalized[k] = v
+        elif isinstance(v, dict):
+            if k == "possession_percent":
+                val = v.get("total") or v.get("pct")
+                if val:
+                    normalized["possession_percent"] = str(val)
+                    normalized["ball_possession"] = str(val)
+            elif k in ["corners", "fouls", "saves", "shots", "passes", "offsides", "redcards", "yellowcards", "expected_goals", "goals_prevented"]:
+                if "total" in v and v["total"] != "":
+                    normalized[k] = v["total"]
+                if k == "shots" and "total" in v and v["total"] != "":
+                    normalized["total_shots"] = v["total"]
+                elif k == "passes":
+                    if "total" in v and v["total"] != "":
+                        normalized["total_passes"] = v["total"]
+                    if "accurate" in v and v["accurate"] != "":
+                        normalized["passes_accurate"] = v["accurate"]
 
     shots = stats_dict.get("shots") if isinstance(stats_dict.get("shots"), dict) else {}
     passes = stats_dict.get("passes") if isinstance(stats_dict.get("passes"), dict) else {}

@@ -58,6 +58,9 @@ class EventStatisticsNormalizationTestCase(TestCase):
         self.assertEqual(normalized["shot_off_goal"], 4)
         self.assertEqual(normalized["block_shots"], 4)
         self.assertEqual(normalized["pass_accuracy"], "84%")
+        self.assertEqual(normalized["fouls"], 8)
+        self.assertEqual(normalized["corners"], 5)
+        self.assertEqual(normalized["possession_percent"], "58")
 
     def test_normalize_api_sports_flat_stats(self):
         from apps.event.utils_stats import normalize_event_stats
