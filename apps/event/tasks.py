@@ -247,8 +247,8 @@ def _populate_statpal_event_details(event):
     """
     meta = event.metadata or {}
     
-    # 1. Fetch soccer stats if they are missing from metadata
-    if event.sport == 'soccer' and not meta.get('event_summary') and not meta.get('team_stats') and event.league:
+    # 1. Fetch soccer stats if team_stats is missing from metadata
+    if event.sport == 'soccer' and not meta.get('team_stats') and event.league:
         try:
             league_id = int(event.league.external_id)
             # Skip league 3962 because it returns HTTP 404, and honor inactive league status
@@ -264,10 +264,22 @@ def _populate_statpal_event_details(event):
                     for m in matches:
                         if not isinstance(m, dict):
                             continue
-                        if str(m.get('main_id')) == str(event.external_id) or str(m.get('id')) == str(event.external_id):
-                            event.metadata = m
+                        ext_id = str(event.external_id)
+                        match_ids = {
+                            str(m.get('main_id', '')),
+                            str(m.get('fallback_id_1', '')),
+                            str(m.get('fallback_id_2', '')),
+                            str(m.get('fallback_id_3', '')),
+                            str(m.get('id', '')),
+                        }
+                        if ext_id in match_ids:
+                            # Merge fetched match stats into event metadata
+                            if event.metadata:
+                                event.metadata.update(m)
+                            else:
+                                event.metadata = m
                             event.save(update_fields=['metadata'])
-                            meta = m
+                            meta = event.metadata
                             break
         except Exception as e:
             logger.warning(f"Failed to fetch soccer match stats for event {event.id}: {e}")

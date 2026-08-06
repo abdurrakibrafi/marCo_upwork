@@ -318,7 +318,7 @@ def get_event_detail(request, event_id: int):
         is_completed = (event.status == "completed") or (
             event.status == "upcoming" and event.start_time and event.start_time < timezone.now()
         )
-        if is_completed and not event.metadata.get("details_fetched"):
+        if is_completed and (not event.metadata.get("details_fetched") or (event.sport == "soccer" and not event.metadata.get("team_stats"))):
             if event.api_source == "statpal":
                 from apps.event.tasks import _on_the_fly_update_statpal_event
                 try:
