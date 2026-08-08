@@ -407,9 +407,18 @@ def get_team_stats(request, team_id):
     )
     api_season = int(str(season).split('-', 1)[0])
  
-    # 1 — try DB first
+    # 1 — try DB first (only return from DB if played > 0)
     stats = EntityStats.objects.filter(entity=team_entity, season=stats_season).first()
-    if stats and stats.stats_data:
+    has_valid_db_stats = (
+        stats and stats.stats_data and 
+        (stats.stats_data.get('played', 0) > 0 or stats.stats_data.get('matches_played', 0) > 0)
+    )
+
+    if not team_entity.logo_url or 'api-sports' in team_entity.logo_url:
+        _fetch_soccer_team_stats_thesportsdb(team_entity)
+        team_entity.refresh_from_db()
+
+    if has_valid_db_stats:
         return Response({
             'team': EntitySerializer(team_entity, context={'request': request}).data,
             'season': stats_season,
