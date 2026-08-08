@@ -172,5 +172,27 @@ def normalize_event_stats(stats_dict: dict) -> dict:
     else:
         normalized["pass_accuracy"] = None
 
-    # Omit all None fields so response only includes available data
-    return {k: v for k, v in normalized.items() if v is not None}
+    DEFAULT_KEYS = {
+        'fouls': '0',
+        'saves': '0',
+        'shots': '0',
+        'passes': '0',
+        'corners': '0',
+        'offsides': '0',
+        'redcards': '0',
+        'yellowcards': '0',
+        'expected_goals': '0',
+        'goals_prevented': '0',
+        'possession_percent': '0%',
+        'shot_on_goal': '0',
+        'shot_off_goal': '0',
+        'block_shots': '0',
+        'pass_accuracy': '0%',
+        'substitution': '0',
+        'penalties': '0',
+    }
+    for k, default_val in DEFAULT_KEYS.items():
+        if k not in normalized or normalized[k] is None:
+            normalized[k] = default_val
+
+    return normalized

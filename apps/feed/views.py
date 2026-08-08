@@ -85,11 +85,12 @@ def get_nest_feed(request):
     limit = request.GET.get('limit', '10')
     sort = request.GET.get('sort', 'newest').strip().lower()
     raw_filter_str = request.GET.get('filter', '')
+    raw_type_str = request.GET.get('type', '')
     source_id_str = request.GET.get('source_id', '')
     q_str = request.GET.get('q', '').strip()
 
     # 1. Fast Cache Layer (Sub-10ms response for repeated requests)
-    cache_key = f"nest_feed:{request.user.id}:p{page}:l{limit}:s{sort}:f{raw_filter_str}:src{source_id_str}:q{q_str}"
+    cache_key = f"nest_feed:{request.user.id}:p{page}:l{limit}:s{sort}:f{raw_filter_str}:t{raw_type_str}:src{source_id_str}:q{q_str}"
     cached_data = cache.get(cache_key)
     if cached_data:
         return Response(cached_data)
@@ -121,9 +122,9 @@ def get_nest_feed(request):
     ).values_list('source_id', flat=True))
  
     # Subquery lookup for max performance
-    nest_item_ids_qs = FeedItem.entities.through.objects.filter(
+    nest_item_ids_qs = list(FeedItem.entities.through.objects.filter(
         entity_id__in=nest_entity_ids
-    ).values_list('feeditem_id', flat=True)
+    ).values_list('feeditem_id', flat=True).distinct())
 
     if user_custom_source_ids:
         feed = FeedItem.objects.filter(
@@ -132,7 +133,7 @@ def get_nest_feed(request):
     else:
         feed = FeedItem.objects.filter(
             id__in=nest_item_ids_qs
-        )
+        ).distinct()
 
     feed = feed.exclude(
         source_id__in=hidden_source_ids
@@ -140,8 +141,8 @@ def get_nest_feed(request):
         publisher_name__in=hidden_publishers
     ).select_related('source').prefetch_related('entities')
     
-    # Apply filters
-    raw_filters = request.GET.getlist('filter')
+    # Apply filters (supports both 'type' and 'filter' query parameters)
+    raw_filters = request.GET.getlist('type') + request.GET.getlist('filter')
     filters = []
     for rf in raw_filters:
         if rf:
@@ -158,7 +159,10 @@ def get_nest_feed(request):
     }
     selected_entity_types = [entity_type_map.get(f) for f in filters if f in entity_type_map]
     if selected_entity_types:
-        feed = feed.filter(entities__type__in=selected_entity_types)
+        matching_item_ids = list(FeedItem.objects.filter(
+            entities__type__in=selected_entity_types
+        ).values_list('id', flat=True).distinct())
+        feed = feed.filter(id__in=matching_item_ids)
 
     # content type filters (News/Videos/Articles)
     if 'video' in filters or 'videos' in filters:
@@ -206,6 +210,8 @@ def get_nest_feed(request):
     else:
         feed = feed.order_by('-published_at')
     
+    feed = feed.distinct()
+
     # Paginate
     paginator = FeedPagination()
     paginated_feed = paginator.paginate_queryset(feed, request)

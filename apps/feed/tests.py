@@ -50,6 +50,14 @@ class FeedTestCase(TestCase):
         self.assertEqual(len(ids), 1)
         self.assertEqual(ids[0], self.feed_item.id)
 
+    def test_nest_feed_type_parameter_support(self):
+        # Test that ?type=teams correctly filters feed items
+        url = "/api/feed/nest/?type=teams"
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, 200)
+        results = response.data.get("results", [])
+        self.assertEqual(len(results), 1)
+
     def test_national_team_sports_context_filtering(self):
         from apps.feed.tasks import _entity_matches_text
         
