@@ -97,53 +97,7 @@ def get_nest_feed(request):
     if cached_data:
         return Response(cached_data)
 
-    # Get user's nest entities
-    nest_entity_ids = list(UserNest.objects.filter(
-        user=request.user
-    ).values_list('entity_id', flat=True))
-    
-    if not nest_entity_ids:
-        return Response({
-            'message': 'No entities in your nest',
-            'count': 0,
-            'next': None,
-            'previous': None,
-            'results': []
-        })
-    
-    # Get hidden sources and publishers
-    hidden_sources_qs = HiddenSource.objects.filter(user=request.user)
-    hidden_source_ids = list(hidden_sources_qs.filter(source__isnull=False).values_list('source_id', flat=True))
-    hidden_publishers = list(hidden_sources_qs.exclude(publisher_name='').values_list('publisher_name', flat=True))
- 
-    # Get user's manually added custom sources
-    from apps.source.models import UserCustomSource
-    user_custom_source_ids = list(UserCustomSource.objects.filter(
-        user=request.user,
-        is_active=True,
-    ).values_list('source_id', flat=True))
- 
-    # Subquery lookup for max performance
-    nest_item_ids_qs = list(FeedItem.entities.through.objects.filter(
-        entity_id__in=nest_entity_ids
-    ).values_list('feeditem_id', flat=True).distinct())
-
-    if user_custom_source_ids:
-        feed = FeedItem.objects.filter(
-            Q(id__in=nest_item_ids_qs) | Q(source_id__in=user_custom_source_ids)
-        ).distinct()
-    else:
-        feed = FeedItem.objects.filter(
-            id__in=nest_item_ids_qs
-        ).distinct()
-
-    feed = feed.exclude(
-        source_id__in=hidden_source_ids
-    ).exclude(
-        publisher_name__in=hidden_publishers
-    ).select_related('source').prefetch_related('entities')
-    
-    # Apply filters (supports both 'type' and 'filter' query parameters)
+    # Extract filters (supports both 'type' and 'filter' query parameters)
     raw_filters = request.GET.getlist('type') + request.GET.getlist('filter')
     filters = []
     for rf in raw_filters:
@@ -160,8 +114,61 @@ def get_nest_feed(request):
         'leagues': 'league',
     }
     selected_entity_types = [entity_type_map.get(f) for f in filters if f in entity_type_map]
+
+    # Get user's nest entities (filtered by requested entity type if specified)
+    nest_qs = UserNest.objects.filter(user=request.user)
     if selected_entity_types:
+        nest_qs = nest_qs.filter(entity__type__in=selected_entity_types)
+
+    nest_entity_ids = list(nest_qs.values_list('entity_id', flat=True))
+    
+    # Get user's manually added custom sources
+    from apps.source.models import UserCustomSource
+    user_custom_source_ids = list(UserCustomSource.objects.filter(
+        user=request.user,
+        is_active=True,
+    ).values_list('source_id', flat=True))
+
+    if not nest_entity_ids and not user_custom_source_ids:
+        return Response({
+            'message': 'No matching entities in your nest',
+            'count': 0,
+            'next': None,
+            'previous': None,
+            'results': []
+        })
+    
+    # Get hidden sources and publishers
+    hidden_sources_qs = HiddenSource.objects.filter(user=request.user)
+    hidden_source_ids = list(hidden_sources_qs.filter(source__isnull=False).values_list('source_id', flat=True))
+    hidden_publishers = list(hidden_sources_qs.exclude(publisher_name='').values_list('publisher_name', flat=True))
+ 
+    # Subquery lookup for max performance
+    if nest_entity_ids:
+        nest_item_ids_qs = list(FeedItem.entities.through.objects.filter(
+            entity_id__in=nest_entity_ids
+        ).values_list('feeditem_id', flat=True).distinct())
+    else:
+        nest_item_ids_qs = []
+
+    if user_custom_source_ids and nest_item_ids_qs:
+        feed = FeedItem.objects.filter(
+            Q(id__in=nest_item_ids_qs) | Q(source_id__in=user_custom_source_ids)
+        ).distinct()
+    elif user_custom_source_ids:
+        feed = FeedItem.objects.filter(source_id__in=user_custom_source_ids).distinct()
+    else:
+        feed = FeedItem.objects.filter(id__in=nest_item_ids_qs).distinct()
+
+    feed = feed.exclude(
+        source_id__in=hidden_source_ids
+    ).exclude(
+        publisher_name__in=hidden_publishers
+    ).select_related('source').prefetch_related('entities')
+
+    if selected_entity_types and nest_entity_ids:
         matching_item_ids = list(FeedItem.objects.filter(
+            entities__id__in=nest_entity_ids,
             entities__type__in=selected_entity_types
         ).values_list('id', flat=True).distinct())
         feed = feed.filter(id__in=matching_item_ids)
