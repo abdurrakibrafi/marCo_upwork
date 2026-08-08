@@ -368,6 +368,7 @@ def get_event_detail(request, event_id: int):
                         'substitutions': str(team_tl.filter(event_type='substitution').count()),
                         'ft_home': str(event.home_score or 0),
                         'ft_away': str(event.away_score or 0),
+                        'is_fallback': True,
                     }
                     EventStatistics.objects.update_or_create(
                         event=event,
