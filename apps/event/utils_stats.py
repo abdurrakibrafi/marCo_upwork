@@ -27,9 +27,12 @@ def normalize_event_stats(stats_dict: dict) -> dict:
     if not stats_dict or not isinstance(stats_dict, dict):
         return {}
 
-    # Check if there is at least one meaningful match stat in stats_dict
+    # Ignore basic score & side metadata when checking for team performance stats
+    SCORE_AND_SIDE_KEYS = {'side', 'et_away', 'et_home', 'ft_away', 'ft_home', 'ht_away', 'ht_home', 'score', 'runs'}
     has_real_data = False
     for k, v in stats_dict.items():
+        if k in SCORE_AND_SIDE_KEYS:
+            continue
         if isinstance(v, dict) and v:
             has_real_data = True
             break
