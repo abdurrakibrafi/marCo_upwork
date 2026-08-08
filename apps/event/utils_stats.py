@@ -54,8 +54,12 @@ def normalize_event_stats(stats_dict: dict) -> dict:
 
     if 'goals' in stats_dict:
         normalized['goals'] = str(stats_dict['goals'])
-    if 'substitutions' in stats_dict:
-        normalized['substitutions'] = str(stats_dict['substitutions'])
+    if 'substitutions' in stats_dict or 'substitution' in stats_dict:
+        normalized['substitution'] = str(stats_dict.get('substitution') or stats_dict.get('substitutions'))
+    if 'formation' in stats_dict and stats_dict['formation']:
+        normalized['formation'] = str(stats_dict['formation'])
+    if 'penalties' in stats_dict and stats_dict['penalties'] is not None and stats_dict['penalties'] != "":
+        normalized['penalties'] = str(stats_dict['penalties'])
     if 'ft_home' in stats_dict:
         normalized['ft_home'] = str(stats_dict['ft_home'])
     if 'ft_away' in stats_dict:

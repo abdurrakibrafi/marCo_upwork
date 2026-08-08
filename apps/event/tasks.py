@@ -415,6 +415,11 @@ def _populate_statpal_event_details(event):
                     continue
                 stats_dict = team_stats.get(side, {})
                 if isinstance(stats_dict, dict):
+                    lineups = meta.get('lineups', {})
+                    if isinstance(lineups, dict) and side in lineups and isinstance(lineups[side], dict):
+                        stats_dict['formation'] = lineups[side].get('formation')
+                    if meta.get('penalties'):
+                        stats_dict['penalties'] = meta.get('penalties')
                     flat_stats = normalize_event_stats(stats_dict)
                     if flat_stats:
                         has_statpal_team_stats = True
