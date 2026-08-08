@@ -287,6 +287,57 @@ def get_entity_standings(request, entity_id):
 # ─────────────────────────────────────────────────────────────────────────────
 # TEAM STATS  — DB first, live API fallback
 # ─────────────────────────────────────────────────────────────────────────────
+def _fetch_soccer_team_stats_thesportsdb(team_name):
+    """Fallback: Search team on TheSportsDB API and calculate stats from recent match events."""
+    try:
+        import requests
+        url = f"https://www.thesportsdb.com/api/v1/json/3/searchteams.php?t={team_name}"
+        res = requests.get(url, timeout=5)
+        if res.status_code == 200:
+            teams = res.json().get('teams') or []
+            if teams:
+                team_id = teams[0].get('idTeam')
+                events_res = requests.get(f"https://www.thesportsdb.com/api/v1/json/3/eventslast.php?id={team_id}", timeout=5)
+                if events_res.status_code == 200:
+                    results = events_res.json().get('results') or []
+                    wins = losses = draws = 0
+                    goals_for = goals_against = 0
+                    for ev in results:
+                        status = str(ev.get('strStatus', '')).upper()
+                        if status in ('FT', 'AET', 'PEN', 'FINISHED', 'COMPLETED', ''):
+                            is_home = (str(ev.get('idHomeTeam')) == str(team_id))
+                            try:
+                                h_score = int(ev.get('intHomeScore') or 0)
+                                a_score = int(ev.get('intAwayScore') or 0)
+                                t_score = h_score if is_home else a_score
+                                o_score = a_score if is_home else h_score
+                                goals_for += t_score
+                                goals_against += o_score
+                                if t_score > o_score:
+                                    wins += 1
+                                elif t_score < o_score:
+                                    losses += 1
+                                else:
+                                    draws += 1
+                            except (ValueError, TypeError):
+                                pass
+                    played = wins + losses + draws
+                    if played > 0:
+                        return {
+                            'form': '',
+                            'played': played,
+                            'wins': wins,
+                            'draws': draws,
+                            'losses': losses,
+                            'goals_for': goals_for,
+                            'goals_against': goals_against,
+                            'win_percentage': round(wins / played * 100, 1),
+                        }
+    except Exception:
+        pass
+    return {}
+
+
 def _fetch_stats_from_db_events(team_entity):
     """Fallback: Calculate team stats from completed Event records in local DB or return clean default structure."""
     from apps.event.models import Event
@@ -361,12 +412,10 @@ def get_team_stats(request, team_id):
  
     if team_entity.sport == 'soccer':
         stats_data = _fetch_soccer_team_stats_statpal(team_entity.external_id, api_season)
+        if not stats_data:
+            stats_data = _fetch_soccer_team_stats_thesportsdb(team_entity.name)
         if not stats_data and team_entity.api_source == 'api_sports':
             stats_data = _fetch_soccer_team_stats(team_entity.external_id, api_season)
-    
-    # Fallback to local DB Event calculation if live APIs return empty / quota limit
-    if not stats_data:
-        stats_data = _fetch_stats_from_db_events(team_entity)
  
     elif team_entity.sport == 'basketball':
         # Always use StatPal standings (balldontlie is no longer in use)
@@ -386,6 +435,10 @@ def get_team_stats(request, team_id):
  
     # tennis / golf / mma / f1 have no team-standings API — return empty gracefully
  
+    # Fallback to local DB Event calculation if live APIs return empty
+    if not stats_data:
+        stats_data = _fetch_stats_from_db_events(team_entity)
+
     # 3 — save to DB so next call is instant
     if stats_data:
         EntityStats.objects.update_or_create(
