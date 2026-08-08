@@ -51,6 +51,9 @@ class EntitySerializer(serializers.ModelSerializer):
         ]
     
     def get_in_nest(self, obj):
+        user_nest_entity_ids = self.context.get('user_nest_entity_ids')
+        if user_nest_entity_ids is not None:
+            return obj.id in user_nest_entity_ids
         request = self.context.get('request')
         user = getattr(request, 'user', None)
         if request and user and user.is_authenticated:

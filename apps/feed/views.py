@@ -48,6 +48,9 @@ def build_feed_serializer_context(request, paginated_feed, selected_entity_types
     page_item_ids = [item.id for item in items_list]
 
     if request and request.user and request.user.is_authenticated:
+        context['user_nest_entity_ids'] = set(
+            UserNest.objects.filter(user=request.user).values_list('entity_id', flat=True)
+        )
         context['user_bookmarked_ids'] = set(
             Bookmark.objects.filter(user=request.user, feed_item_id__in=page_item_ids)
             .values_list('feed_item_id', flat=True)
@@ -218,8 +221,6 @@ def get_nest_feed(request):
         feed = feed.annotate(like_count=Count('liked_by')).order_by('like_count', '-published_at')
     else:
         feed = feed.order_by('-published_at')
-    
-    feed = feed.distinct()
 
     # Paginate
     paginator = FeedPagination()
