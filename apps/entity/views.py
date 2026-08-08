@@ -287,16 +287,26 @@ def get_entity_standings(request, entity_id):
 # ─────────────────────────────────────────────────────────────────────────────
 # TEAM STATS  — DB first, live API fallback
 # ─────────────────────────────────────────────────────────────────────────────
-def _fetch_soccer_team_stats_thesportsdb(team_name):
-    """Fallback: Search team on TheSportsDB API and calculate stats from recent match events."""
+def _fetch_soccer_team_stats_thesportsdb(team_entity):
+    """Fallback: Search team on TheSportsDB API, calculate stats, and update logo_url from TheSportsDB."""
     try:
         import requests
+        team_name = team_entity.name if hasattr(team_entity, 'name') else str(team_entity)
         url = f"https://www.thesportsdb.com/api/v1/json/3/searchteams.php?t={team_name}"
         res = requests.get(url, timeout=5)
         if res.status_code == 200:
             teams = res.json().get('teams') or []
             if teams:
-                team_id = teams[0].get('idTeam')
+                team_data = teams[0]
+                team_id = team_data.get('idTeam')
+
+                # Replace api-sports logo_url with TheSportsDB badge URL
+                badge = team_data.get('strBadge') or team_data.get('strLogo')
+                if badge and hasattr(team_entity, 'logo_url'):
+                    if not team_entity.logo_url or 'api-sports' in team_entity.logo_url:
+                        team_entity.logo_url = badge
+                        team_entity.save(update_fields=['logo_url'])
+
                 events_res = requests.get(f"https://www.thesportsdb.com/api/v1/json/3/eventslast.php?id={team_id}", timeout=5)
                 if events_res.status_code == 200:
                     results = events_res.json().get('results') or []
@@ -413,7 +423,7 @@ def get_team_stats(request, team_id):
     if team_entity.sport == 'soccer':
         stats_data = _fetch_soccer_team_stats_statpal(team_entity.external_id, api_season)
         if not stats_data:
-            stats_data = _fetch_soccer_team_stats_thesportsdb(team_entity.name)
+            stats_data = _fetch_soccer_team_stats_thesportsdb(team_entity)
         if not stats_data and team_entity.api_source == 'api_sports':
             stats_data = _fetch_soccer_team_stats(team_entity.external_id, api_season)
  
