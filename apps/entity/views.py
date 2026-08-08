@@ -1273,8 +1273,8 @@ def get_league_standings(request, league_id):
     league_entity = league_entity.canonical_entity or league_entity
     season = request.GET.get('season') or str(_current_season('soccer'))
     return _get_standings_for_league(request, league_entity, season)
- 
- 
+
+
 def _get_standings_for_league(request, league_entity, season, highlight_team_id=None):
     """
     Shared logic used by both get_league_standings and get_team_standings.
@@ -1286,17 +1286,17 @@ def _get_standings_for_league(request, league_entity, season, highlight_team_id=
         api_source=league_entity.api_source,
         external_id=league_entity.external_id,
     ).first() or league_entity
- 
+
     # Try DB first
     teams_in_league = Team.objects.filter(
         league__api_source=canonical.api_source,
         league__external_id=canonical.external_id,
         entity__type='team',
     ).select_related('entity')
- 
+
     standings = []
     has_db_data = False
- 
+
     for team in teams_in_league:
         stats = EntityStats.objects.filter(
             entity=team.entity, season=str(season), stat_type='season'
@@ -1312,17 +1312,15 @@ def _get_standings_for_league(request, league_entity, season, highlight_team_id=
             'points':     stats.stats_data.get('points', 0) if stats else 0,
             'played':     stats.stats_data.get('played', 0) if stats else 0,
             'wins':       stats.stats_data.get('wins') or stats.stats_data.get('win', team.total_wins) if stats else team.total_wins,
-
             'draws':      stats.stats_data.get('draws') or stats.stats_data.get('draw', 0) if stats else 0,
-
             'losses':     stats.stats_data.get('losses') or stats.stats_data.get('lose', team.total_losses) if stats else team.total_losses,
             'goals_for':  stats.stats_data.get('goals_for', 0) if stats else 0,
             'goals_against': stats.stats_data.get('goals_against', 0) if stats else 0,
             'goal_diff':  stats.stats_data.get('goal_diff', 0) if stats else 0,
             'form':       stats.stats_data.get('form', '') if stats else '',
-            'is_highlighted': str(team.entity.external_id) == str(highlight_team_id),
+            'is_highlighted': str(team.entity.external_id) == str(highlight_team_id) or str(team.entity.id) == str(highlight_team_id),
         })
- 
+
     if has_db_data:
         standings.sort(key=lambda x: (
             -x['points'],
@@ -1333,73 +1331,75 @@ def _get_standings_for_league(request, league_entity, season, highlight_team_id=
         for i, item in enumerate(standings, 1):
             item['rank'] = i
         return Response({
-            'league':   EntitySerializer(league_entity, context={'request': request}).data,
-            'season':   season,
+            'league':    EntitySerializer(league_entity, context={'request': request}).data,
+            'season':    season,
             'standings': standings,
-            'source':   'db',
+            'source':    'db',
         })
- 
-    # Live API fallback — only for soccer/api_sports for now
+
+    # Live API fallback — try API-Sports first, then TheSportsDB
+    live_standings = []
     if canonical.api_source == 'api_sports':
         live_standings = _fetch_soccer_standings(canonical.external_id, int(season))
-        if live_standings:
-            # Write each team's standing back to DB
-            for row in live_standings:
-                team_entity = Entity.objects.filter(
-                    api_source='api_sports', external_id=str(row['team_external_id'])
-                ).first()
-                if team_entity:
-                    EntityStats.objects.update_or_create(
-                        entity=team_entity,
-                        season=str(season),
-                        stat_type='season',
-                        defaults={'stats_data': row},
-                    )
-                    # Also update win/loss on Team model
-                    try:
-                        t = team_entity.team_details
-                        t.total_wins   = row.get('win', 0)
-                        t.total_losses = row.get('lose', 0)
-                        played = row.get('played', 0)
-                        t.win_percentage = round(row.get('win', 0) / played * 100, 2) if played else 0
-                        t.save(update_fields=['total_wins', 'total_losses', 'win_percentage'])
-                    except Exception:
-                        pass
- 
-            # Build response from live data
-            live_response = []
-            for row in live_standings:
-                live_response.append({
-                    'rank':      row.get('rank', 0),
-                    'team_id':   None,  # client can look up by name if needed
-                    'team_name': row.get('team_name', ''),
-                    'logo':      row.get('team_logo', ''),
-                    'points':    row.get('points', 0),
-                    'played':    row.get('played', 0),
-                    'wins':      row.get('win', 0),
-                    'draws':     row.get('draw', 0),
-                    'losses':    row.get('lose', 0),
-                    'goals_for': row.get('goals_for', 0),
-                    'goals_against': row.get('goals_against', 0),
-                    'goal_diff': row.get('goal_diff', 0),
-                    'form':      row.get('form', ''),
-                    'is_highlighted': str(row.get('team_external_id')) == str(highlight_team_id),
-                })
-            live_response.sort(key=lambda x: (
-                -x['points'],
-                -x['goal_diff'],
-                -x['goals_for'],
-                x['team_name'].lower(),
-            ))
-            for i, item in enumerate(live_response, 1):
-                item['rank'] = i
-            return Response({
-                'league':    EntitySerializer(league_entity, context={'request': request}).data,
-                'season':    season,
-                'standings': live_response,
-                'source':    'live_api',
+
+    if not live_standings:
+        live_standings = _fetch_league_standings_thesportsdb(canonical, season)
+
+    if live_standings:
+        # Write each team's standing back to DB if matching Entity exists
+        for row in live_standings:
+            team_entity = Entity.objects.filter(
+                name__iexact=row.get('team_name')
+            ).first() or (
+                Entity.objects.filter(api_source='api_sports', external_id=str(row.get('team_external_id'))).first()
+                if row.get('team_external_id') else None
+            )
+            if team_entity:
+                EntityStats.objects.update_or_create(
+                    entity=team_entity,
+                    season=str(season),
+                    stat_type='season',
+                    defaults={'stats_data': row},
+                )
+
+        # Build response from live data
+        live_response = []
+        for row in live_standings:
+            team_ent = Entity.objects.filter(name__iexact=row.get('team_name')).first()
+            live_response.append({
+                'rank':      row.get('rank', 0),
+                'team_id':   team_ent.id if team_ent else None,
+                'team_name': row.get('team_name', ''),
+                'logo':      row.get('team_logo', ''),
+                'points':    row.get('points', 0),
+                'played':    row.get('played', 0),
+                'wins':      row.get('win', 0),
+                'draws':     row.get('draw', 0),
+                'losses':    row.get('lose', 0),
+                'goals_for': row.get('goals_for', 0),
+                'goals_against': row.get('goals_against', 0),
+                'goal_diff': row.get('goal_diff', 0),
+                'form':      row.get('form', ''),
+                'is_highlighted': (
+                    str(row.get('team_external_id')) == str(highlight_team_id) or
+                    (team_ent and str(team_ent.id) == str(highlight_team_id))
+                ),
             })
- 
+        live_response.sort(key=lambda x: (
+            -x['points'],
+            -x['goal_diff'],
+            -x['goals_for'],
+            x['team_name'].lower(),
+        ))
+        for i, item in enumerate(live_response, 1):
+            item['rank'] = i
+        return Response({
+            'league':    EntitySerializer(league_entity, context={'request': request}).data,
+            'season':    season,
+            'standings': live_response,
+            'source':    'live_api',
+        })
+
     # Nothing available
     return Response({
         'league':    EntitySerializer(league_entity, context={'request': request}).data,
@@ -1407,6 +1407,65 @@ def _get_standings_for_league(request, league_entity, season, highlight_team_id=
         'standings': standings,
         'source':    'empty',
     })
+
+
+def _fetch_league_standings_thesportsdb(league_entity, season):
+    """Fallback: Search league on TheSportsDB API and fetch lookup table standings."""
+    try:
+        import requests
+        league_name = league_entity.name if hasattr(league_entity, 'name') else str(league_entity)
+        league_id = None
+
+        if getattr(league_entity, 'api_source', '') == 'thesportsdb':
+            league_id = league_entity.external_id
+
+        if not league_id:
+            res = requests.get('https://www.thesportsdb.com/api/v1/json/3/all_leagues.php', timeout=5)
+            if res.status_code == 200:
+                leagues = res.json().get('leagues') or []
+                for l in leagues:
+                    str_lg = str(l.get('strLeague', '')).lower()
+                    lg_lower = league_name.lower()
+                    if lg_lower in str_lg or str_lg in lg_lower:
+                        league_id = l.get('idLeague')
+                        break
+
+        if league_id:
+            s_year = int(str(season).split('-', 1)[0])
+            s_param = f"{s_year}-{s_year+1}"
+            tbl_url = f"https://www.thesportsdb.com/api/v1/json/3/lookuptable.php?l={league_id}&s={s_param}"
+            tbl_res = requests.get(tbl_url, timeout=5)
+            table = []
+            if tbl_res.status_code == 200:
+                table = tbl_res.json().get('table') or []
+            if not table:
+                tbl_url = f"https://www.thesportsdb.com/api/v1/json/3/lookuptable.php?l={league_id}&s={s_year}"
+                tbl_res = requests.get(tbl_url, timeout=5)
+                if tbl_res.status_code == 200:
+                    table = tbl_res.json().get('table') or []
+
+            rows = []
+            for row in table:
+                rows.append({
+                    'rank': int(row.get('intRank') or 0),
+                    'team_external_id': str(row.get('idTeam') or ''),
+                    'team_name': str(row.get('strTeam') or ''),
+                    'team_logo': str(row.get('strBadge') or row.get('strLogo') or ''),
+                    'points': int(row.get('intPoints') or 0),
+                    'played': int(row.get('intPlayed') or 0),
+                    'win': int(row.get('intWin') or 0),
+                    'draw': int(row.get('intDraw') or 0),
+                    'lose': int(row.get('intLoss') or 0),
+                    'goals_for': int(row.get('intGoalsFor') or 0),
+                    'goals_against': int(row.get('intGoalsAgainst') or 0),
+                    'goal_diff': int(row.get('intGoalDifference') or 0),
+                    'form': str(row.get('strForm') or ''),
+                })
+            return rows
+    except Exception:
+        pass
+ 
+    return []
  
  
 def _fetch_soccer_standings(external_id, season):
