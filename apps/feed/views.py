@@ -34,8 +34,10 @@ class FeedPagination(PageNumberPagination):
     max_page_size = 50
 
 
-def build_feed_serializer_context(request, paginated_feed):
+def build_feed_serializer_context(request, paginated_feed, selected_entity_types=None):
     context = {'request': request}
+    if selected_entity_types:
+        context['selected_entity_types'] = selected_entity_types
     if not paginated_feed:
         return context
 
@@ -216,7 +218,7 @@ def get_nest_feed(request):
     paginator = FeedPagination()
     paginated_feed = paginator.paginate_queryset(feed, request)
     
-    context = build_feed_serializer_context(request, paginated_feed)
+    context = build_feed_serializer_context(request, paginated_feed, selected_entity_types=selected_entity_types)
     serializer = FeedItemCompactSerializer(paginated_feed, many=True, context=context)
     
     res_data = paginator.get_paginated_response(serializer.data).data

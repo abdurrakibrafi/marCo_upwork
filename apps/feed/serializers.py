@@ -124,25 +124,36 @@ class FeedItemCompactSerializer(serializers.ModelSerializer):
             return resolve_real_article_url(obj.url)
         return obj.url
 
+    def _get_primary_entity(self, obj):
+        selected_entity_types = self.context.get('selected_entity_types')
+        entities = list(obj.entities.all())
+        if not entities:
+            return None
+        if selected_entity_types:
+            for e in entities:
+                if e.type in selected_entity_types:
+                    return e
+        return entities[0]
+
     def get_entity_name(self, obj):
-        entity = obj.entities.first()
+        entity = self._get_primary_entity(obj)
         return entity.name if entity else ''
 
     def get_entity_logo(self, obj):
-        entity = obj.entities.first()
+        entity = self._get_primary_entity(obj)
         return entity.logo_url if entity else ''
 
     def get_entity_names(self, obj):
         return [e.name for e in obj.entities.all()]
 
     def get_source_name(self, obj):
-        entity = obj.entities.first()
+        entity = self._get_primary_entity(obj)
         if entity:
             return entity.name
         return getattr(obj.source, 'name', '')
 
     def get_source_logo(self, obj):
-        entity = obj.entities.first()
+        entity = self._get_primary_entity(obj)
         if entity and entity.logo_url:
             return entity.logo_url
         return self.get_publisher_logo(obj)
