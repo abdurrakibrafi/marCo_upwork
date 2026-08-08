@@ -287,7 +287,6 @@ def _populate_statpal_event_details(event):
     # 2. Parse soccer-specific metadata structure
     if event.sport == 'soccer':
         EventTimeline.objects.filter(event=event).delete()
-        EventStatistics.objects.filter(event=event).delete()
         EventLineup.objects.filter(event=event).delete()
 
         summary = meta.get('event_summary', {})
@@ -411,11 +410,12 @@ def _populate_statpal_event_details(event):
                 stats_dict = team_stats.get(side, {})
                 if isinstance(stats_dict, dict):
                     flat_stats = normalize_event_stats(stats_dict)
-                    EventStatistics.objects.update_or_create(
-                        event=event,
-                        team=team_entity,
-                        defaults={'stats': flat_stats}
-                    )
+                    if flat_stats:
+                        EventStatistics.objects.update_or_create(
+                            event=event,
+                            team=team_entity,
+                            defaults={'stats': flat_stats}
+                        )
 
         # Populate EventLineups
         lineups = meta.get('lineups', {})
@@ -440,12 +440,14 @@ def _populate_statpal_event_details(event):
                             'soccer',
                             entity_type='athlete'
                         )
-                        EventLineup.objects.create(
+                        EventLineup.objects.update_or_create(
                             event=event,
                             team=team_entity,
                             player=player_entity,
-                            position_type=player_pos or '',
-                            jersey_number=int(player_number) if str(player_number).isdigit() else None
+                            defaults={
+                                'position_type': player_pos or '',
+                                'jersey_number': int(player_number) if str(player_number).isdigit() else None
+                            }
                         )
 
         ft = meta.get('ft')
