@@ -16,13 +16,13 @@ logger = logging.getLogger(__name__)
 
 def normalize_event_stats(stats_dict: dict) -> dict:
     """
-    Normalizes team statistics. Preserves existing match stats from API sources
-    and appends ONLY the 4 specific requested fields:
-      - shot_on_goal
-      - shot_off_goal
-      - block_shots
-      - pass_accuracy
-    Returns {} if no real match statistics exist.
+    Normalizes team statistics according to fixed schema.
+    Always includes the fixed field set:
+      fouls, saves, shots, passes, corners, offsides, redcards, yellowcards,
+      expected_goals, goals_prevented, possession_percent, shot_on_goal,
+      shot_off_goal, block_shots, pass_accuracy
+    If a metric is present in stats_dict -> real string value is returned.
+    If a metric is missing/empty -> None (JSON null) is returned.
     """
     if not stats_dict or not isinstance(stats_dict, dict):
         return {}
@@ -46,127 +46,127 @@ def normalize_event_stats(stats_dict: dict) -> dict:
     if not has_real_data:
         return {}
 
-    normalized = {}
+    is_fallback = bool(stats_dict.get('is_fallback', False))
+    normalized = {
+        'side': stats_dict.get('side', 'home'),
+        'is_fallback': is_fallback,
+    }
 
-    # Preserve primitive keys and extract StatPal sub-dict values (e.g. {'total': '5'})
-    for k, v in stats_dict.items():
-        if not isinstance(v, dict):
-            normalized[k] = v
-        elif isinstance(v, dict):
-            if k == "possession_percent":
-                val = v.get("total") or v.get("pct")
-                if val:
-                    normalized["possession_percent"] = str(val)
-                    normalized["ball_possession"] = str(val)
-            elif k in ["corners", "fouls", "saves", "shots", "passes", "offsides", "redcards", "yellowcards", "expected_goals", "goals_prevented"]:
-                if "total" in v and v["total"] != "":
-                    normalized[k] = v["total"]
-                if k == "shots" and "total" in v and v["total"] != "":
-                    normalized["total_shots"] = v["total"]
-                elif k == "passes":
-                    if "total" in v and v["total"] != "":
-                        normalized["total_passes"] = v["total"]
-                    if "accurate" in v and v["accurate"] != "":
-                        normalized["passes_accurate"] = v["accurate"]
+    if 'goals' in stats_dict:
+        normalized['goals'] = str(stats_dict['goals'])
+    if 'substitutions' in stats_dict:
+        normalized['substitutions'] = str(stats_dict['substitutions'])
+    if 'ft_home' in stats_dict:
+        normalized['ft_home'] = str(stats_dict['ft_home'])
+    if 'ft_away' in stats_dict:
+        normalized['ft_away'] = str(stats_dict['ft_away'])
 
-    if stats_dict.get('is_fallback'):
-        return normalized
+    def _extract_metric(key_name):
+        v = stats_dict.get(key_name)
+        if isinstance(v, dict):
+            val = v.get("total") if "total" in v else (v.get("pct") if "pct" in v else None)
+            if val is not None and val != "":
+                return str(val) if isinstance(val, (str, bool)) else val
+            return None
+        if v is not None and v != "":
+            return str(v) if isinstance(v, (str, bool)) else v
+        return None
+
+    normalized["fouls"] = _extract_metric("fouls")
+    normalized["saves"] = _extract_metric("saves")
+    normalized["shots"] = _extract_metric("shots")
+    normalized["passes"] = _extract_metric("passes")
+    normalized["corners"] = _extract_metric("corners")
+    normalized["offsides"] = _extract_metric("offsides")
+    normalized["redcards"] = _extract_metric("redcards")
+    normalized["yellowcards"] = _extract_metric("yellowcards")
+    normalized["expected_goals"] = _extract_metric("expected_goals")
+    normalized["goals_prevented"] = _extract_metric("goals_prevented")
+
+    # possession_percent
+    pos_v = stats_dict.get("possession_percent") or stats_dict.get("ball_possession")
+    if isinstance(pos_v, dict):
+        val = pos_v.get("total") if "total" in pos_v else (pos_v.get("pct") if "pct" in pos_v else None)
+        normalized["possession_percent"] = str(val) if val is not None and val != "" else None
+    elif pos_v is not None and pos_v != "":
+        normalized["possession_percent"] = str(pos_v)
+    else:
+        normalized["possession_percent"] = None
 
     shots = stats_dict.get("shots") if isinstance(stats_dict.get("shots"), dict) else {}
     passes = stats_dict.get("passes") if isinstance(stats_dict.get("passes"), dict) else {}
 
-    has_shots_in_dict = bool(shots or any(k in stats_dict for k in [
-        "shot_on_goal", "shots_on_goal", "Shots on Goal", "shots_on_target", "Shots on Target", "on_target",
-        "shot_off_goal", "shots_off_goal", "Shots off Goal", "shots_off_target", "Shots off Target", "off_target",
-        "block_shots", "blocked_shots", "shots_blocked", "Blocked Shots", "Blocked shots"
-    ]))
+    # shot_on_goal
+    s_on = (
+        shots.get("ongoal") if shots.get("ongoal") is not None else (
+        shots.get("on_target") if shots.get("on_target") is not None else (
+        shots.get("on") if shots.get("on") is not None else (
+        stats_dict.get("shot_on_goal") if stats_dict.get("shot_on_goal") is not None else (
+        stats_dict.get("shots_on_goal") if stats_dict.get("shots_on_goal") is not None else (
+        stats_dict.get("Shots on Goal") if stats_dict.get("Shots on Goal") is not None else (
+        stats_dict.get("shots_on_target") if stats_dict.get("shots_on_target") is not None else (
+        stats_dict.get("Shots on Target") if stats_dict.get("Shots on Target") is not None else (
+        stats_dict.get("on_target")
+        ))))))))
+    )
+    normalized["shot_on_goal"] = s_on if s_on is not None and s_on != "" else None
 
-    if has_shots_in_dict:
-        # 1. shot_on_goal
-        shot_on_goal = (
-            shots.get("ongoal") or 
-            shots.get("on_target") or 
-            shots.get("on") or 
-            stats_dict.get("shot_on_goal") or 
-            stats_dict.get("shots_on_goal") or 
-            stats_dict.get("Shots on Goal") or 
-            stats_dict.get("shots_on_target") or 
-            stats_dict.get("Shots on Target") or 
-            stats_dict.get("on_target") or 
-            0
+    # shot_off_goal
+    s_off = (
+        shots.get("offgoal") if shots.get("offgoal") is not None else (
+        shots.get("off_target") if shots.get("off_target") is not None else (
+        shots.get("off") if shots.get("off") is not None else (
+        stats_dict.get("shot_off_goal") if stats_dict.get("shot_off_goal") is not None else (
+        stats_dict.get("shots_off_goal") if stats_dict.get("shots_off_goal") is not None else (
+        stats_dict.get("Shots off Goal") if stats_dict.get("Shots off Goal") is not None else (
+        stats_dict.get("shots_off_target") if stats_dict.get("shots_off_target") is not None else (
+        stats_dict.get("Shots off Target") if stats_dict.get("Shots off Target") is not None else (
+        stats_dict.get("off_target")
+        ))))))))
+    )
+    normalized["shot_off_goal"] = s_off if s_off is not None and s_off != "" else None
+
+    # block_shots
+    s_blk = (
+        shots.get("blocked") if shots.get("blocked") is not None else (
+        shots.get("block") if shots.get("block") is not None else (
+        stats_dict.get("block_shots") if stats_dict.get("block_shots") is not None else (
+        stats_dict.get("blocked_shots") if stats_dict.get("blocked_shots") is not None else (
+        stats_dict.get("shots_blocked") if stats_dict.get("shots_blocked") is not None else (
+        stats_dict.get("Blocked Shots") if stats_dict.get("Blocked Shots") is not None else (
+        stats_dict.get("Blocked shots")
+        ))))))
+    )
+    normalized["block_shots"] = s_blk if s_blk is not None and s_blk != "" else None
+
+    # pass_accuracy
+    pct = None
+    if passes:
+        pct = passes.get("percentage") or passes.get("percent") or passes.get("pct")
+        if pct is None and passes.get("accurate") is not None and passes.get("total"):
+            try:
+                acc = float(passes["accurate"])
+                tot = float(passes["total"])
+                if tot > 0:
+                    pct = f"{int(round((acc / tot) * 100))}%"
+            except (ValueError, TypeError, ZeroDivisionError):
+                pass
+
+    if pct is None:
+        pct = (
+            stats_dict.get("pass_accuracy") or
+            stats_dict.get("pass_accuracy_percent") or
+            stats_dict.get("passes_percentage") or
+            stats_dict.get("passes_%") or
+            stats_dict.get("Pass Accuracy") or
+            stats_dict.get("Passes %")
         )
-        normalized["shot_on_goal"] = shot_on_goal
 
-        # 2. shot_off_goal
-        shot_off_goal = (
-            shots.get("offgoal") or 
-            shots.get("off_target") or 
-            shots.get("off") or 
-            stats_dict.get("shot_off_goal") or 
-            stats_dict.get("shots_off_goal") or 
-            stats_dict.get("Shots off Goal") or 
-            stats_dict.get("shots_off_target") or 
-            stats_dict.get("Shots off Target") or 
-            stats_dict.get("off_target") or 
-            0
-        )
-        normalized["shot_off_goal"] = shot_off_goal
+    if pct is not None and pct != "":
+        val_str = f"{pct}%" if isinstance(pct, (int, float)) and "%" not in str(pct) else str(pct)
+        normalized["pass_accuracy"] = val_str
+    else:
+        normalized["pass_accuracy"] = None
 
-        # 3. block_shots
-        block_shots = (
-            shots.get("blocked") or 
-            shots.get("block") or 
-            stats_dict.get("block_shots") or 
-            stats_dict.get("blocked_shots") or 
-            stats_dict.get("shots_blocked") or 
-            stats_dict.get("Blocked Shots") or 
-            stats_dict.get("Blocked shots") or 
-            0
-        )
-        normalized["block_shots"] = block_shots
-
-    has_passes_in_dict = bool(passes or any(k in stats_dict for k in [
-        "pass_accuracy", "pass_accuracy_percent", "passes_percentage", "passes_%", "Pass Accuracy", "Passes %", "accurate_passes", "passes_accurate"
-    ]))
-
-    if has_passes_in_dict:
-        # 4. pass_accuracy
-        pct = None
-        if passes:
-            pct = passes.get("percentage") or passes.get("percent") or passes.get("pct")
-            if pct is None and passes.get("accurate") is not None and passes.get("total"):
-                try:
-                    acc = float(passes["accurate"])
-                    tot = float(passes["total"])
-                    if tot > 0:
-                        pct = f"{int(round((acc / tot) * 100))}%"
-                except (ValueError, TypeError, ZeroDivisionError):
-                    pass
-
-        if pct is None:
-            acc_p = stats_dict.get("accurate_passes") or stats_dict.get("passes_accurate") or stats_dict.get("accurate")
-            tot_p = stats_dict.get("total_passes") or stats_dict.get("passes") or stats_dict.get("Total passes")
-            if acc_p is not None and tot_p:
-                try:
-                    acc_f = float(acc_p)
-                    tot_f = float(tot_p)
-                    if tot_f > 0:
-                        pct = f"{int(round((acc_f / tot_f) * 100))}%"
-                except (ValueError, TypeError, ZeroDivisionError):
-                    pass
-
-        if pct is None:
-            pct = (
-                stats_dict.get("pass_accuracy") or 
-                stats_dict.get("pass_accuracy_percent") or 
-                stats_dict.get("passes_percentage") or 
-                stats_dict.get("passes_%") or 
-                stats_dict.get("Pass Accuracy") or 
-                stats_dict.get("Passes %")
-            )
-
-        if pct is not None:
-            val_str = f"{pct}%" if isinstance(pct, (int, float)) and "%" not in str(pct) else str(pct)
-            normalized["pass_accuracy"] = val_str
-
-    return normalized
+    # Omit all None fields so response only includes available data
+    return {k: v for k, v in normalized.items() if v is not None}

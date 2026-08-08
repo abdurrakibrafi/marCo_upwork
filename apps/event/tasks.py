@@ -272,7 +272,12 @@ def _populate_statpal_event_details(event):
                             str(m.get('fallback_id_3', '')),
                             str(m.get('id', '')),
                         }
-                        if ext_id in match_ids:
+                        home_ext = str(event.home_entity.external_id) if event.home_entity and event.home_entity.external_id else None
+                        away_ext = str(event.away_entity.external_id) if event.away_entity and event.away_entity.external_id else None
+                        m_home = str(m.get('home', {}).get('id', ''))
+                        m_away = str(m.get('away', {}).get('id', ''))
+
+                        if ext_id in match_ids or (home_ext and home_ext != 'None' and m_home == home_ext) or (away_ext and away_ext != 'None' and m_away == away_ext):
                             # Merge fetched match stats into event metadata
                             if event.metadata:
                                 event.metadata.update(m)
@@ -1699,3 +1704,54 @@ def sync_statpal_data(self):
         return msg
     finally:
         cache.delete(lock_id)
+
+
+def reprocess_all_events_stats():
+    """
+    Backfills and updates all existing EventStatistics in the database according to current normalization rules.
+    """
+    from apps.event.models import Event, EventStatistics
+    from apps.event.utils_stats import normalize_event_stats
+
+    events = Event.objects.filter(sport='soccer').prefetch_related('statistics', 'timeline')
+    updated = 0
+    created = 0
+
+    for ev in events:
+        stats_list = list(ev.statistics.all())
+        has_real = False
+        if stats_list:
+            for s in stats_list:
+                if s.stats and isinstance(s.stats, dict):
+                    norm = normalize_event_stats(s.stats)
+                    if norm:
+                        s.stats = norm
+                        s.save(update_fields=['stats'])
+                        updated += 1
+                        if not norm.get('is_fallback'):
+                            has_real = True
+
+        if not has_real and (ev.home_score is not None or ev.away_score is not None) and ev.home_entity and ev.away_entity:
+            for side, team in [('home', ev.home_entity), ('away', ev.away_entity)]:
+                team_tl = ev.timeline.filter(team=team)
+                score_val = ev.home_score if side == 'home' else ev.away_score
+
+                fallback_stats = {
+                    'side': side,
+                    'goals': str(score_val if score_val is not None else team_tl.filter(event_type='goal').count()),
+                    'yellowcards': str(team_tl.filter(event_type='yellow_card').count()),
+                    'redcards': str(team_tl.filter(event_type='red_card').count()),
+                    'substitutions': str(team_tl.filter(event_type='substitution').count()),
+                    'is_fallback': True,
+                    'ft_home': str(ev.home_score or 0),
+                    'ft_away': str(ev.away_score or 0),
+                }
+                norm_fb = normalize_event_stats(fallback_stats)
+                if norm_fb:
+                    EventStatistics.objects.update_or_create(
+                        event=ev,
+                        team=team,
+                        defaults={'stats': norm_fb}
+                    )
+                    created += 1
+    return f"Reprocessed stats for {events.count()} soccer matches! Updated: {updated}, Created Fallbacks: {created}."
