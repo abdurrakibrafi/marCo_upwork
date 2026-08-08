@@ -287,7 +287,47 @@ def get_entity_standings(request, entity_id):
 # ─────────────────────────────────────────────────────────────────────────────
 # TEAM STATS  — DB first, live API fallback
 # ─────────────────────────────────────────────────────────────────────────────
- 
+def _fetch_stats_from_db_events(team_entity):
+    """Fallback: Calculate team stats from completed Event records in local DB or return clean default structure."""
+    from apps.event.models import Event
+    from django.db.models import Q
+
+    events = Event.objects.filter(
+        Q(home_entity=team_entity) | Q(away_entity=team_entity),
+        status='completed'
+    )
+
+    wins = losses = draws = 0
+    goals_for = goals_against = 0
+
+    for event in events:
+        is_home = (event.home_entity_id == team_entity.id)
+        team_score = event.home_score if is_home else event.away_score
+        opp_score = event.away_score if is_home else event.home_score
+
+        if team_score is not None and opp_score is not None:
+            goals_for += team_score
+            goals_against += opp_score
+            if team_score > opp_score:
+                wins += 1
+            elif team_score < opp_score:
+                losses += 1
+            else:
+                draws += 1
+
+    played = wins + losses + draws
+    return {
+        'form': '',
+        'played': played,
+        'wins': wins,
+        'draws': draws,
+        'losses': losses,
+        'goals_for': goals_for,
+        'goals_against': goals_against,
+        'win_percentage': round(wins / played * 100, 1) if played > 0 else 0.0,
+    }
+
+
 @api_view(['GET'])
 @permission_classes([AllowAny])
 def get_team_stats(request, team_id):
@@ -320,11 +360,13 @@ def get_team_stats(request, team_id):
     stats_data = {}
  
     if team_entity.sport == 'soccer':
-        if team_entity.api_source == 'api_sports':
+        stats_data = _fetch_soccer_team_stats_statpal(team_entity.external_id, api_season)
+        if not stats_data and team_entity.api_source == 'api_sports':
             stats_data = _fetch_soccer_team_stats(team_entity.external_id, api_season)
-        if not stats_data:
-            # StatPal or fallback if API-Sports returns empty / quota limit
-            stats_data = _fetch_soccer_team_stats_statpal(team_entity.external_id, api_season)
+    
+    # Fallback to local DB Event calculation if live APIs return empty / quota limit
+    if not stats_data:
+        stats_data = _fetch_stats_from_db_events(team_entity)
  
     elif team_entity.sport == 'basketball':
         # Always use StatPal standings (balldontlie is no longer in use)
