@@ -578,18 +578,11 @@ def fetch_article_content(feed_item_id: int):
     import requests
     from django.conf import settings
 
-    # ── Step 1: Decode Google redirect using googlenewsdecoder ──────────────
-    target_url = item.url
-    if "news.google.com" in item.url:
-        try:
-            # pyrefly: ignore [missing-import]
-            from googlenewsdecoder import new_decoderv1
-            decoded = new_decoderv1(item.url)
-            if decoded.get("status") and decoded.get("decoded_url"):
-                target_url = decoded["decoded_url"]
-                logger.info(f"[Decoder] Successfully resolved redirect for item {feed_item_id} to: {target_url}")
-        except Exception as exc:
-            logger.warning(f"[Decoder] Failed decoding redirect for item {feed_item_id}: {exc}")
+    # ── Step 1: Decode Google redirect using resolve_real_article_url ──────────────
+    from apps.feed.utils_url import resolve_real_article_url
+    target_url = resolve_real_article_url(item.url)
+    if target_url != item.url:
+        logger.info(f"[Decoder] Successfully resolved redirect for item {feed_item_id} to: {target_url}")
 
     # ── Step 2: Fetch and Extract Content ──────────────────────────────────
     content = None

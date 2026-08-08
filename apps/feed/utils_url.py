@@ -66,12 +66,26 @@ def resolve_real_article_url(url: str) -> str:
             return clean_tracking_parameters(cached_url)
         try:
             from googlenewsdecoder import new_decoderv1
-            decoded = new_decoderv1(url_str)
+            decoded = new_decoderv1(url_str, interval=1)
             if isinstance(decoded, dict) and decoded.get("status") and decoded.get("decoded_url"):
                 res = clean_tracking_parameters(decoded["decoded_url"])
                 cache.set(cache_key, res, timeout=604800)  # Cache for 7 days
                 return res
         except Exception as e:
             logger.debug(f"Google news decoding failed for {url_str}: {e}")
+
+        # Fallback: direct HTTP redirect resolution if decoder fails or rate-limited
+        try:
+            import requests
+            headers = {
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            }
+            resp = requests.head(url_str, headers=headers, allow_redirects=True, timeout=5)
+            if resp.url and "news.google.com" not in resp.url:
+                res = clean_tracking_parameters(resp.url)
+                cache.set(cache_key, res, timeout=604800)
+                return res
+        except Exception as e:
+            logger.debug(f"Direct HEAD redirect fallback failed for {url_str}: {e}")
 
     return clean_tracking_parameters(url_str)
