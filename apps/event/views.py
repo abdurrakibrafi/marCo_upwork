@@ -350,21 +350,30 @@ def get_event_detail(request, event_id: int):
                 except Exception:
                     pass
 
-        # Auto-ensure EventStatistics exist for any sport (Cricket, Tennis, etc.) if scores exist
+        # Auto-ensure EventStatistics exist for any sport if scores exist
         if (event.home_score is not None or event.away_score is not None) and event.home_entity and event.away_entity:
-            has_valid = any(s.stats for s in event.statistics.all() if s.stats)
+            from apps.event.utils_stats import normalize_event_stats
+            has_valid = any(normalize_event_stats(s.stats) for s in event.statistics.all() if s.stats)
             if not has_valid:
-                score_label = 'runs' if event.sport == 'cricket' else 'score'
-                EventStatistics.objects.update_or_create(
-                    event=event,
-                    team=event.home_entity,
-                    defaults={'stats': {score_label: event.home_score, 'ft_home': event.home_score, 'ft_away': event.away_score, 'side': 'home'}}
-                )
-                EventStatistics.objects.update_or_create(
-                    event=event,
-                    team=event.away_entity,
-                    defaults={'stats': {score_label: event.away_score, 'ft_home': event.home_score, 'ft_away': event.away_score, 'side': 'away'}}
-                )
+                for side, team in [('home', event.home_entity), ('away', event.away_entity)]:
+                    team_tl = event.timeline.filter(team=team)
+                    score_val = event.home_score if side == 'home' else event.away_score
+                    score_label = 'runs' if event.sport == 'cricket' else 'goals'
+
+                    stats_payload = {
+                        'side': side,
+                        score_label: str(score_val if score_val is not None else 0),
+                        'yellowcards': str(team_tl.filter(event_type='yellow_card').count()),
+                        'redcards': str(team_tl.filter(event_type='red_card').count()),
+                        'substitutions': str(team_tl.filter(event_type='substitution').count()),
+                        'ft_home': str(event.home_score or 0),
+                        'ft_away': str(event.away_score or 0),
+                    }
+                    EventStatistics.objects.update_or_create(
+                        event=event,
+                        team=team,
+                        defaults={'stats': stats_payload}
+                    )
                 event = Event.objects.select_related(
                     "home_entity", "away_entity", "league"
                 ).prefetch_related(

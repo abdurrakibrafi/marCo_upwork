@@ -402,6 +402,7 @@ def _populate_statpal_event_details(event):
         # Populate EventStatistics
         from apps.event.utils_stats import normalize_event_stats
         team_stats = meta.get('team_stats', {})
+        has_statpal_team_stats = False
         if isinstance(team_stats, dict):
             for side in ['home', 'away']:
                 team_entity = event.home_entity if side == 'home' else event.away_entity
@@ -411,11 +412,34 @@ def _populate_statpal_event_details(event):
                 if isinstance(stats_dict, dict):
                     flat_stats = normalize_event_stats(stats_dict)
                     if flat_stats:
+                        has_statpal_team_stats = True
                         EventStatistics.objects.update_or_create(
                             event=event,
                             team=team_entity,
                             defaults={'stats': flat_stats}
                         )
+
+        # Fallback: If StatPal has no extended team_stats, generate summary statistics from EventTimeline
+        if not has_statpal_team_stats:
+            for side in ['home', 'away']:
+                team_entity = event.home_entity if side == 'home' else event.away_entity
+                if not team_entity:
+                    continue
+                team_tl = EventTimeline.objects.filter(event=event, team=team_entity)
+                score_val = event.home_score if side == 'home' else event.away_score
+                fallback_stats = {
+                    'side': side,
+                    'goals': str(score_val if score_val is not None else team_tl.filter(event_type='goal').count()),
+                    'yellowcards': str(team_tl.filter(event_type='yellow_card').count()),
+                    'redcards': str(team_tl.filter(event_type='red_card').count()),
+                    'substitutions': str(team_tl.filter(event_type='substitution').count()),
+                    'is_fallback': True
+                }
+                EventStatistics.objects.update_or_create(
+                    event=event,
+                    team=team_entity,
+                    defaults={'stats': fallback_stats}
+                )
 
         # Populate EventLineups
         lineups = meta.get('lineups', {})

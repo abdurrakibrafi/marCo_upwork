@@ -185,7 +185,7 @@ class EventDetailSerializer(serializers.ModelSerializer):
 
         # Exclude empty stats objects (e.g. when API has no stats for a minor league match)
         if data.get('statistics'):
-            valid_stats = [s for s in data['statistics'] if s.get('stats')]
+            valid_stats = [s for s in data['statistics'] if s.get('stats') and any(k not in ('side', 'ft_home', 'ft_away') for k in s['stats'].keys())]
             data['statistics'] = valid_stats
             data['has_stats'] = len(valid_stats) > 0
         else:

@@ -30,15 +30,18 @@ def normalize_event_stats(stats_dict: dict) -> dict:
     # Ignore basic score & side metadata when checking for team performance stats
     SCORE_AND_SIDE_KEYS = {'side', 'et_away', 'et_home', 'ft_away', 'ft_home', 'ht_away', 'ht_home', 'score', 'runs'}
     has_real_data = False
-    for k, v in stats_dict.items():
-        if k in SCORE_AND_SIDE_KEYS:
-            continue
-        if isinstance(v, dict) and v:
-            has_real_data = True
-            break
-        if v is not None and v != "" and v != 0 and v != "0" and v != "0%":
-            has_real_data = True
-            break
+    if stats_dict.get('is_fallback') or any(k in stats_dict for k in ['goals', 'yellowcards', 'redcards', 'substitutions']):
+        has_real_data = True
+    else:
+        for k, v in stats_dict.items():
+            if k in SCORE_AND_SIDE_KEYS:
+                continue
+            if isinstance(v, dict) and v:
+                has_real_data = True
+                break
+            if v is not None and v != "" and v != 0 and v != "0" and v != "0%":
+                has_real_data = True
+                break
 
     if not has_real_data:
         return {}
@@ -66,89 +69,104 @@ def normalize_event_stats(stats_dict: dict) -> dict:
                     if "accurate" in v and v["accurate"] != "":
                         normalized["passes_accurate"] = v["accurate"]
 
+    if stats_dict.get('is_fallback'):
+        return normalized
+
     shots = stats_dict.get("shots") if isinstance(stats_dict.get("shots"), dict) else {}
     passes = stats_dict.get("passes") if isinstance(stats_dict.get("passes"), dict) else {}
 
-    # 1. shot_on_goal
-    shot_on_goal = (
-        shots.get("ongoal") or 
-        shots.get("on_target") or 
-        shots.get("on") or 
-        stats_dict.get("shot_on_goal") or 
-        stats_dict.get("shots_on_goal") or 
-        stats_dict.get("Shots on Goal") or 
-        stats_dict.get("shots_on_target") or 
-        stats_dict.get("Shots on Target") or 
-        stats_dict.get("on_target") or 
-        0
-    )
-    normalized["shot_on_goal"] = shot_on_goal
+    has_shots_in_dict = bool(shots or any(k in stats_dict for k in [
+        "shot_on_goal", "shots_on_goal", "Shots on Goal", "shots_on_target", "Shots on Target", "on_target",
+        "shot_off_goal", "shots_off_goal", "Shots off Goal", "shots_off_target", "Shots off Target", "off_target",
+        "block_shots", "blocked_shots", "shots_blocked", "Blocked Shots", "Blocked shots"
+    ]))
 
-    # 2. shot_off_goal
-    shot_off_goal = (
-        shots.get("offgoal") or 
-        shots.get("off_target") or 
-        shots.get("off") or 
-        stats_dict.get("shot_off_goal") or 
-        stats_dict.get("shots_off_goal") or 
-        stats_dict.get("Shots off Goal") or 
-        stats_dict.get("shots_off_target") or 
-        stats_dict.get("Shots off Target") or 
-        stats_dict.get("off_target") or 
-        0
-    )
-    normalized["shot_off_goal"] = shot_off_goal
-
-    # 3. block_shots
-    block_shots = (
-        shots.get("blocked") or 
-        shots.get("block") or 
-        stats_dict.get("block_shots") or 
-        stats_dict.get("blocked_shots") or 
-        stats_dict.get("shots_blocked") or 
-        stats_dict.get("Blocked Shots") or 
-        stats_dict.get("Blocked shots") or 
-        0
-    )
-    normalized["block_shots"] = block_shots
-
-    # 4. pass_accuracy
-    pct = None
-    if passes:
-        pct = passes.get("percentage") or passes.get("percent") or passes.get("pct")
-        if pct is None and passes.get("accurate") is not None and passes.get("total"):
-            try:
-                acc = float(passes["accurate"])
-                tot = float(passes["total"])
-                if tot > 0:
-                    pct = f"{int(round((acc / tot) * 100))}%"
-            except (ValueError, TypeError, ZeroDivisionError):
-                pass
-
-    if pct is None:
-        acc_p = stats_dict.get("accurate_passes") or stats_dict.get("passes_accurate") or stats_dict.get("accurate")
-        tot_p = stats_dict.get("total_passes") or stats_dict.get("passes") or stats_dict.get("Total passes")
-        if acc_p is not None and tot_p:
-            try:
-                acc_f = float(acc_p)
-                tot_f = float(tot_p)
-                if tot_f > 0:
-                    pct = f"{int(round((acc_f / tot_f) * 100))}%"
-            except (ValueError, TypeError, ZeroDivisionError):
-                pass
-
-    if pct is None:
-        pct = (
-            stats_dict.get("pass_accuracy") or 
-            stats_dict.get("pass_accuracy_percent") or 
-            stats_dict.get("passes_percentage") or 
-            stats_dict.get("passes_%") or 
-            stats_dict.get("Pass Accuracy") or 
-            stats_dict.get("Passes %") or 
-            "0%"
+    if has_shots_in_dict:
+        # 1. shot_on_goal
+        shot_on_goal = (
+            shots.get("ongoal") or 
+            shots.get("on_target") or 
+            shots.get("on") or 
+            stats_dict.get("shot_on_goal") or 
+            stats_dict.get("shots_on_goal") or 
+            stats_dict.get("Shots on Goal") or 
+            stats_dict.get("shots_on_target") or 
+            stats_dict.get("Shots on Target") or 
+            stats_dict.get("on_target") or 
+            0
         )
+        normalized["shot_on_goal"] = shot_on_goal
 
-    val_str = f"{pct}%" if isinstance(pct, (int, float)) and "%" not in str(pct) else str(pct)
-    normalized["pass_accuracy"] = val_str
+        # 2. shot_off_goal
+        shot_off_goal = (
+            shots.get("offgoal") or 
+            shots.get("off_target") or 
+            shots.get("off") or 
+            stats_dict.get("shot_off_goal") or 
+            stats_dict.get("shots_off_goal") or 
+            stats_dict.get("Shots off Goal") or 
+            stats_dict.get("shots_off_target") or 
+            stats_dict.get("Shots off Target") or 
+            stats_dict.get("off_target") or 
+            0
+        )
+        normalized["shot_off_goal"] = shot_off_goal
+
+        # 3. block_shots
+        block_shots = (
+            shots.get("blocked") or 
+            shots.get("block") or 
+            stats_dict.get("block_shots") or 
+            stats_dict.get("blocked_shots") or 
+            stats_dict.get("shots_blocked") or 
+            stats_dict.get("Blocked Shots") or 
+            stats_dict.get("Blocked shots") or 
+            0
+        )
+        normalized["block_shots"] = block_shots
+
+    has_passes_in_dict = bool(passes or any(k in stats_dict for k in [
+        "pass_accuracy", "pass_accuracy_percent", "passes_percentage", "passes_%", "Pass Accuracy", "Passes %", "accurate_passes", "passes_accurate"
+    ]))
+
+    if has_passes_in_dict:
+        # 4. pass_accuracy
+        pct = None
+        if passes:
+            pct = passes.get("percentage") or passes.get("percent") or passes.get("pct")
+            if pct is None and passes.get("accurate") is not None and passes.get("total"):
+                try:
+                    acc = float(passes["accurate"])
+                    tot = float(passes["total"])
+                    if tot > 0:
+                        pct = f"{int(round((acc / tot) * 100))}%"
+                except (ValueError, TypeError, ZeroDivisionError):
+                    pass
+
+        if pct is None:
+            acc_p = stats_dict.get("accurate_passes") or stats_dict.get("passes_accurate") or stats_dict.get("accurate")
+            tot_p = stats_dict.get("total_passes") or stats_dict.get("passes") or stats_dict.get("Total passes")
+            if acc_p is not None and tot_p:
+                try:
+                    acc_f = float(acc_p)
+                    tot_f = float(tot_p)
+                    if tot_f > 0:
+                        pct = f"{int(round((acc_f / tot_f) * 100))}%"
+                except (ValueError, TypeError, ZeroDivisionError):
+                    pass
+
+        if pct is None:
+            pct = (
+                stats_dict.get("pass_accuracy") or 
+                stats_dict.get("pass_accuracy_percent") or 
+                stats_dict.get("passes_percentage") or 
+                stats_dict.get("passes_%") or 
+                stats_dict.get("Pass Accuracy") or 
+                stats_dict.get("Passes %")
+            )
+
+        if pct is not None:
+            val_str = f"{pct}%" if isinstance(pct, (int, float)) and "%" not in str(pct) else str(pct)
+            normalized["pass_accuracy"] = val_str
 
     return normalized
