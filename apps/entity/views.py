@@ -322,8 +322,8 @@ def get_team_stats(request, team_id):
     if team_entity.sport == 'soccer':
         if team_entity.api_source == 'api_sports':
             stats_data = _fetch_soccer_team_stats(team_entity.external_id, api_season)
-        else:
-            # statpal or any other source
+        if not stats_data:
+            # StatPal or fallback if API-Sports returns empty / quota limit
             stats_data = _fetch_soccer_team_stats_statpal(team_entity.external_id, api_season)
  
     elif team_entity.sport == 'basketball':
