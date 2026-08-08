@@ -53,13 +53,11 @@ INSTALLED_APPS = [
 
     # Local apps
     "apps.identity",
-    "apps.content",
     "apps.core",
     "apps.entity",
     "apps.event",
     "apps.feed",
     "apps.nest",
-    "apps.preference",
     "apps.score",
     "apps.source",
     "apps.sports_apis"
