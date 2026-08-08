@@ -207,16 +207,30 @@ def get_entity_fixtures(request, entity_id):
     entity = entity.canonical_entity or entity
 
     if entity.type == 'team':
+        team_ids = set(
+            Entity.objects.filter(
+                Q(id=entity.id) |
+                Q(canonical_entity=entity) |
+                Q(name__iexact=entity.name)
+            ).values_list('id', flat=True)
+        )
         events = Event.objects.filter(
-            Q(home_entity=entity) | Q(away_entity=entity)
+            Q(home_entity_id__in=team_ids) | Q(away_entity_id__in=team_ids)
         ).select_related(
             'home_entity', 'away_entity', 'league'
         ).order_by('-start_time')[:50]
 
     elif entity.type == 'league':
+        league_ids = set(
+            Entity.objects.filter(
+                Q(id=entity.id) |
+                Q(canonical_entity=entity) |
+                Q(name__iexact=entity.name)
+            ).values_list('id', flat=True)
+        )
         events = Event.objects.filter(
-            league__api_source=entity.api_source,
-            league__external_id=entity.external_id,
+            Q(league_id__in=league_ids) |
+            (Q(league__api_source=entity.api_source) & Q(league__external_id=entity.external_id))
         ).select_related(
             'home_entity', 'away_entity', 'league'
         ).order_by('-start_time')[:50]
