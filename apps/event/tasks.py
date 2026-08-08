@@ -1474,6 +1474,13 @@ def _save_event(row: dict) -> Event | None:
 
     start_time = _parse_dt(row["date"], row["time"])
 
+    metadata_val = row["raw"]
+    if existing_event and existing_event.metadata:
+        merged_meta = dict(existing_event.metadata)
+        if isinstance(row.get("raw"), dict):
+            merged_meta.update(row["raw"])
+        metadata_val = merged_meta
+
     event, _ = Event.objects.update_or_create(
         api_source="statpal",
         external_id=row["external_id"],
@@ -1488,7 +1495,7 @@ def _save_event(row: dict) -> Event | None:
             "away_score":   away_score_val,
             "venue_name":   row["venue"],
             "start_time":   start_time,
-            "metadata":     row["raw"],
+            "metadata":     metadata_val,
         },
     )
     if status == "completed":
