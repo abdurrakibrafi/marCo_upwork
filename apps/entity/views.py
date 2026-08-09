@@ -1081,11 +1081,18 @@ def get_team_standings(request, team_id):
         league = None
  
     if not league:
-        # Fallback 1: Try to find a league from the team's events in DB
+        # Fallback 1: Try to find a league from the team's events in DB (by ID or matching name/canonical)
         from django.db.models import Q
         from apps.event.models import Event
+        team_ids = set(
+            Entity.objects.filter(
+                Q(id=team_entity.id) |
+                Q(canonical_entity=team_entity) |
+                Q(name__iexact=team_entity.name)
+            ).values_list('id', flat=True)
+        )
         event = Event.objects.filter(
-            Q(home_entity=team_entity) | Q(away_entity=team_entity),
+            (Q(home_entity_id__in=team_ids) | Q(away_entity_id__in=team_ids)),
             league__isnull=False
         ).select_related('league').first()
         if event:
