@@ -1301,21 +1301,24 @@ def _fetch_thesportsdb_player_stats(player_name, athlete_entity=None, force_refr
     if cached and not force_refresh:
         if athlete_entity:
             try:
-                ad = athlete_entity.athlete_details
-                if not cached.get('position') and ad.position:
-                    cached['position'] = ad.position
-                if not cached.get('nationality') and ad.nationality:
-                    cached['nationality'] = ad.nationality
-                if not cached.get('height') and ad.height_cm:
-                    cached['height'] = f"{ad.height_cm} cm"
-                if not cached.get('weight') and ad.weight_kg:
-                    cached['weight'] = f"{ad.weight_kg} kg"
-                if not cached.get('date_of_birth') and ad.date_of_birth:
-                    cached['date_of_birth'] = str(ad.date_of_birth)
+                ad = getattr(athlete_entity, 'athlete_details', None)
+                if ad:
+                    if not cached.get('position') and ad.position:
+                        cached['position'] = ad.position
+                    if not cached.get('nationality') and ad.nationality:
+                        cached['nationality'] = ad.nationality
+                    if not cached.get('height') and ad.height_cm:
+                        cached['height'] = f"{ad.height_cm} cm"
+                    if not cached.get('weight') and ad.weight_kg:
+                        cached['weight'] = f"{ad.weight_kg} kg"
+                    if not cached.get('date_of_birth') and ad.date_of_birth:
+                        cached['date_of_birth'] = str(ad.date_of_birth)
+                    if not cached.get('team') and ad.current_team:
+                        cached['team'] = ad.current_team.name
                 if not cached.get('description') and athlete_entity.description:
                     cached['description'] = athlete_entity.description
-                if not cached.get('team') and ad.current_team:
-                    cached['team'] = ad.current_team.name
+                if not cached.get('headshot_url') and athlete_entity.logo_url:
+                    cached['headshot_url'] = athlete_entity.logo_url
             except Exception:
                 pass
         return cached
@@ -1337,21 +1340,24 @@ def _fetch_thesportsdb_player_stats(player_name, athlete_entity=None, force_refr
         # Enrich empty fields with local Athlete DB details if available
         if athlete_entity:
             try:
-                ad = athlete_entity.athlete_details
-                if not pos and ad.position:
-                    pos = ad.position
-                if not nat and ad.nationality:
-                    nat = ad.nationality
-                if not h and ad.height_cm:
-                    h = f"{ad.height_cm} cm"
-                if not w and ad.weight_kg:
-                    w = f"{ad.weight_kg} kg"
-                if not dob and ad.date_of_birth:
-                    dob = str(ad.date_of_birth)
+                ad = getattr(athlete_entity, 'athlete_details', None)
+                if ad:
+                    if not pos and ad.position:
+                        pos = ad.position
+                    if not nat and ad.nationality:
+                        nat = ad.nationality
+                    if not h and ad.height_cm:
+                        h = f"{ad.height_cm} cm"
+                    if not w and ad.weight_kg:
+                        w = f"{ad.weight_kg} kg"
+                    if not dob and ad.date_of_birth:
+                        dob = str(ad.date_of_birth)
+                    if not team and ad.current_team:
+                        team = ad.current_team.name
                 if not desc and athlete_entity.description:
                     desc = athlete_entity.description
-                if not team and ad.current_team:
-                    team = ad.current_team.name
+                if not headshot and athlete_entity.logo_url:
+                    headshot = athlete_entity.logo_url
             except Exception:
                 pass
 
