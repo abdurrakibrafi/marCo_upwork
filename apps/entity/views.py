@@ -76,17 +76,53 @@ def get_trending(request):
 
     if query:
         # Search mode — filter by name, group by type
-        base_qs = base_qs.filter(name__icontains=query)
-
+        filter_kwargs = {}
         if sport:
-            base_qs = base_qs.filter(sport=sport)
-
+            filter_kwargs['sport'] = sport
         if entity_type:
-            base_qs = base_qs.filter(type=entity_type)
+            filter_kwargs['type'] = entity_type
 
-        teams    = base_qs.filter(type='team')[:10]
-        athletes = base_qs.filter(type='athlete')[:10]
-        leagues  = base_qs.filter(type='league')[:10]
+        teams    = base_qs.filter(type='team', name__icontains=query, **filter_kwargs)[:10]
+        athletes = base_qs.filter(type='athlete', name__icontains=query, **filter_kwargs)[:10]
+        leagues  = base_qs.filter(type='league', name__icontains=query, **filter_kwargs)[:10]
+
+        # Fallback 1: Typo handling (e.g. Casemero -> Casemiro)
+        if not (teams.exists() or athletes.exists() or leagues.exists()):
+            alt_query = query.replace('e', 'i') if 'e' in query.lower() else query.replace('i', 'e')
+            teams    = base_qs.filter(type='team', name__icontains=alt_query, **filter_kwargs)[:10]
+            athletes = base_qs.filter(type='athlete', name__icontains=alt_query, **filter_kwargs)[:10]
+            leagues  = base_qs.filter(type='league', name__icontains=alt_query, **filter_kwargs)[:10]
+
+        # Fallback 2: Auto-import from TheSportsDB if entity not in local DB
+        if not (teams.exists() or athletes.exists() or leagues.exists()):
+            try:
+                from apps.sports_apis.services.thesportsdb import thesportsdb_service
+                p_info = thesportsdb_service.get_player_details(query)
+                if p_info:
+                    p_name = p_info.get('name') or query
+                    entity, _ = Entity.objects.get_or_create(
+                        name=p_name,
+                        type='athlete',
+                        defaults={
+                            'sport': p_info.get('sport') or 'soccer',
+                            'logo_url': p_info.get('headshot_url') or '',
+                            'country': p_info.get('nationality') or '',
+                            'has_api_data': True,
+                        }
+                    )
+                    from apps.entity.models import Athlete
+                    Athlete.objects.get_or_create(
+                        entity=entity,
+                        defaults={
+                            'first_name': p_name.split()[0] if p_name.split() else '',
+                            'last_name': ' '.join(p_name.split()[1:]) if len(p_name.split()) > 1 else '',
+                            'position': p_info.get('position', ''),
+                            'nationality': p_info.get('nationality', ''),
+                        }
+                    )
+                    athletes = Entity.objects.filter(id=entity.id)
+            except Exception:
+                pass
     else:
         # Trending mode — order by follower_count
         teams    = base_qs.filter(type='team').order_by('-follower_count')[:10]
