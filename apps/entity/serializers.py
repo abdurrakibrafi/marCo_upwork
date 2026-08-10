@@ -68,6 +68,17 @@ class EntitySerializer(serializers.ModelSerializer):
             logo = find_team_logo_by_name(obj.name)
         return make_logo_url_absolute(logo, self.context.get('request'))
 
+    def to_representation(self, instance):
+        ret = super().to_representation(instance)
+        if not ret.get('country') and instance.type == 'athlete':
+            ad = getattr(instance, 'athlete_details', None)
+            if ad:
+                if ad.nationality:
+                    ret['country'] = ad.nationality
+                elif ad.current_team and ad.current_team.country:
+                    ret['country'] = ad.current_team.country
+        return ret
+
 
 class TeamDetailSerializer(serializers.ModelSerializer):
     """Detailed team serializer"""
