@@ -15,6 +15,10 @@ app.conf.beat_schedule = {
         'task': 'apps.event.tasks.sync_statpal_data',
         'schedule': 60.0,
     },
+    'sync-statpal-fixtures-every-6-hours': {
+        'task': 'apps.event.tasks.sync_statpal_fixtures_data',
+        'schedule': crontab(hour='*/6', minute=15),
+    },
 
     # ── NFL live scores (BallDontLie — active Sep-Feb) ───────────────────
     'live-scores-nfl': {

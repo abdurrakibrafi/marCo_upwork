@@ -1603,9 +1603,8 @@ def _save_livescore(row: dict, event: Event):
 @shared_task(bind=True, max_retries=3, default_retry_delay=60)
 def sync_statpal_data(self):
     """
-    Fetches live + today's fixtures for Soccer, NBA, Cricket.
-    Saves to both Event and LiveScore models.
-    Publishes via WebSocket for live matches.
+    Fetches ONLY active/live matches for Soccer, NBA, Cricket, Tennis, etc.
+    Saves to both Event and LiveScore models and publishes via WebSocket.
 
     Recommended beat schedule: every 60 seconds.
     """
@@ -1617,31 +1616,20 @@ def sync_statpal_data(self):
     try:
         fetches = [
             ("soccer", statpal_service.get_soccer_live, _soccer_rows, {}),
-            ("soccer", statpal_service.get_soccer_fixtures, _soccer_rows, {'offset': 0}),
             ("nba", statpal_service.get_nba_live, _nba_rows, {}),
-            ("nba", statpal_service.get_nba_fixtures, _nba_rows, {'offset': 0}),
             ("football", statpal_service.get_nfl_live, _nfl_rows, {}),
-            ("football", statpal_service.get_nfl_fixtures, _nfl_rows, {'offset': 0}),
             ("cricket", statpal_service.get_cricket_live, _cricket_rows, {}),
-            ("cricket", statpal_service.get_cricket_fixtures, _cricket_rows, {}),
             ("tennis", statpal_service.get_tennis_live, _tennis_rows, {}),
-            ("tennis", statpal_service.get_tennis_fixtures, _tennis_rows, {'offset': 0}),
             ("baseball", statpal_service.get_mlb_live, _mlb_rows, {}),
-            ("baseball", statpal_service.get_mlb_fixtures, _mlb_rows, {'offset': 0}),
             ("handball", statpal_service.get_handball_live, _handball_rows, {}),
-            ("handball", statpal_service.get_handball_fixtures, _handball_rows, {'offset': 0}),
             ("volleyball", statpal_service.get_volleyball_live, _volleyball_rows, {}),
             ("golf", statpal_service.get_golf_live, _golf_rows, {}),
             ("f1", statpal_service.get_f1_live, _f1_rows, {}),
             ("horse_racing", lambda: statpal_service.get_horse_racing_live('uk'), _horse_racing_rows, {}),
             ("horse_racing", lambda: statpal_service.get_horse_racing_live('usa'), _horse_racing_rows, {}),
-            # ("horse_racing", lambda: statpal_service.get_horse_racing_live('aus'), _horse_racing_rows, {}), # Returns HTTP 500
         ]
 
         # ── Stale LiveScore cleanup ──────────────────────────────────────────────
-        # Any match still marked 'live' but not updated in the last 3 hours is
-        # almost certainly finished and missed by the API. Remove it so the
-        # WebSocket feed stays clean.
         stale_cutoff = timezone.now() - timezone.timedelta(hours=3)
         stale_deleted, _ = (
             LiveScore.objects.filter(status="live", updated_at__lt=stale_cutoff).delete()
@@ -1668,14 +1656,8 @@ def sync_statpal_data(self):
                 logger.exception("[StatPal] %s fetch/extract crashed: %s", sport, exc)
                 continue
 
-            logger.info(
-                "[StatPal] Fetched '%s' (%s). API response parsed into %d rows.",
-                sport, fetch_fn.__name__, len(extracted_rows)
-            )
-
             for row in extracted_rows:
                 try:
-                    # Skip soccer matches with no live stats
                     if sport == "soccer":
                         raw_match = row.get("raw", {})
                         if str(raw_match.get("has_live_stats", "True")).strip().lower() == "false":
@@ -1700,11 +1682,69 @@ def sync_statpal_data(self):
                         row.get("external_id"), sport, exc,
                     )
 
-        # Publish all collected live objects at the end to avoid multiple publishes for the same game
         for live_obj in live_objects_to_publish:
             _publish(live_obj)
 
         msg = f"sync_statpal_data — saved={saved}, skipped={skipped}, errors={errors}"
+        logger.info(msg)
+        return msg
+    finally:
+        cache.delete(lock_id)
+
+
+@shared_task(bind=True, max_retries=2, default_retry_delay=300)
+def sync_statpal_fixtures_data(self):
+    """
+    Fetches upcoming match fixtures for Soccer, NBA, Cricket, etc.
+    Runs periodically (e.g., every 6 hours) to update match schedules without overloading the server.
+    """
+    lock_id = "sync_statpal_fixtures_data_lock"
+    if not cache.add(lock_id, "true", timeout=600):
+        logger.info("sync_statpal_fixtures_data already running, skipping this cycle")
+        return "skipped — already running"
+
+    try:
+        fetches = [
+            ("soccer", statpal_service.get_soccer_fixtures, _soccer_rows, {'offset': 0}),
+            ("nba", statpal_service.get_nba_fixtures, _nba_rows, {'offset': 0}),
+            ("football", statpal_service.get_nfl_fixtures, _nfl_rows, {'offset': 0}),
+            ("cricket", statpal_service.get_cricket_fixtures, _cricket_rows, {}),
+            ("tennis", statpal_service.get_tennis_fixtures, _tennis_rows, {'offset': 0}),
+            ("baseball", statpal_service.get_mlb_fixtures, _mlb_rows, {'offset': 0}),
+            ("handball", statpal_service.get_handball_fixtures, _handball_rows, {'offset': 0}),
+            ("volleyball", statpal_service.get_volleyball_fixtures, _volleyball_rows, {'offset': 0}),
+        ]
+
+        saved, skipped, errors = 0, 0, 0
+
+        for fetch_config in fetches:
+            sport, fetch_fn, extract_fn, params = fetch_config
+
+            try:
+                result = fetch_fn(**params)
+                if not result["success"]:
+                    continue
+
+                extracted_rows = extract_fn(result["data"])
+            except Exception as exc:
+                errors += 1
+                logger.exception("[StatPal Fixtures] %s fetch failed: %s", sport, exc)
+                continue
+
+            for row in extracted_rows:
+                try:
+                    from django.db import transaction
+                    with transaction.atomic():
+                        event_obj = _save_event(row)
+                        if event_obj is None:
+                            skipped += 1
+                            continue
+                        _save_livescore(row, event_obj)
+                        saved += 1
+                except Exception as exc:
+                    errors += 1
+
+        msg = f"sync_statpal_fixtures_data — saved={saved}, skipped={skipped}, errors={errors}"
         logger.info(msg)
         return msg
     finally:
