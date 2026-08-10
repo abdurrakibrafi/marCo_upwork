@@ -1194,16 +1194,12 @@ def get_athlete_stats(request, athlete_id):
     season = request.GET.get('season') or str(_current_season(athlete_entity.sport))
     force_refresh = request.GET.get('force_refresh', '').lower() in ('true', '1')
 
-    # 1 — try DB first (unless force_refresh is requested or DB stats are incomplete)
+    # 1 — try DB first (unless force_refresh is requested)
     if not force_refresh:
         stats = EntityStats.objects.filter(entity=athlete_entity, season=season).first()
         if stats and stats.stats_data:
-            # If DB stats have meaningful non-empty data (e.g. description, height, or goals), use DB
-            is_populated = any(
-                bool(v) for k, v in stats.stats_data.items()
-                if k in ('description', 'height', 'goals', 'appearances', 'wage', 'signing_fee')
-            )
-            if is_populated:
+            # Return from DB if stats_data has any non-empty fields
+            if any(bool(v) for v in stats.stats_data.values()):
                 return Response({
                     'athlete': EntitySerializer(athlete_entity, context={'request': request}).data,
                     'season':  season,
@@ -1358,8 +1354,59 @@ def _fetch_thesportsdb_player_stats(player_name, athlete_entity=None, force_refr
                     desc = athlete_entity.description
                 if not headshot and athlete_entity.logo_url:
                     headshot = athlete_entity.logo_url
-            except Exception:
-                pass
+
+                # Permanently persist fetched static fields into DB models (Entity & Athlete)
+                entity_fields_to_save = []
+                if desc and not athlete_entity.description:
+                    athlete_entity.description = desc
+                    entity_fields_to_save.append('description')
+                if headshot and not athlete_entity.logo_url:
+                    athlete_entity.logo_url = headshot
+                    entity_fields_to_save.append('logo_url')
+                if entity_fields_to_save:
+                    athlete_entity.save(update_fields=entity_fields_to_save)
+
+                from apps.entity.models import Athlete
+                athlete_detail_obj, _ = Athlete.objects.get_or_create(
+                    entity=athlete_entity,
+                    defaults={'first_name': athlete_entity.name.split(' ')[0], 'last_name': ' '.join(athlete_entity.name.split(' ')[1:])}
+                )
+                ad_updated = False
+                if pos and not athlete_detail_obj.position:
+                    athlete_detail_obj.position = pos
+                    ad_updated = True
+                if nat and not athlete_detail_obj.nationality:
+                    athlete_detail_obj.nationality = nat
+                    ad_updated = True
+                if dob and not athlete_detail_obj.date_of_birth:
+                    try:
+                        from datetime import datetime
+                        athlete_detail_obj.date_of_birth = datetime.strptime(dob, '%Y-%m-%d').date()
+                        ad_updated = True
+                    except Exception:
+                        pass
+                if h and not athlete_detail_obj.height_cm:
+                    try:
+                        import re
+                        m = re.search(r'\d+', str(h))
+                        if m:
+                            athlete_detail_obj.height_cm = int(m.group(0))
+                            ad_updated = True
+                    except Exception:
+                        pass
+                if w and not athlete_detail_obj.weight_kg:
+                    try:
+                        import re
+                        m = re.search(r'\d+', str(w))
+                        if m:
+                            athlete_detail_obj.weight_kg = int(m.group(0))
+                            ad_updated = True
+                    except Exception:
+                        pass
+                if ad_updated:
+                    athlete_detail_obj.save()
+            except Exception as err:
+                logger.debug(f"Failed to persist athlete_details for {athlete_entity.name}: {err}")
 
         stats_data = {
             'position': pos,
