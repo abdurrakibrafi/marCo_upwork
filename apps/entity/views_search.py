@@ -157,7 +157,7 @@ def search_entities_ai(request):
     GET /api/search/entities-ai/?q=madrid teams&sport=soccer
     
     For complex queries: "teams in madrid", "barcelona players", etc.
-    Uses OpenAI embeddings for semantic matching.
+    Falls back to standard search if embedding service is disabled.
     
     Rate limited: Cache results for 10 mins, recommend client-side debounce.
     """
@@ -180,7 +180,7 @@ def search_entities_ai(request):
     
     embedding_service = get_embedding_service()
     if not embedding_service:
-        # Transparent fallback to robust spelling-based search if OpenAI is disabled
+        # Transparent fallback to robust search if embedding service is disabled
         return search_entities(request)
     
     try:

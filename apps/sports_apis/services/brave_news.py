@@ -13,6 +13,8 @@ import requests
 from django.conf import settings
 from django.utils import timezone as django_timezone
 
+from django.core.cache import cache
+
 logger = logging.getLogger(__name__)
 
 
@@ -37,6 +39,14 @@ class BraveNewsService:
         }
 
     def fetch_news_for_entity(self, entity_name: str, entity_type: str, sport: str) -> list[dict]:
+        if not self.api_key:
+            return []
+
+        cache_key = f"brave_news:{entity_name.lower().strip()}:{sport}"
+        cached = cache.get(cache_key)
+        if cached is not None:
+            return cached
+
         queries = self._build_queries(entity_name, entity_type, sport)
         seen_urls = set()
         articles = []
@@ -65,6 +75,7 @@ class BraveNewsService:
                 if article:
                     articles.append(article)
 
+        cache.set(cache_key, articles, 3600)  # Cache for 1 hour
         return articles
 
     def _build_queries(self, name: str, entity_type: str, sport: str) -> list[str]:

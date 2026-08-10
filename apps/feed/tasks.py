@@ -555,14 +555,14 @@ def ensure_entity_has_rss_source(entity_id: int):
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# ARTICLE CONTENT FETCH — Jina AI Reader + OpenAI Summary (Lazy, on-demand)
+# ARTICLE CONTENT FETCH — Jina AI Reader (Lazy, on-demand)
 # ─────────────────────────────────────────────────────────────────────────────
 
 @shared_task(max_retries=2, default_retry_delay=10)
 def fetch_article_content(feed_item_id: int):
     """
     Lazily fetches full article content for a FeedItem using Jina AI Reader,
-    then generates a 2-3 sentence summary using the project's OpenAI service.
+    then generates a summary.
 
     Called on-demand when a user requests full article details.
     Result is cached in the DB — subsequent calls return instantly.

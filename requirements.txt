@@ -66,7 +66,6 @@ jsonschema-specifications==2025.9.1
 kombu==5.6.2
 lxml==6.0.2
 msgpack==1.1.2
-openai==2.37.0
 packaging==26.0
 pillow==12.1.0
 prometheus_client==0.24.1

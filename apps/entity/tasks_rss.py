@@ -33,7 +33,7 @@ def generate_entity_embeddings(self, entity_id=None):
     embedding_service = get_embedding_service()
     if not embedding_service:
         logger.warning("Embedding service not available")
-        return f"Skipped (no OpenAI key)"
+        return "Skipped (AI embeddings disabled)"
     
     if entity_id:
         entities = Entity.objects.filter(id=entity_id, embedding__isnull=True)

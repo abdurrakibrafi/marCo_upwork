@@ -1170,8 +1170,8 @@ def get_athlete_stats(request, athlete_id):
     # 2 — live API fallback
     stats_data = {}
  
-    if athlete_entity.sport == 'soccer' and athlete_entity.api_source == 'api_sports':
-        stats_data = _fetch_soccer_player_stats(athlete_entity.external_id, int(season))
+    if athlete_entity.name:
+        stats_data = _fetch_thesportsdb_player_stats(athlete_entity.name)
  
     # 3 — save to DB
     if stats_data:
@@ -1245,6 +1245,39 @@ def _fetch_soccer_player_stats(external_id, season):
         return stats_data
  
     except Exception:
+        return {}
+
+
+def _fetch_thesportsdb_player_stats(player_name):
+    cache_key = f'player_stats:thesportsdb:{player_name.lower().strip()}'
+    cached = cache.get(cache_key)
+    if cached:
+        return cached
+
+    try:
+        from apps.sports_apis.services.thesportsdb import thesportsdb_service
+        player_info = thesportsdb_service.get_player_details(player_name)
+        if not player_info:
+            return {}
+
+        raw = player_info.get('raw_data', {})
+        stats_data = {
+            'position': player_info.get('position', ''),
+            'nationality': player_info.get('nationality', ''),
+            'height': player_info.get('height', ''),
+            'weight': player_info.get('weight', ''),
+            'team': player_info.get('team_name', ''),
+            'date_of_birth': player_info.get('date_of_birth', ''),
+            'description': player_info.get('description', ''),
+            'headshot_url': player_info.get('headshot_url', ''),
+            'signing_fee': raw.get('strSigning', ''),
+            'wage': raw.get('strWage', ''),
+            'kit': raw.get('strKit', ''),
+        }
+        cache.set(cache_key, stats_data, timeout=86400)
+        return stats_data
+    except Exception as e:
+        logger.warning(f"TheSportsDB player stats lookup failed for '{player_name}': {e}")
         return {}
  
  

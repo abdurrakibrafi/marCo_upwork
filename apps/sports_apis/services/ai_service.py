@@ -1,11 +1,10 @@
 """
 apps/source/ai_service.py
 
-AI-powered source suggestion pipeline:
+Source suggestion pipeline:
 1. User types a query (e.g. "ESPN football", "cricket news India")
-2. OpenAI GPT-4o suggests the best sports news sources for that query
-3. We validate each suggestion: check Brave search + RSS discovery
-4. Return enriched results with name, domain, description, favicon, rss_url
+2. We query Brave Search API or search local database/popular sources
+3. Return enriched results with name, domain, description, favicon, rss_url
 """
 
 import json
@@ -27,15 +26,12 @@ from django.db.models import Q
 
 class SourceAIService:
     """
-    Uses OpenAI to suggest sports news sources, then validates
-    each one via Brave Search and RSS autodiscovery.
+    Suggests sports news sources using Brave Search, DB matching, and RSS autodiscovery.
     """
 
-    OPENAI_URL = "https://api.openai.com/v1/chat/completions"
     BRAVE_URL = "https://api.search.brave.com/res/v1/web/search"
 
     def __init__(self):
-        self.openai_key = getattr(settings, "OPENAI_API_KEY", "")
         self.brave_key = getattr(settings, "BRAVESEARCH_KEY", "")
 
     # ─────────────────────────────────────────────────────────────────────
@@ -55,68 +51,60 @@ class SourceAIService:
     def suggest_sources(self, query: str) -> list[dict]:
         """
         Given a user search query, return a list of suggested sources.
+        Checks DB first, then popular sources, and falls back to Brave Search if needed.
         Each result: {name, domain, description, favicon_url, rss_url, has_rss, tags}
         """
         ai_suggestions = []
         
-        # 1. Try OpenAI if key is set
-        if self.openai_key:
-            ai_suggestions = self._ask_openai(query)
+        # 1. Try DB matching FIRST
+        try:
+            from apps.feed.models import Source
+            from apps.entity.models import Entity
             
-        # 2. Try Brave Search fallback if key is set
-        if not ai_suggestions and self.brave_key:
-            ai_suggestions = self._brave_fallback(query)
-
-        # 3. Try DB matching fallback
-        if not ai_suggestions:
-            try:
-                from apps.feed.models import Source
-                from apps.entity.models import Entity
+            words = [w.strip() for w in query.split() if len(w.strip()) > 1]
+            db_sources = []
+            
+            if words:
+                # 1a. Try matching ALL words in name/domain (AND search)
+                q_and = Q()
+                for w in words:
+                    q_and &= (Q(name__icontains=w) | Q(domain__icontains=w))
+                db_sources = list(Source.objects.filter(q_and)[:6])
                 
-                words = [w.strip() for w in query.split() if len(w.strip()) > 1]
-                db_sources = []
-                
-                if words:
-                    # 3a. Try matching ALL words in name/domain (AND search)
-                    q_and = Q()
-                    for w in words:
-                        q_and &= (Q(name__icontains=w) | Q(domain__icontains=w))
-                    db_sources = list(Source.objects.filter(q_and)[:6])
-                    
-                    # 3b. Try matching ANY words if no results (OR search)
-                    if not db_sources:
-                        q_or = Q()
-                        for w in words:
-                            q_or |= (Q(name__icontains=w) | Q(domain__icontains=w))
-                        db_sources = list(Source.objects.filter(q_or)[:6])
-                        
-                    # 3c. Try matching entities (teams/leagues) and get their linked sources
-                    if not db_sources:
-                        q_entity = Q()
-                        for w in words:
-                            q_entity |= Q(name__icontains=w)
-                        entities = Entity.objects.filter(q_entity)
-                        if entities.exists():
-                            db_sources = list(Source.objects.filter(entities__in=entities).distinct()[:6])
-                
-                # Direct fallback if still no sources
+                # 1b. Try matching ANY words if no results (OR search)
                 if not db_sources:
-                    db_sources = list(Source.objects.filter(
-                        Q(name__icontains=query) | Q(domain__icontains=query)
-                    )[:6])
+                    q_or = Q()
+                    for w in words:
+                        q_or |= (Q(name__icontains=w) | Q(domain__icontains=w))
+                    db_sources = list(Source.objects.filter(q_or)[:6])
                     
-                for src in db_sources:
-                    ai_suggestions.append({
-                        "name": src.name,
-                        "domain": src.domain,
-                        "description": f"News articles covering sports from {src.name}.",
-                        "tags": [],
-                        "rss_url": src.rss_url,
-                    })
-            except Exception as e:
-                logger.warning(f"DB sources search failed: {e}")
+                # 1c. Try matching entities (teams/leagues/athletes) and get their linked sources
+                if not db_sources:
+                    q_entity = Q()
+                    for w in words:
+                        q_entity |= Q(name__icontains=w)
+                    entities = Entity.objects.filter(q_entity)
+                    if entities.exists():
+                        db_sources = list(Source.objects.filter(entities__in=entities).distinct()[:6])
+            
+            # Direct fallback if still no sources
+            if not db_sources:
+                db_sources = list(Source.objects.filter(
+                    Q(name__icontains=query) | Q(domain__icontains=query)
+                )[:6])
+                
+            for src in db_sources:
+                ai_suggestions.append({
+                    "name": src.name,
+                    "domain": src.domain,
+                    "description": f"News articles covering sports from {src.name}.",
+                    "tags": [],
+                    "rss_url": src.rss_url,
+                })
+        except Exception as e:
+            logger.warning(f"DB sources search failed: {e}")
 
-        # 4. Try Popular Sources matching fallback
+        # 2. Try Popular Sources matching if DB returned no results
         if not ai_suggestions:
             query_lower = query.lower()
             for pop in self.POPULAR_SOURCES:
@@ -128,6 +116,10 @@ class SourceAIService:
                         "tags": [],
                         "rss_url": pop["rss_url"],
                     })
+
+        # 3. Try Brave Search fallback if still no suggestions
+        if not ai_suggestions and self.brave_key:
+            ai_suggestions = self._brave_fallback(query)
 
         # Step 2: Enrich each suggestion with favicon
         enriched = []
@@ -143,70 +135,7 @@ class SourceAIService:
         return enriched
 
     # ─────────────────────────────────────────────────────────────────────
-    # STEP 1a: OpenAI suggestion
-    # ─────────────────────────────────────────────────────────────────────
-
-    def _ask_openai(self, query: str) -> list[dict]:
-        if not self.openai_key:
-            logger.warning("OpenAI API key not set — skipping AI suggestions")
-            return []
-
-        system_prompt = """You are a sports media expert. When given a search query, 
-suggest the best sports news sources (websites, newspapers, broadcasters) that match it.
-
-Return ONLY valid JSON — an array of objects with these exact keys:
-- name: publisher name (e.g. "ESPN")
-- domain: full domain with https (e.g. "https://www.espn.com")
-- description: one sentence about what this source covers
-- tags: array of relevant tags (e.g. ["football", "NFL", "NBA"])
-
-Rules:
-- Only suggest real, existing sports news websites
-- Prefer sources with RSS feeds (major sports publishers always have them)
-- Match the query language: if query mentions a specific sport or region, bias toward that
-- Return 5-8 sources maximum
-- Return ONLY the JSON array, no markdown, no explanation"""
-
-        user_prompt = f'Find sports news sources for this query: "{query}"'
-
-        try:
-            resp = requests.post(
-                self.OPENAI_URL,
-                headers={
-                    "Authorization": f"Bearer {self.openai_key}",
-                    "Content-Type": "application/json",
-                },
-                json={
-                    "model": "gpt-4o",
-                    "messages": [
-                        {"role": "system", "content": system_prompt},
-                        {"role": "user", "content": user_prompt},
-                    ],
-                    "max_completion_tokens": 800,
-                },
-                timeout=15,
-            )
-            resp.raise_for_status()
-            content = resp.json()["choices"][0]["message"]["content"].strip()
-
-            # Strip markdown code fences if present
-            if content.startswith("```"):
-                content = content.split("```")[1]
-                if content.startswith("json"):
-                    content = content[4:]
-            content = content.strip()
-
-            suggestions = json.loads(content)
-            if isinstance(suggestions, list):
-                return suggestions
-            return []
-
-        except Exception as e:
-            logger.warning(f"OpenAI source suggestion failed: {e}")
-            return []
-
-    # ─────────────────────────────────────────────────────────────────────
-    # STEP 1b: Brave fallback if OpenAI fails
+    # STEP 1: Brave Search suggestions
     # ─────────────────────────────────────────────────────────────────────
 
     def _brave_fallback(self, query: str) -> list[dict]:
@@ -364,14 +293,7 @@ Rules:
 
         else:
             # It's a name like "ESPN" or "Sky Sports"
-            # 1. Try OpenAI if key is set
-            suggestions = []
-            if self.openai_key:
-                suggestions = self._ask_openai(f'find official website for sports source: {raw}')
-                if suggestions:
-                    return self._enrich(suggestions[0])
-            
-            # 2. Try DB match fallback
+            # 1. Try DB match fallback
             try:
                 from apps.feed.models import Source
                 existing = Source.objects.filter(name__icontains=raw).first()
