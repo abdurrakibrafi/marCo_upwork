@@ -1354,21 +1354,46 @@ def get_athlete_bio(request, athlete_id):
     except Athlete.DoesNotExist:
         return Response({'error': 'Athlete details not found'}, status=404)
  
+    nationality = athlete.nationality or athlete_entity.country or ''
+    bio = athlete_entity.description or ''
+    photo = athlete_entity.logo_url or ''
+
+    # Enrich missing fields from TheSportsDB if needed
+    if not (athlete.nationality and bio and photo):
+        try:
+            from apps.sports_apis.services.thesportsdb import thesportsdb_service
+            tsdb_info = thesportsdb_service.get_player_details(athlete_entity.name) or {}
+            if tsdb_info:
+                if tsdb_info.get('nationality'):
+                    nationality = tsdb_info.get('nationality')
+                    athlete.nationality = nationality
+                    athlete.save(update_fields=['nationality'])
+                if not bio and tsdb_info.get('description'):
+                    bio = tsdb_info.get('description')
+                    athlete_entity.description = bio
+                    athlete_entity.save(update_fields=['description'])
+                if not photo and tsdb_info.get('headshot_url'):
+                    photo = tsdb_info.get('headshot_url')
+                    athlete_entity.logo_url = photo
+                    athlete_entity.save(update_fields=['logo_url'])
+        except Exception:
+            pass
+
     return Response({
         'id':                     athlete_entity.id,
-        'name':                   f"{athlete.first_name} {athlete.last_name}",
-        'photo':                  athlete_entity.logo_url,
+        'name':                   f"{athlete.first_name} {athlete.last_name}".strip() or athlete_entity.name,
+        'photo':                  athlete_entity.logo_url or '',
         'date_of_birth':          athlete.date_of_birth,
         'age':                    athlete.age,
-        'nationality':            athlete.nationality,
+        'nationality':            nationality,
         'height_cm':              athlete.height_cm,
         'weight_kg':              athlete.weight_kg,
         'current_team':           EntitySerializer(athlete.current_team, context={'request': request}).data if athlete.current_team else None,
         'position':               athlete.position,
         'jersey_number':          athlete.jersey_number,
-        'twitter':                athlete.twitter_handle,
-        'instagram':              athlete.instagram_handle,
-        'bio':                    athlete_entity.description,
+        'twitter':                athlete.twitter_handle or '',
+        'instagram':              athlete.instagram_handle or '',
+        'bio':                    bio,
     })
  
  
