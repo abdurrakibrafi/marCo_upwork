@@ -1179,7 +1179,7 @@ def get_athlete_stats(request, athlete_id):
     stats_data = {}
 
     if athlete_entity.name:
-        stats_data = _fetch_thesportsdb_player_stats(athlete_entity.name, athlete_entity=athlete_entity)
+        stats_data = _fetch_thesportsdb_player_stats(athlete_entity.name, athlete_entity=athlete_entity, force_refresh=force_refresh)
  
     # 3 — save to DB
     if stats_data:
@@ -1256,10 +1256,32 @@ def _fetch_soccer_player_stats(external_id, season):
         return {}
 
 
-def _fetch_thesportsdb_player_stats(player_name, athlete_entity=None):
+def _fetch_thesportsdb_player_stats(player_name, athlete_entity=None, force_refresh=False):
     cache_key = f'player_stats:thesportsdb:{player_name.lower().strip()}'
+    if force_refresh:
+        cache.delete(cache_key)
+
     cached = cache.get(cache_key)
-    if cached:
+    if cached and not force_refresh:
+        if athlete_entity:
+            try:
+                ad = athlete_entity.athlete_details
+                if not cached.get('position') and ad.position:
+                    cached['position'] = ad.position
+                if not cached.get('nationality') and ad.nationality:
+                    cached['nationality'] = ad.nationality
+                if not cached.get('height') and ad.height_cm:
+                    cached['height'] = f"{ad.height_cm} cm"
+                if not cached.get('weight') and ad.weight_kg:
+                    cached['weight'] = f"{ad.weight_kg} kg"
+                if not cached.get('date_of_birth') and ad.date_of_birth:
+                    cached['date_of_birth'] = str(ad.date_of_birth)
+                if not cached.get('description') and athlete_entity.description:
+                    cached['description'] = athlete_entity.description
+                if not cached.get('team') and ad.current_team:
+                    cached['team'] = ad.current_team.name
+            except Exception:
+                pass
         return cached
 
     try:
