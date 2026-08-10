@@ -1155,6 +1155,7 @@ def get_athlete_stats(request, athlete_id):
     """
     athlete_entity = get_object_or_404(Entity, id=athlete_id, type='athlete')
     athlete_entity = athlete_entity.canonical_entity or athlete_entity
+    season = request.GET.get('season') or str(_current_season(athlete_entity.sport))
     force_refresh = request.GET.get('force_refresh', '').lower() in ('true', '1')
 
     # 1 — try DB first (unless force_refresh is requested or DB stats are incomplete)
