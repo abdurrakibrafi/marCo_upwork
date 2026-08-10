@@ -1198,8 +1198,8 @@ def get_athlete_stats(request, athlete_id):
     if not force_refresh:
         stats = EntityStats.objects.filter(entity=athlete_entity, season=season).first()
         if stats and stats.stats_data:
-            # Return from DB if stats_data has any non-empty fields
-            if any(bool(v) for v in stats.stats_data.values()):
+            non_empty_count = sum(1 for v in stats.stats_data.values() if bool(v))
+            if non_empty_count >= 3:
                 return Response({
                     'athlete': EntitySerializer(athlete_entity, context={'request': request}).data,
                     'season':  season,
@@ -1207,13 +1207,40 @@ def get_athlete_stats(request, athlete_id):
                     'source':  'db',
                 })
 
-    # 2 — live API fallback
+    # 2 — live API fallback & multi-source data merging
     stats_data = {}
 
+    # A) Try API-Football performance stats if external_id is available
+    if athlete_entity.external_id and athlete_entity.sport == 'soccer':
+        soccer_stats = _fetch_soccer_player_stats(athlete_entity.external_id, season)
+        if soccer_stats:
+            stats_data.update(soccer_stats)
+
+    # B) Try TheSportsDB for profile bio, images, and additional attributes
     if athlete_entity.name:
-        stats_data = _fetch_thesportsdb_player_stats(athlete_entity.name, athlete_entity=athlete_entity, force_refresh=force_refresh)
- 
-    # 3 — save to DB
+        tsdb_stats = _fetch_thesportsdb_player_stats(athlete_entity.name, athlete_entity=athlete_entity, force_refresh=force_refresh)
+        if tsdb_stats:
+            for k, v in tsdb_stats.items():
+                if v or k not in stats_data:
+                    stats_data[k] = v
+
+    # C) Enrich remaining empty fields with local Athlete DB details if available
+    ad = getattr(athlete_entity, 'athlete_details', None)
+    if ad:
+        if not stats_data.get('position') and ad.position:
+            stats_data['position'] = ad.position
+        if not stats_data.get('nationality') and ad.nationality:
+            stats_data['nationality'] = ad.nationality
+        if not stats_data.get('height') and ad.height_cm:
+            stats_data['height'] = f"{ad.height_cm} cm"
+        if not stats_data.get('weight') and ad.weight_kg:
+            stats_data['weight'] = f"{ad.weight_kg} kg"
+        if not stats_data.get('date_of_birth') and ad.date_of_birth:
+            stats_data['date_of_birth'] = str(ad.date_of_birth)
+        if not stats_data.get('team') and ad.current_team:
+            stats_data['team'] = ad.current_team.name
+
+    # 3 — save combined stats to DB
     if stats_data:
         EntityStats.objects.update_or_create(
             entity=athlete_entity,
@@ -1221,7 +1248,7 @@ def get_athlete_stats(request, athlete_id):
             stat_type='season',
             defaults={'stats_data': stats_data},
         )
- 
+
     return Response({
         'athlete': EntitySerializer(athlete_entity, context={'request': request}).data,
         'season':  season,
@@ -1415,11 +1442,18 @@ def _fetch_thesportsdb_player_stats(player_name, athlete_entity=None, force_refr
             'weight': w,
             'team': team,
             'date_of_birth': dob,
+            'birth_location': raw.get('strBirthLocation', '') or '',
+            'number': raw.get('strNumber', '') or '',
+            'side': raw.get('strSide', '') or '',
+            'status': raw.get('strStatus', '') or '',
+            'outfitter': raw.get('strOutfitter', '') or '',
+            'agent': raw.get('strAgent', '') or '',
+            'date_signed': raw.get('dateSigned', '') or '',
             'description': desc,
             'headshot_url': headshot,
             'signing_fee': raw.get('strSigning', '') or '',
             'wage': raw.get('strWage', '') or '',
-            'kit': raw.get('strKit', '') or '',
+            'kit': raw.get('strKit', '') or raw.get('strNumber', '') or '',
         }
         if any(stats_data.values()):
             cache.set(cache_key, stats_data, timeout=86400)

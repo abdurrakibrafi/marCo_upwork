@@ -359,3 +359,14 @@ celerybeat-schedule
 sync_logos.py
 verify_backend*.py
 agent_task.md
+
+# Documentation & API specs not needed on VPS
+The_sports_db_v1_doc.md
+the_sports_db_v2_doc.md
+
+# Large Database Dumps
+vps_database_dump.sql
+
+# Agent & Scratch directories
+.agents/
+scratch/
