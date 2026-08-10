@@ -1155,21 +1155,28 @@ def get_athlete_stats(request, athlete_id):
     """
     athlete_entity = get_object_or_404(Entity, id=athlete_id, type='athlete')
     athlete_entity = athlete_entity.canonical_entity or athlete_entity
-    season = request.GET.get('season') or str(_current_season(athlete_entity.sport))
- 
-    # 1 — try DB first
-    stats = EntityStats.objects.filter(entity=athlete_entity, season=season).first()
-    if stats and stats.stats_data:
-        return Response({
-            'athlete': EntitySerializer(athlete_entity, context={'request': request}).data,
-            'season':  season,
-            'stats':   stats.stats_data,
-            'source':  'db',
-        })
- 
+    force_refresh = request.GET.get('force_refresh', '').lower() in ('true', '1')
+
+    # 1 — try DB first (unless force_refresh is requested or DB stats are incomplete)
+    if not force_refresh:
+        stats = EntityStats.objects.filter(entity=athlete_entity, season=season).first()
+        if stats and stats.stats_data:
+            # If DB stats have meaningful non-empty data (e.g. description, height, or goals), use DB
+            is_populated = any(
+                bool(v) for k, v in stats.stats_data.items()
+                if k in ('description', 'height', 'goals', 'appearances', 'wage', 'signing_fee')
+            )
+            if is_populated:
+                return Response({
+                    'athlete': EntitySerializer(athlete_entity, context={'request': request}).data,
+                    'season':  season,
+                    'stats':   stats.stats_data,
+                    'source':  'db',
+                })
+
     # 2 — live API fallback
     stats_data = {}
- 
+
     if athlete_entity.name:
         stats_data = _fetch_thesportsdb_player_stats(athlete_entity.name)
  
