@@ -45,10 +45,13 @@ def search_entities(request):
     
     # Check cache first (5 min)
     cache_key = f'entity_search:{normalized_query}:{sport}:{entity_type}'
-    cached = cache.get(cache_key)
-    if cached:
-        logger.info(f"Search cache hit: {query}")
-        return Response(cached)
+    try:
+        cached = cache.get(cache_key)
+        if cached:
+            logger.info(f"Search cache hit: {query}")
+            return Response(cached)
+    except Exception:
+        pass
     
     # Build filter — Global search for active queries (agent_task.md Section 13)
     filters = Q(is_active=True)
@@ -108,22 +111,35 @@ def search_entities(request):
     
     matches = []
     for entity in all_entities:
-        similar, score = find_similar_entity(query, [entity], threshold=0.70)
-        if similar:
-            entity_norm = entity.normalized_name
-            # Add bonuses to score to prioritize better matches
-            if normalized_query == entity_norm:
+        entity_norm = entity.normalized_name or normalize_entity_name(entity.name)
+        words = entity_norm.split()
+        
+        # Check direct substring or word-prefix match (e.g. 'man' in 'manchester', 'lakers' in 'los angeles lakers')
+        is_exact = (normalized_query == entity_norm)
+        is_prefix = entity_norm.startswith(normalized_query)
+        is_word_prefix = any(w.startswith(normalized_query) for w in words)
+        is_substring = (normalized_query in entity_norm)
+        
+        if is_exact or is_prefix or is_word_prefix or is_substring:
+            score = 1.0
+            if is_exact:
+                score += 3.0
+            elif is_prefix:
                 score += 2.0
-            elif normalized_query in entity_norm.split():
+            elif is_word_prefix:
+                score += 1.5
+            elif is_substring:
                 score += 1.0
-            elif entity_norm.startswith(normalized_query):
-                score += 0.5
-            
-            # Prioritize tab type preference if provided, without filtering out other types
+
             if entity_type and entity.type == entity_type:
                 score += 0.3
-
             matches.append((entity, score))
+        else:
+            similar, score = find_similar_entity(query, [entity], threshold=0.70)
+            if similar:
+                if entity_type and entity.type == entity_type:
+                    score += 0.3
+                matches.append((entity, score))
     
     # Sort by score
     matches.sort(key=lambda x: x[1], reverse=True)
@@ -144,7 +160,10 @@ def search_entities(request):
             'suggestions': []
         }
     
-    cache.set(cache_key, result, 300)
+    try:
+        cache.set(cache_key, result, 300)
+    except Exception:
+        pass
     return Response(result)
 
 
