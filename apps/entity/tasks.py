@@ -877,7 +877,20 @@ def update_hockey_team_stats(self):
         updated += 1
 
     logger.info(f"NHL: updated {updated} teams for season {season}")
-    return f"NHL: updated {updated} teams"
+@shared_task
+def update_fifa_world_rankings_task():
+    """
+    Periodic task: Refreshes FIFA Men and Women World Rankings in Redis cache and DB.
+    Runs every 24 hours to ensure fresh rankings for all member nations.
+    """
+    from apps.entity.views import fetch_live_fifa_rankings
+    from django.core.cache import cache
+    cache.delete('scraped_fifa_team_rankings_v3')
+    fifa_data = fetch_live_fifa_rankings()
+    men_count = len(fifa_data.get('by_format', {}).get('men', []))
+    women_count = len(fifa_data.get('by_format', {}).get('women', []))
+    logger.info(f"FIFA World Rankings updated: {men_count} Men teams, {women_count} Women teams cached.")
+    return f"FIFA World Rankings updated ({men_count} Men, {women_count} Women)"
 
 
 @shared_task

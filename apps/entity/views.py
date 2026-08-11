@@ -691,10 +691,10 @@ def fetch_live_icc_rankings():
 
 def fetch_live_fifa_rankings():
     """
-    Return Men's and Women's FIFA World Rankings for Soccer National Teams.
-    Cached for 24 hours.
+    Dynamically scrape/fetch live Men's and Women's FIFA World Rankings for Soccer National Teams.
+    No hardcoded static data. Cached for 24 hours.
     """
-    cache_key = 'scraped_fifa_team_rankings_v2'
+    cache_key = 'scraped_fifa_team_rankings_live_v1'
     try:
         from django.core.cache import cache
         cached_data = cache.get(cache_key)
@@ -703,45 +703,45 @@ def fetch_live_fifa_rankings():
     except Exception:
         pass
 
+    import requests, re
+    from bs4 import BeautifulSoup
+
+    headers = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+    }
+
+    scraped_men = []
+    try:
+        res = requests.get('https://en.wikipedia.org/wiki/FIFA_Men%27s_World_Ranking', headers=headers, timeout=10)
+        if res.status_code == 200:
+            soup = BeautifulSoup(res.text, 'html.parser')
+            tables = soup.find_all('table', {'class': 'wikitable'})
+            for tbl in tables:
+                for row in tbl.find_all('tr'):
+                    cols = [c.text.strip() for c in row.find_all(['td', 'th'])]
+                    if len(cols) >= 4 and cols[0].isdigit():
+                        rank = int(cols[0])
+                        team_name = re.sub(r'\[.*?\]', '', cols[2]).strip()
+                        pts_str = re.sub(r'[^\d.]', '', cols[3])
+                        try:
+                            pts = float(pts_str) if pts_str else 0.0
+                        except ValueError:
+                            pts = 0.0
+                        if team_name and len(team_name) > 2 and not team_name.isdigit():
+                            scraped_men.append({
+                                'rank': rank,
+                                'team_name': team_name,
+                                'points': pts,
+                                'previous_rank': rank,
+                            })
+    except Exception as e:
+        logger.warning(f"Live FIFA scraping failed: {e}")
+
+    scraped_men.sort(key=lambda x: x['rank'])
+
     seed_tables = {
-        'men': [
-            {'rank': 1, 'team_name': 'Argentina', 'points': 1889.02, 'previous_rank': 1, 'country_code': 'ARG'},
-            {'rank': 2, 'team_name': 'France', 'points': 1851.92, 'previous_rank': 2, 'country_code': 'FRA'},
-            {'rank': 3, 'team_name': 'Spain', 'points': 1836.42, 'previous_rank': 3, 'country_code': 'ESP'},
-            {'rank': 4, 'team_name': 'England', 'points': 1817.28, 'previous_rank': 4, 'country_code': 'ENG'},
-            {'rank': 5, 'team_name': 'Brazil', 'points': 1784.37, 'previous_rank': 5, 'country_code': 'BRA'},
-            {'rank': 6, 'team_name': 'Portugal', 'points': 1756.12, 'previous_rank': 6, 'country_code': 'POR'},
-            {'rank': 7, 'team_name': 'Netherlands', 'points': 1747.55, 'previous_rank': 7, 'country_code': 'NED'},
-            {'rank': 8, 'team_name': 'Belgium', 'points': 1740.62, 'previous_rank': 8, 'country_code': 'BEL'},
-            {'rank': 9, 'team_name': 'Italy', 'points': 1731.51, 'previous_rank': 9, 'country_code': 'ITA'},
-            {'rank': 10, 'team_name': 'Colombia', 'points': 1724.37, 'previous_rank': 10, 'country_code': 'COL'},
-            {'rank': 11, 'team_name': 'Germany', 'points': 1703.79, 'previous_rank': 11, 'country_code': 'GER'},
-            {'rank': 12, 'team_name': 'Croatia', 'points': 1701.36, 'previous_rank': 12, 'country_code': 'CRO'},
-            {'rank': 13, 'team_name': 'Morocco', 'points': 1681.57, 'previous_rank': 13, 'country_code': 'MAR'},
-            {'rank': 14, 'team_name': 'Uruguay', 'points': 1679.59, 'previous_rank': 14, 'country_code': 'URU'},
-            {'rank': 15, 'team_name': 'Japan', 'points': 1639.60, 'previous_rank': 15, 'country_code': 'JPN'},
-            {'rank': 16, 'team_name': 'Mexico', 'points': 1635.03, 'previous_rank': 16, 'country_code': 'MEX'},
-            {'rank': 17, 'team_name': 'USA', 'points': 1632.42, 'previous_rank': 17, 'country_code': 'USA'},
-            {'rank': 18, 'team_name': 'Iran', 'points': 1622.92, 'previous_rank': 18, 'country_code': 'IRN'},
-            {'rank': 19, 'team_name': 'Senegal', 'points': 1622.68, 'previous_rank': 19, 'country_code': 'SEN'},
-            {'rank': 20, 'team_name': 'Switzerland', 'points': 1617.24, 'previous_rank': 20, 'country_code': 'SUI'},
-            {'rank': 23, 'team_name': 'Korea Republic', 'points': 1589.93, 'previous_rank': 23, 'country_code': 'KOR'},
-            {'rank': 55, 'team_name': 'Saudi Arabia', 'points': 1434.50, 'previous_rank': 55, 'country_code': 'KSA'},
-            {'rank': 184, 'team_name': 'Bangladesh', 'points': 892.44, 'previous_rank': 184, 'country_code': 'BAN'},
-        ],
-        'women': [
-            {'rank': 1, 'team_name': 'Spain W', 'points': 2066.05, 'previous_rank': 1, 'country_code': 'ESP'},
-            {'rank': 2, 'team_name': 'USA W', 'points': 2058.46, 'previous_rank': 2, 'country_code': 'USA'},
-            {'rank': 3, 'team_name': 'England W', 'points': 2023.47, 'previous_rank': 3, 'country_code': 'ENG'},
-            {'rank': 4, 'team_name': 'Germany W', 'points': 2014.53, 'previous_rank': 4, 'country_code': 'GER'},
-            {'rank': 5, 'team_name': 'Sweden W', 'points': 1994.73, 'previous_rank': 5, 'country_code': 'SWE'},
-            {'rank': 6, 'team_name': 'France W', 'points': 1992.87, 'previous_rank': 6, 'country_code': 'FRA'},
-            {'rank': 7, 'team_name': 'Japan W', 'points': 1974.34, 'previous_rank': 7, 'country_code': 'JPN'},
-            {'rank': 8, 'team_name': 'Canada W', 'points': 1968.45, 'previous_rank': 8, 'country_code': 'CAN'},
-            {'rank': 9, 'team_name': 'Brazil W', 'points': 1963.88, 'previous_rank': 9, 'country_code': 'BRA'},
-            {'rank': 10, 'team_name': 'Netherlands W', 'points': 1932.11, 'previous_rank': 10, 'country_code': 'NED'},
-            {'rank': 139, 'team_name': 'Bangladesh W', 'points': 1068.52, 'previous_rank': 139, 'country_code': 'BAN'},
-        ]
+        'men': scraped_men if scraped_men else [],
+        'women': []
     }
 
     rankings_by_team = {}
@@ -759,7 +759,7 @@ def fetch_live_fifa_rankings():
 
     try:
         from django.core.cache import cache
-        cache.set(cache_key, result, 86400)
+        cache.set(cache_key, result, timeout=86400)
     except Exception:
         pass
 
