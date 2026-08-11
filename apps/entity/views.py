@@ -1694,6 +1694,7 @@ def get_team_standings(request, team_id):
                 'season': season,
                 'standings': cricket_standings_list,
                 'icc_rankings': icc_tables,
+                'source': 'icc_rankings',
                 'message': 'ICC Rankings provided for Cricket national team.',
             })
 
