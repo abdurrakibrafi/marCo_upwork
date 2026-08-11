@@ -1461,21 +1461,26 @@ def get_team_roster(request, team_id):
                 team_name=team_entity.name
             )
 
-            if tsdb_players:
+            if tsdb_players and isinstance(tsdb_players, list):
                 for p in tsdb_players:
-                    p_ext_id = str(p.get('id_player') or f"tsdb_{p['name'].replace(' ', '_').lower()}")
+                    if not isinstance(p, dict):
+                        continue
+                    p_name = str(p.get('name') or p.get('strPlayer') or '').strip()
+                    if not p_name:
+                        continue
+                    p_ext_id = str(p.get('id_player') or p.get('idPlayer') or f"tsdb_{p_name.replace(' ', '_').lower()}")
                     player_entity, _ = Entity.objects.get_or_create(
                         api_source='thesportsdb',
                         external_id=p_ext_id,
                         defaults={
                             'type': 'athlete',
-                            'name': p['name'],
+                            'name': p_name,
                             'sport': team_entity.sport,
                             'logo_url': p.get('headshot_url', '') or '',
                             'has_api_data': True,
                         }
                     )
-                    name_parts = p['name'].strip().split()
+                    name_parts = p_name.split()
                     first_name = name_parts[0] if name_parts else ''
                     last_name = ' '.join(name_parts[1:]) if len(name_parts) > 1 else ''
 
@@ -1485,8 +1490,8 @@ def get_team_roster(request, team_id):
                             'first_name': first_name,
                             'last_name': last_name,
                             'current_team': team_entity,
-                            'position': p.get('position', ''),
-                            'nationality': p.get('nationality', ''),
+                            'position': p.get('position', '') or '',
+                            'nationality': p.get('nationality', '') or '',
                         }
                     )
 
