@@ -1,3 +1,4 @@
+import logging
 from django.shortcuts import render
 from django.db.models import Q
 from rest_framework.decorators import api_view, permission_classes
@@ -10,7 +11,7 @@ from django.core.cache import cache
 from datetime import datetime
 import requests as req
 from django.conf import settings
- 
+
 from apps.entity.models import Entity, Team, Athlete, League, EntityStats
 from apps.entity.serializers import (
     EntitySerializer, TeamDetailSerializer,
@@ -18,7 +19,9 @@ from apps.entity.serializers import (
 )
 from apps.entity.services import EntitySearchService
 from apps.core.utils.mixins import BaseResponseMixin
- 
+
+logger = logging.getLogger(__name__)
+
 HEADERS_SPORTS = {'x-apisports-key': settings.API_SPORTS_KEY}
 HEADERS_BDL    = {'Authorization': settings.BALLDONTLIE_KEY}
  
