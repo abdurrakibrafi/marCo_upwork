@@ -341,9 +341,14 @@ def _fetch_soccer_team_stats_thesportsdb(team_entity):
     """Fallback: Search team on TheSportsDB API, calculate stats, and update logo_url from TheSportsDB."""
     try:
         import requests
+        from urllib.parse import quote
+        from django.conf import settings
+
+        api_key = getattr(settings, 'THESPORTSDB_KEY', None) or '092552'
         team_name = team_entity.name if hasattr(team_entity, 'name') else str(team_entity)
-        url = f"https://www.thesportsdb.com/api/v1/json/3/searchteams.php?t={team_name}"
-        res = requests.get(url, timeout=5)
+        safe_name = quote(team_name)
+        url = f"https://www.thesportsdb.com/api/v1/json/{api_key}/searchteams.php?t={safe_name}"
+        res = requests.get(url, timeout=10)
         if res.status_code == 200:
             teams = res.json().get('teams') or []
             if teams:
@@ -357,7 +362,7 @@ def _fetch_soccer_team_stats_thesportsdb(team_entity):
                         team_entity.logo_url = badge
                         team_entity.save(update_fields=['logo_url'])
 
-                events_res = requests.get(f"https://www.thesportsdb.com/api/v1/json/3/eventslast.php?id={team_id}", timeout=5)
+                events_res = requests.get(f"https://www.thesportsdb.com/api/v1/json/{api_key}/eventslast.php?id={team_id}", timeout=10)
                 if events_res.status_code == 200:
                     results = events_res.json().get('results') or []
                     wins = losses = draws = 0
@@ -386,6 +391,7 @@ def _fetch_soccer_team_stats_thesportsdb(team_entity):
                         return {
                             'form': '',
                             'played': played,
+                            'matches_played': played,
                             'wins': wins,
                             'draws': draws,
                             'losses': losses,
@@ -439,6 +445,93 @@ def _fetch_stats_from_db_events(team_entity):
     }
 
 
+def _normalize_team_stats(stats_data):
+    """
+    Ensure all team stats responses contain standard fields across all sports:
+    - matches_played
+    - win_percentage
+    - draws
+    - goals_for
+    - goals_against
+    - points
+    - goal_diff
+    - rank
+    """
+    if not isinstance(stats_data, dict) or not stats_data:
+        return stats_data
+
+    wins = int(stats_data.get('wins') or 0)
+    losses = int(stats_data.get('losses') or 0)
+    draws = int(stats_data.get('draws') or stats_data.get('ties') or stats_data.get('ot_losses') or 0)
+
+    matches_played = int(
+        stats_data.get('matches_played') or 
+        stats_data.get('played') or 
+        (wins + losses + draws)
+    )
+
+    win_perc = stats_data.get('win_percentage')
+    if win_perc is None:
+        win_perc = stats_data.get('win_pct')
+    if win_perc is None:
+        win_perc = round(wins / matches_played * 100, 1) if matches_played > 0 else 0.0
+    else:
+        try:
+            win_perc = float(win_perc)
+        except (ValueError, TypeError):
+            win_perc = 0.0
+
+    goals_for = int(stats_data.get('goals_for') or stats_data.get('points_for') or 0)
+    goals_against = int(stats_data.get('goals_against') or stats_data.get('points_against') or 0)
+
+    # 1. points
+    pts = stats_data.get('points')
+    if pts is None:
+        pts = (wins * 3) + (draws * 1)
+    else:
+        try:
+            pts = int(pts)
+        except (ValueError, TypeError):
+            pts = (wins * 3) + (draws * 1)
+
+    # 2. goal_diff
+    g_diff = stats_data.get('goal_diff')
+    if g_diff is None:
+        g_diff = stats_data.get('difference')
+    if g_diff is None or isinstance(g_diff, str):
+        g_diff = goals_for - goals_against
+    else:
+        try:
+            g_diff = int(g_diff)
+        except (ValueError, TypeError):
+            g_diff = goals_for - goals_against
+
+    # 3. rank
+    rnk = stats_data.get('rank')
+    if rnk is None:
+        rnk = stats_data.get('position')
+    if rnk is not None:
+        try:
+            rnk = int(rnk)
+        except (ValueError, TypeError):
+            rnk = 0
+    else:
+        rnk = 0
+
+    # Standardized keys across all sports
+    stats_data['matches_played'] = matches_played
+    stats_data['played'] = matches_played
+    stats_data['win_percentage'] = win_perc
+    stats_data['draws'] = draws
+    stats_data['goals_for'] = goals_for
+    stats_data['goals_against'] = goals_against
+    stats_data['points'] = pts
+    stats_data['goal_diff'] = g_diff
+    stats_data['rank'] = rnk
+
+    return stats_data
+
+
 @api_view(['GET'])
 @permission_classes([AllowAny])
 def get_team_stats(request, team_id):
@@ -469,10 +562,11 @@ def get_team_stats(request, team_id):
         team_entity.refresh_from_db()
 
     if has_valid_db_stats:
+        normalized_stats = _normalize_team_stats(stats.stats_data)
         return Response({
             'team': EntitySerializer(team_entity, context={'request': request}).data,
             'season': stats_season,
-            'stats': stats.stats_data,
+            'stats': normalized_stats,
             'source': 'db',
         })
  
@@ -507,6 +601,9 @@ def get_team_stats(request, team_id):
     # Fallback to local DB Event calculation if live APIs return empty
     if not stats_data:
         stats_data = _fetch_stats_from_db_events(team_entity)
+
+    # Standardize output keys across all sports
+    stats_data = _normalize_team_stats(stats_data)
 
     # 3 — save to DB so next call is instant
     if stats_data:
