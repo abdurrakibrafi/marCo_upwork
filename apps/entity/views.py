@@ -24,13 +24,8 @@ HEADERS_BDL    = {'Authorization': settings.BALLDONTLIE_KEY}
  
  
 def _current_season(sport='soccer'):
-    now = datetime.now()
-    year, month = now.year, now.month
-    if sport == 'soccer':
-        return year if month >= 8 else year - 1
-    elif sport == 'basketball':
-        return year if month >= 10 else year - 1
-    return year
+    """Always return the current calendar year (e.g. 2026)."""
+    return datetime.now().year
  
  
 # ─────────────────────────────────────────────────────────────────────────────
@@ -352,15 +347,28 @@ def _fetch_soccer_team_stats_thesportsdb(team_entity):
         if res.status_code == 200:
             teams = res.json().get('teams') or []
             if teams:
-                team_data = teams[0]
+                target_sport = getattr(team_entity, 'sport', '').lower()
+                team_data = None
+                if target_sport:
+                    for t in teams:
+                        str_sport = str(t.get('strSport', '')).lower()
+                        if target_sport in str_sport or str_sport in target_sport:
+                            team_data = t
+                            break
+                if not team_data:
+                    team_data = teams[0]
+
                 team_id = team_data.get('idTeam')
 
                 # Replace api-sports logo_url with TheSportsDB badge URL
                 badge = team_data.get('strBadge') or team_data.get('strLogo')
-                if badge and hasattr(team_entity, 'logo_url'):
-                    if not team_entity.logo_url or 'api-sports' in team_entity.logo_url:
-                        team_entity.logo_url = badge
-                        team_entity.save(update_fields=['logo_url'])
+                if badge and hasattr(team_entity, 'logo_url') and getattr(team_entity, 'pk', None):
+                    try:
+                        if not team_entity.logo_url or 'api-sports' in team_entity.logo_url:
+                            team_entity.logo_url = badge
+                            team_entity.save(update_fields=['logo_url'])
+                    except Exception:
+                        pass
 
                 events_res = requests.get(f"https://www.thesportsdb.com/api/v1/json/{api_key}/eventslast.php?id={team_id}", timeout=10)
                 if events_res.status_code == 200:
@@ -506,7 +514,144 @@ def _normalize_team_stats(stats_data):
         except (ValueError, TypeError):
             g_diff = goals_for - goals_against
 
-    # 3. rank
+# ─────────────────────────────────────────────────────────────────────────────
+# ICC Men's Cricket Team Rankings (Test, ODI, T20I)
+# ─────────────────────────────────────────────────────────────────────────────
+ICC_CRICKET_RANKINGS = {
+    'india': {
+        'test': {'rank': 1, 'matches': 34, 'points': 4100, 'rating': 121},
+        'odi': {'rank': 1, 'matches': 33, 'points': 3841, 'rating': 116},
+        't20i': {'rank': 1, 'matches': 58, 'points': 15500, 'rating': 267},
+    },
+    'australia': {
+        'test': {'rank': 2, 'matches': 32, 'points': 3800, 'rating': 119},
+        'odi': {'rank': 3, 'matches': 29, 'points': 2965, 'rating': 102},
+        't20i': {'rank': 2, 'matches': 42, 'points': 10800, 'rating': 257},
+    },
+    'england': {
+        'test': {'rank': 3, 'matches': 40, 'points': 4200, 'rating': 105},
+        'odi': {'rank': 7, 'matches': 31, 'points': 2898, 'rating': 93},
+        't20i': {'rank': 3, 'matches': 45, 'points': 11400, 'rating': 253},
+    },
+    'south africa': {
+        'test': {'rank': 4, 'matches': 28, 'points': 2900, 'rating': 104},
+        'odi': {'rank': 4, 'matches': 28, 'points': 2855, 'rating': 102},
+        't20i': {'rank': 5, 'matches': 40, 'points': 9800, 'rating': 245},
+    },
+    'new zealand': {
+        'test': {'rank': 5, 'matches': 30, 'points': 2850, 'rating': 95},
+        'odi': {'rank': 2, 'matches': 35, 'points': 3809, 'rating': 109},
+        't20i': {'rank': 4, 'matches': 46, 'points': 11300, 'rating': 246},
+    },
+    'pakistan': {
+        'test': {'rank': 6, 'matches': 26, 'points': 2300, 'rating': 88},
+        'odi': {'rank': 5, 'matches': 32, 'points': 3215, 'rating': 100},
+        't20i': {'rank': 7, 'matches': 50, 'points': 11600, 'rating': 232},
+    },
+    'sri lanka': {
+        'test': {'rank': 7, 'matches': 27, 'points': 2250, 'rating': 83},
+        'odi': {'rank': 6, 'matches': 36, 'points': 3470, 'rating': 96},
+        't20i': {'rank': 8, 'matches': 42, 'points': 9600, 'rating': 229},
+    },
+    'west indies': {
+        'test': {'rank': 8, 'matches': 28, 'points': 2100, 'rating': 75},
+        'odi': {'rank': 10, 'matches': 34, 'points': 2624, 'rating': 77},
+        't20i': {'rank': 6, 'matches': 44, 'points': 10400, 'rating': 236},
+    },
+    'bangladesh': {
+        'test': {'rank': 9, 'matches': 24, 'points': 1550, 'rating': 65},
+        'odi': {'rank': 9, 'matches': 39, 'points': 3251, 'rating': 83},
+        't20i': {'rank': 9, 'matches': 45, 'points': 10080, 'rating': 224},
+    },
+    'afghanistan': {
+        'test': {'rank': 10, 'matches': 10, 'points': 450, 'rating': 45},
+        'odi': {'rank': 8, 'matches': 26, 'points': 2361, 'rating': 91},
+        't20i': {'rank': 10, 'matches': 38, 'points': 8400, 'rating': 221},
+    },
+    'zimbabwe': {
+        'test': {'rank': 11, 'matches': 12, 'points': 350, 'rating': 29},
+        'odi': {'rank': 11, 'matches': 15, 'points': 941, 'rating': 63},
+        't20i': {'rank': 12, 'matches': 36, 'points': 6900, 'rating': 192},
+    },
+    'ireland': {
+        'test': {'rank': 12, 'matches': 8, 'points': 120, 'rating': 15},
+        'odi': {'rank': 12, 'matches': 14, 'points': 733, 'rating': 52},
+        't20i': {'rank': 11, 'matches': 38, 'points': 7400, 'rating': 195},
+    },
+    'scotland': {
+        'odi': {'rank': 13, 'matches': 27, 'points': 1200, 'rating': 44},
+        't20i': {'rank': 13, 'matches': 26, 'points': 4900, 'rating': 188},
+    },
+    'netherlands': {
+        'odi': {'rank': 14, 'matches': 30, 'points': 1309, 'rating': 44},
+        't20i': {'rank': 14, 'matches': 28, 'points': 5100, 'rating': 182},
+    },
+}
+
+
+def _normalize_team_stats(stats_data, team_entity=None):
+    """
+    Ensure all team stats responses contain standard fields across all sports:
+    - matches_played
+    - win_percentage
+    - draws
+    - goals_for
+    - goals_against
+    - points
+    - goal_diff
+    - rank
+    - icc_rankings (for cricket teams)
+    """
+    if not isinstance(stats_data, dict) or not stats_data:
+        return stats_data
+
+    wins = int(stats_data.get('wins') or 0)
+    losses = int(stats_data.get('losses') or 0)
+    draws = int(stats_data.get('draws') or stats_data.get('ties') or stats_data.get('ot_losses') or 0)
+
+    matches_played = int(
+        stats_data.get('matches_played') or 
+        stats_data.get('played') or 
+        (wins + losses + draws)
+    )
+
+    win_perc = stats_data.get('win_percentage')
+    if win_perc is None:
+        win_perc = stats_data.get('win_pct')
+    if win_perc is None:
+        win_perc = round(wins / matches_played * 100, 1) if matches_played > 0 else 0.0
+    else:
+        try:
+            win_perc = float(win_perc)
+        except (ValueError, TypeError):
+            win_perc = 0.0
+
+    goals_for = int(stats_data.get('goals_for') or stats_data.get('points_for') or 0)
+    goals_against = int(stats_data.get('goals_against') or stats_data.get('points_against') or 0)
+
+    # 1. points
+    pts = stats_data.get('points')
+    if pts is None:
+        pts = (wins * 3) + (draws * 1)
+    else:
+        try:
+            pts = int(pts)
+        except (ValueError, TypeError):
+            pts = (wins * 3) + (draws * 1)
+
+    # 2. goal_diff
+    g_diff = stats_data.get('goal_diff')
+    if g_diff is None:
+        g_diff = stats_data.get('difference')
+    if g_diff is None or isinstance(g_diff, str):
+        g_diff = goals_for - goals_against
+    else:
+        try:
+            g_diff = int(g_diff)
+        except (ValueError, TypeError):
+            g_diff = goals_for - goals_against
+
+    # 3. rank & ICC rankings
     rnk = stats_data.get('rank')
     if rnk is None:
         rnk = stats_data.get('position')
@@ -517,6 +662,20 @@ def _normalize_team_stats(stats_data):
             rnk = 0
     else:
         rnk = 0
+
+    # Enrich cricket team with ICC rankings
+    team_name = ''
+    if team_entity and hasattr(team_entity, 'name'):
+        team_name = team_entity.name.lower()
+    elif 'team' in stats_data and isinstance(stats_data['team'], dict):
+        team_name = str(stats_data['team'].get('name', '')).lower()
+    
+    clean_name = team_name.replace('cricket', '').replace('women', '').strip()
+    icc_info = ICC_CRICKET_RANKINGS.get(clean_name)
+    if icc_info:
+        stats_data['icc_rankings'] = icc_info
+        if not rnk or rnk == 0:
+            rnk = icc_info.get('odi', {}).get('rank') or icc_info.get('t20i', {}).get('rank') or 0
 
     # Standardized keys across all sports
     stats_data['matches_played'] = matches_played
@@ -595,6 +754,8 @@ def get_team_stats(request, team_id):
  
     elif team_entity.sport == 'cricket':
         stats_data = _fetch_cricket_team_stats(team_entity.external_id, api_season)
+        if not stats_data:
+            stats_data = _fetch_soccer_team_stats_thesportsdb(team_entity)
  
     # tennis / golf / mma / f1 have no team-standings API — return empty gracefully
  
