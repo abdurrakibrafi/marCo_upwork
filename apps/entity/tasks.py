@@ -92,12 +92,50 @@ def seed_players_for_team(team_external_id: str, season: int = None):
     from apps.entity.models import Entity, Athlete
 
     team_entity = Entity.objects.filter(
-        api_source__in=['api_sports', 'statpal'],
         external_id=str(team_external_id)
     ).first()
 
     if not team_entity:
         return f"Team {team_external_id} not found in DB"
+
+    if team_entity.api_source == 'thesportsdb' or not team_entity.api_source:
+        try:
+            from apps.sports_apis.services.thesportsdb import TheSportsDBService
+            tsdb = TheSportsDBService()
+            players = tsdb.get_team_roster(team_id=team_entity.external_id, team_name=team_entity.name)
+            created_total = 0
+            for p in players:
+                p_ext_id = str(p.get('id_player') or f"tsdb_{p['name'].replace(' ', '_').lower()}")
+                player_entity, _ = Entity.objects.get_or_create(
+                    api_source='thesportsdb',
+                    external_id=p_ext_id,
+                    defaults={
+                        'type': 'athlete',
+                        'name': p['name'],
+                        'sport': team_entity.sport,
+                        'logo_url': p.get('headshot_url', '') or '',
+                        'has_api_data': True,
+                    }
+                )
+                name_parts = p['name'].strip().split()
+                first_name = name_parts[0] if name_parts else ''
+                last_name = ' '.join(name_parts[1:]) if len(name_parts) > 1 else ''
+
+                _, was_created = Athlete.objects.get_or_create(
+                    entity=player_entity,
+                    defaults={
+                        'first_name': first_name,
+                        'last_name': last_name,
+                        'current_team': team_entity,
+                        'position': p.get('position', ''),
+                        'nationality': p.get('nationality', ''),
+                    }
+                )
+                if was_created:
+                    created_total += 1
+            return f"Seeded {created_total} players for team {team_external_id} from TheSportsDB"
+        except Exception as e:
+            logger.warning(f"TheSportsDB player seeding failed for {team_entity.name}: {e}")
 
     if team_entity.api_source == 'api_sports':
         headers = {'x-apisports-key': settings.API_SPORTS_KEY}

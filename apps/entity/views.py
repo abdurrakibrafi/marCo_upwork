@@ -1449,6 +1449,52 @@ def get_team_roster(request, team_id):
         | Q(current_team__external_id=team_entity.external_id, current_team__sport=team_entity.sport)
     ).select_related('entity').distinct()
  
+    if not athletes.exists():
+        try:
+            from apps.sports_apis.services.thesportsdb import TheSportsDBService
+            tsdb = TheSportsDBService()
+            tsdb_players = tsdb.get_team_roster(
+                team_id=team_entity.external_id if team_entity.api_source == 'thesportsdb' else None,
+                team_name=team_entity.name
+            )
+
+            if tsdb_players:
+                for p in tsdb_players:
+                    p_ext_id = str(p.get('id_player') or f"tsdb_{p['name'].replace(' ', '_').lower()}")
+                    player_entity, _ = Entity.objects.get_or_create(
+                        api_source='thesportsdb',
+                        external_id=p_ext_id,
+                        defaults={
+                            'type': 'athlete',
+                            'name': p['name'],
+                            'sport': team_entity.sport,
+                            'logo_url': p.get('headshot_url', '') or '',
+                            'has_api_data': True,
+                        }
+                    )
+                    name_parts = p['name'].strip().split()
+                    first_name = name_parts[0] if name_parts else ''
+                    last_name = ' '.join(name_parts[1:]) if len(name_parts) > 1 else ''
+
+                    Athlete.objects.get_or_create(
+                        entity=player_entity,
+                        defaults={
+                            'first_name': first_name,
+                            'last_name': last_name,
+                            'current_team': team_entity,
+                            'position': p.get('position', ''),
+                            'nationality': p.get('nationality', ''),
+                        }
+                    )
+
+                athletes = Athlete.objects.filter(
+                    Q(current_team=team_entity)
+                    | Q(current_team__external_id=team_entity.external_id, current_team__sport=team_entity.sport)
+                    | Q(current_team__name__iexact=team_entity.name, current_team__sport=team_entity.sport)
+                ).select_related('entity').distinct()
+        except Exception as err:
+            logger.warning(f"TheSportsDB roster fetch error for {team_entity.name}: {err}")
+
     if not athletes.exists() and team_entity.api_source == 'api_sports':
         from apps.entity.tasks import seed_players_for_team
         season = _current_season(team_entity.sport)
