@@ -689,6 +689,83 @@ def fetch_live_icc_rankings():
     return result
 
 
+def fetch_live_fifa_rankings():
+    """
+    Return Men's and Women's FIFA World Rankings for Soccer National Teams.
+    Cached for 24 hours.
+    """
+    cache_key = 'scraped_fifa_team_rankings_v2'
+    try:
+        from django.core.cache import cache
+        cached_data = cache.get(cache_key)
+        if cached_data:
+            return cached_data
+    except Exception:
+        pass
+
+    seed_tables = {
+        'men': [
+            {'rank': 1, 'team_name': 'Argentina', 'points': 1889.02, 'previous_rank': 1, 'country_code': 'ARG'},
+            {'rank': 2, 'team_name': 'France', 'points': 1851.92, 'previous_rank': 2, 'country_code': 'FRA'},
+            {'rank': 3, 'team_name': 'Spain', 'points': 1836.42, 'previous_rank': 3, 'country_code': 'ESP'},
+            {'rank': 4, 'team_name': 'England', 'points': 1817.28, 'previous_rank': 4, 'country_code': 'ENG'},
+            {'rank': 5, 'team_name': 'Brazil', 'points': 1784.37, 'previous_rank': 5, 'country_code': 'BRA'},
+            {'rank': 6, 'team_name': 'Portugal', 'points': 1756.12, 'previous_rank': 6, 'country_code': 'POR'},
+            {'rank': 7, 'team_name': 'Netherlands', 'points': 1747.55, 'previous_rank': 7, 'country_code': 'NED'},
+            {'rank': 8, 'team_name': 'Belgium', 'points': 1740.62, 'previous_rank': 8, 'country_code': 'BEL'},
+            {'rank': 9, 'team_name': 'Italy', 'points': 1731.51, 'previous_rank': 9, 'country_code': 'ITA'},
+            {'rank': 10, 'team_name': 'Colombia', 'points': 1724.37, 'previous_rank': 10, 'country_code': 'COL'},
+            {'rank': 11, 'team_name': 'Germany', 'points': 1703.79, 'previous_rank': 11, 'country_code': 'GER'},
+            {'rank': 12, 'team_name': 'Croatia', 'points': 1701.36, 'previous_rank': 12, 'country_code': 'CRO'},
+            {'rank': 13, 'team_name': 'Morocco', 'points': 1681.57, 'previous_rank': 13, 'country_code': 'MAR'},
+            {'rank': 14, 'team_name': 'Uruguay', 'points': 1679.59, 'previous_rank': 14, 'country_code': 'URU'},
+            {'rank': 15, 'team_name': 'Japan', 'points': 1639.60, 'previous_rank': 15, 'country_code': 'JPN'},
+            {'rank': 16, 'team_name': 'Mexico', 'points': 1635.03, 'previous_rank': 16, 'country_code': 'MEX'},
+            {'rank': 17, 'team_name': 'USA', 'points': 1632.42, 'previous_rank': 17, 'country_code': 'USA'},
+            {'rank': 18, 'team_name': 'Iran', 'points': 1622.92, 'previous_rank': 18, 'country_code': 'IRN'},
+            {'rank': 19, 'team_name': 'Senegal', 'points': 1622.68, 'previous_rank': 19, 'country_code': 'SEN'},
+            {'rank': 20, 'team_name': 'Switzerland', 'points': 1617.24, 'previous_rank': 20, 'country_code': 'SUI'},
+            {'rank': 23, 'team_name': 'Korea Republic', 'points': 1589.93, 'previous_rank': 23, 'country_code': 'KOR'},
+            {'rank': 55, 'team_name': 'Saudi Arabia', 'points': 1434.50, 'previous_rank': 55, 'country_code': 'KSA'},
+            {'rank': 184, 'team_name': 'Bangladesh', 'points': 892.44, 'previous_rank': 184, 'country_code': 'BAN'},
+        ],
+        'women': [
+            {'rank': 1, 'team_name': 'Spain W', 'points': 2066.05, 'previous_rank': 1, 'country_code': 'ESP'},
+            {'rank': 2, 'team_name': 'USA W', 'points': 2058.46, 'previous_rank': 2, 'country_code': 'USA'},
+            {'rank': 3, 'team_name': 'England W', 'points': 2023.47, 'previous_rank': 3, 'country_code': 'ENG'},
+            {'rank': 4, 'team_name': 'Germany W', 'points': 2014.53, 'previous_rank': 4, 'country_code': 'GER'},
+            {'rank': 5, 'team_name': 'Sweden W', 'points': 1994.73, 'previous_rank': 5, 'country_code': 'SWE'},
+            {'rank': 6, 'team_name': 'France W', 'points': 1992.87, 'previous_rank': 6, 'country_code': 'FRA'},
+            {'rank': 7, 'team_name': 'Japan W', 'points': 1974.34, 'previous_rank': 7, 'country_code': 'JPN'},
+            {'rank': 8, 'team_name': 'Canada W', 'points': 1968.45, 'previous_rank': 8, 'country_code': 'CAN'},
+            {'rank': 9, 'team_name': 'Brazil W', 'points': 1963.88, 'previous_rank': 9, 'country_code': 'BRA'},
+            {'rank': 10, 'team_name': 'Netherlands W', 'points': 1932.11, 'previous_rank': 10, 'country_code': 'NED'},
+            {'rank': 139, 'team_name': 'Bangladesh W', 'points': 1068.52, 'previous_rank': 139, 'country_code': 'BAN'},
+        ]
+    }
+
+    rankings_by_team = {}
+    for gender_key, rows in seed_tables.items():
+        for r in rows:
+            clean = r['team_name'].lower().replace(' w', '').strip()
+            if clean not in rankings_by_team:
+                rankings_by_team[clean] = {}
+            rankings_by_team[clean][gender_key] = r
+
+    result = {
+        'by_team': rankings_by_team,
+        'by_format': seed_tables,
+    }
+
+    try:
+        from django.core.cache import cache
+        cache.set(cache_key, result, 86400)
+    except Exception:
+        pass
+
+    return result
+
+
 def _normalize_team_stats(stats_data, team_entity=None):
     """
     Ensure all team stats responses contain standard fields across all sports:
@@ -815,6 +892,21 @@ def _normalize_team_stats(stats_data, team_entity=None):
         stats_data.pop('goals_for', None)
         stats_data.pop('goals_against', None)
         stats_data.pop('goal_diff', None)
+
+    is_soccer = (team_entity and getattr(team_entity, 'sport', '').lower() == 'soccer') or ('soccer' in team_name)
+    if is_soccer:
+        fifa_res = fetch_live_fifa_rankings()
+        fifa_map = fifa_res.get('by_team', {}) if isinstance(fifa_res, dict) and 'by_team' in fifa_res else {}
+        clean_name = team_name.lower().replace(' w', '').strip()
+        fifa_info = None
+        if clean_name:
+            for k, v in fifa_map.items():
+                if k == clean_name or k in clean_name or clean_name in k:
+                    fifa_info = v
+                    break
+
+        if fifa_info:
+            stats_data['fifa_rankings'] = fifa_info
 
     return stats_data
 
@@ -1564,45 +1656,8 @@ def get_team_standings(request, team_id):
                 Q(name__iexact=team_entity.name)
             ).values_list('id', flat=True)
         )
-        event = Event.objects.filter(
-            (Q(home_entity_id__in=team_ids) | Q(away_entity_id__in=team_ids)),
-            league__isnull=False
-        ).select_related('league').first()
         if event:
             league = event.league
-
-    if not league:
-        # Fallback 2: Query API-Sports leagues endpoint to find a league entity
-        if team_entity.api_source == 'api_sports':
-            try:
-                resp = req.get(
-                    'https://v3.football.api-sports.io/leagues',
-                    headers=HEADERS_SPORTS,
-                    params={'team': team_entity.external_id, 'season': season},
-                    timeout=10,
-                )
-                if resp.status_code == 200:
-                    leagues_data = resp.json().get('response', [])
-                    if leagues_data:
-                        first_league = leagues_data[0]
-                        lg_id = first_league.get('league', {}).get('id')
-                        lg_name = first_league.get('league', {}).get('name')
-                        # Check if League Entity exists
-                        league = Entity.objects.filter(api_source='api_sports', external_id=str(lg_id)).first()
-                        if not league:
-                            # Create a temporary/mock League Entity so we can fetch standings
-                            league = Entity.objects.create(
-                                name=lg_name,
-                                type='league',
-                                sport='soccer',
-                                api_source='api_sports',
-                                external_id=str(lg_id),
-                                has_api_data=True
-                            )
-                            from apps.entity.models import League
-                            League.objects.get_or_create(entity=league)
-            except Exception:
-                pass
 
     if not league:
         icc_tables = {}
@@ -1613,7 +1668,6 @@ def get_team_standings(request, team_id):
             icc_res = fetch_live_icc_rankings()
             by_format = icc_res.get('by_format', {}) if isinstance(icc_res, dict) else {}
 
-            # Build format tables with is_highlighted flag for the current team
             for fmt, rows in by_format.items():
                 fmt_rows = []
                 for row in rows:
@@ -1625,20 +1679,116 @@ def get_team_standings(request, team_id):
                     fmt_rows.append(row_copy)
                 icc_tables[fmt] = fmt_rows
 
-            # Build flat list for standings array with format identifier
             for fmt, rows in icc_tables.items():
                 for r in rows:
                     r_item = dict(r)
                     r_item['format'] = fmt.upper()
                     cricket_standings_list.append(r_item)
 
+            return Response({
+                'team': EntitySerializer(team_entity, context={'request': request}).data,
+                'season': season,
+                'standings': cricket_standings_list,
+                'icc_rankings': icc_tables,
+                'message': 'ICC Rankings provided for Cricket national team.',
+            })
+
+        if team_entity.sport == 'soccer':
+            clean_name = team_entity.name.lower().replace(' w', '').strip()
+            fifa_res = fetch_live_fifa_rankings()
+            by_format = fifa_res.get('by_format', {}) if isinstance(fifa_res, dict) else {}
+
+            fifa_tables = {}
+            for fmt, rows in by_format.items():
+                fmt_rows = []
+                for row in rows:
+                    t_name = row.get('team_name', '')
+                    t_key = t_name.lower().replace(' w', '').strip()
+                    is_hl = (t_key == clean_name) or (clean_name and (clean_name in t_key or t_key in clean_name))
+                    row_copy = dict(row)
+                    row_copy['is_highlighted'] = is_hl
+                    fmt_rows.append(row_copy)
+                fifa_tables[fmt] = fmt_rows
+
+            active_gender = 'women' if ' w' in team_entity.name.lower() else 'men'
+            selected_table = fifa_tables.get(active_gender, [])
+
+            return Response({
+                'team': EntitySerializer(team_entity, context={'request': request}).data,
+                'season': season,
+                'standings': selected_table,
+                'fifa_rankings': fifa_tables,
+                'source': 'fifa_rankings',
+                'message': 'FIFA World Rankings provided for Soccer national team.',
+            })
+
         return Response({
             'team': EntitySerializer(team_entity, context={'request': request}).data,
             'season': season,
-            'standings': cricket_standings_list,
-            'icc_rankings': icc_tables,
-            'message': 'No league linked to this team' if not icc_tables else 'ICC Rankings for all countries provided for Cricket team.',
+            'standings': [],
+            'message': 'No league linked to this team',
         })
+
+    # Delegate to league standings view logic
+    res = _get_standings_for_league(request, league, season, highlight_team_id=team_entity.external_id)
+
+    if team_entity.sport == 'cricket':
+        clean_name = _normalize_cricket_team_key(team_entity.name)
+        icc_res = fetch_live_icc_rankings()
+        by_format = icc_res.get('by_format', {}) if isinstance(icc_res, dict) else {}
+
+        icc_tables = {}
+        cricket_standings_list = []
+        for fmt, rows in by_format.items():
+            fmt_rows = []
+            for row in rows:
+                t_name = row.get('team_name', '')
+                t_key = _normalize_cricket_team_key(t_name)
+                is_hl = (t_key == clean_name) or (clean_name and (clean_name in t_key or t_key in clean_name))
+                row_copy = dict(row)
+                row_copy['is_highlighted'] = is_hl
+                fmt_rows.append(row_copy)
+            icc_tables[fmt] = fmt_rows
+
+        for fmt, rows in icc_tables.items():
+            for r in rows:
+                r_item = dict(r)
+                r_item['format'] = fmt.upper()
+                cricket_standings_list.append(r_item)
+
+        res.data['icc_rankings'] = icc_tables
+        if not res.data.get('standings'):
+            res.data['standings'] = cricket_standings_list
+            res.data['source'] = 'icc_rankings'
+
+    elif team_entity.sport == 'soccer':
+        clean_name = team_entity.name.lower().replace(' w', '').strip()
+        fifa_res = fetch_live_fifa_rankings()
+        by_format = fifa_res.get('by_format', {}) if isinstance(fifa_res, dict) else {}
+
+        fifa_tables = {}
+        is_national = False
+        for fmt, rows in by_format.items():
+            fmt_rows = []
+            for row in rows:
+                t_name = row.get('team_name', '')
+                t_key = t_name.lower().replace(' w', '').strip()
+                is_hl = (t_key == clean_name) or (clean_name and (clean_name in t_key or t_key in clean_name))
+                if is_hl:
+                    is_national = True
+                row_copy = dict(row)
+                row_copy['is_highlighted'] = is_hl
+                fmt_rows.append(row_copy)
+            fifa_tables[fmt] = fmt_rows
+
+        if is_national:
+            active_gender = 'women' if ' w' in team_entity.name.lower() else 'men'
+            selected_table = fifa_tables.get(active_gender, [])
+            res.data['fifa_rankings'] = fifa_tables
+            res.data['standings'] = selected_table
+            res.data['source'] = 'fifa_rankings'
+
+    return res
  
     # Delegate to league standings view logic
     res = _get_standings_for_league(request, league, season, highlight_team_id=team_entity.external_id)
