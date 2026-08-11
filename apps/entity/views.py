@@ -688,6 +688,17 @@ def _normalize_team_stats(stats_data, team_entity=None):
     stats_data['goal_diff'] = g_diff
     stats_data['rank'] = rnk
 
+    # Add cricket-specific readable aliases & clear irrelevant soccer fields
+    is_cricket = (team_entity and getattr(team_entity, 'sport', '').lower() == 'cricket') or ('cricket' in team_name)
+    if is_cricket:
+        stats_data['runs_scored'] = goals_for
+        stats_data['runs_conceded'] = goals_against
+        stats_data['run_difference'] = g_diff
+        # Reset soccer specific goal terms to 0 for cricket
+        stats_data['goals_for'] = 0
+        stats_data['goals_against'] = 0
+        stats_data['goal_diff'] = 0
+
     return stats_data
 
 
