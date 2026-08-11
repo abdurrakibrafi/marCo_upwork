@@ -689,7 +689,7 @@ def get_team_stats(request, team_id):
         team_entity.refresh_from_db()
 
     if has_valid_db_stats:
-        normalized_stats = _normalize_team_stats(stats.stats_data)
+        normalized_stats = _normalize_team_stats(stats.stats_data, team_entity=team_entity)
         return Response({
             'team': EntitySerializer(team_entity, context={'request': request}).data,
             'season': stats_season,
@@ -732,7 +732,7 @@ def get_team_stats(request, team_id):
         stats_data = _fetch_stats_from_db_events(team_entity)
 
     # Standardize output keys across all sports
-    stats_data = _normalize_team_stats(stats_data)
+    stats_data = _normalize_team_stats(stats_data, team_entity=team_entity)
 
     # 3 — save to DB so next call is instant
     if stats_data:
