@@ -1587,7 +1587,38 @@ def get_team_standings(request, team_id):
         })
  
     # Delegate to league standings view logic
-    return _get_standings_for_league(request, league, season, highlight_team_id=team_entity.external_id)
+    res = _get_standings_for_league(request, league, season, highlight_team_id=team_entity.external_id)
+
+    if team_entity.sport == 'cricket':
+        clean_name = _normalize_cricket_team_key(team_entity.name)
+        icc_res = fetch_live_icc_rankings()
+        by_format = icc_res.get('by_format', {}) if isinstance(icc_res, dict) else {}
+
+        icc_tables = {}
+        cricket_standings_list = []
+        for fmt, rows in by_format.items():
+            fmt_rows = []
+            for row in rows:
+                t_name = row.get('team_name', '')
+                t_key = _normalize_cricket_team_key(t_name)
+                is_hl = (t_key == clean_name) or (clean_name and (clean_name in t_key or t_key in clean_name))
+                row_copy = dict(row)
+                row_copy['is_highlighted'] = is_hl
+                fmt_rows.append(row_copy)
+            icc_tables[fmt] = fmt_rows
+
+        for fmt, rows in icc_tables.items():
+            for r in rows:
+                r_item = dict(r)
+                r_item['format'] = fmt.upper()
+                cricket_standings_list.append(r_item)
+
+        res.data['icc_rankings'] = icc_tables
+        if not res.data.get('standings'):
+            res.data['standings'] = cricket_standings_list
+            res.data['source'] = 'icc_rankings'
+
+    return res
  
  
 # ─────────────────────────────────────────────────────────────────────────────
