@@ -770,15 +770,22 @@ def fetch_event_details(self, event_id: int):
             logger.error(f"Failed to queue highlight fetch for event {event_id}: {e}")
         return f"Event {event_id} (statpal) details populated"
 
-    # ── api_sports events: fetch from API ──
-    if event.api_source != 'api_sports':
+    # ── api_sports & thesportsdb events: fetch from API ──
+    if event.api_source not in ['api_sports', 'thesportsdb']:
         return f"Event {event_id} has unknown source '{event.api_source}' — skipping"
- 
+
     fixture_id = event.external_id
-    headers = {'x-apisports-key': settings.API_SPORTS_KEY}
- 
+    headers = {'x-apisports-key': getattr(settings, 'API_SPORTS_KEY', '')}
+
     # ── 1. Team statistics ────────────────────────────────────────────────
     try:
+        if event.api_source == 'thesportsdb':
+            from apps.sports_apis.services.thesportsdb import TheSportsDBService
+            tsdb = TheSportsDBService()
+            event_info = tsdb.get_event_details(fixture_id)
+        else:
+            event_info = None
+
         resp = req.get(
             'https://v3.football.api-sports.io/fixtures/statistics',
             headers=headers,
@@ -789,10 +796,9 @@ def fetch_event_details(self, event_id: int):
             for team_stats in resp.json().get('response', []):
                 team_data = team_stats.get('team', {})
                 team_entity = Entity.objects.filter(
-                    api_source='api_sports',
                     external_id=str(team_data.get('id', '')),
                     type='team',
-                ).first()
+                ).first() or Entity.objects.filter(name__iexact=team_data.get('name'), type='team').first()
  
                 if not team_entity:
                     continue

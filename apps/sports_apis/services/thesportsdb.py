@@ -255,7 +255,7 @@ class TheSportsDBService:
     def search_player(self, player_name: str) -> dict | None:
         """Search for a player by name. Returns best match or None."""
         data = self._get('searchplayers.php', {'p': player_name})
-        players = data.get('player')
+        players = data.get('player') or data.get('players') or []
         if not players:
             return None
         return players[0]

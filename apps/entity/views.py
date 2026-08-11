@@ -1856,19 +1856,17 @@ def get_athlete_stats(request, athlete_id):
     # 2 — live API fallback & multi-source data merging
     stats_data = {}
 
-    # A) Try API-Football performance stats if external_id is available
-    if athlete_entity.external_id and athlete_entity.sport == 'soccer':
-        soccer_stats = _fetch_soccer_player_stats(athlete_entity.external_id, season)
-        if soccer_stats:
-            stats_data.update(soccer_stats)
-
-    # B) Try TheSportsDB for profile bio, images, and additional attributes
+    # A) Try TheSportsDB first for profile bio, stats, images, and attributes
     if athlete_entity.name:
         tsdb_stats = _fetch_thesportsdb_player_stats(athlete_entity.name, athlete_entity=athlete_entity, force_refresh=force_refresh)
         if tsdb_stats:
-            for k, v in tsdb_stats.items():
-                if v or k not in stats_data:
-                    stats_data[k] = v
+            stats_data.update(tsdb_stats)
+
+    # B) Try API-Football performance stats if external_id is available and needed
+    if not stats_data and athlete_entity.external_id and athlete_entity.sport == 'soccer':
+        soccer_stats = _fetch_soccer_player_stats(athlete_entity.external_id, season)
+        if soccer_stats:
+            stats_data.update(soccer_stats)
 
     # C) Enrich remaining empty fields with local Athlete DB details if available
     ad = getattr(athlete_entity, 'athlete_details', None)
@@ -2244,13 +2242,11 @@ def _get_standings_for_league(request, league_entity, season, highlight_team_id=
             'source':    'db',
         })
 
-    # Live API fallback — try API-Sports first, then TheSportsDB
-    live_standings = []
-    if canonical.api_source == 'api_sports':
-        live_standings = _fetch_soccer_standings(canonical.external_id, int(season))
+    # Live API fallback — try TheSportsDB first, then API-Sports
+    live_standings = _fetch_league_standings_thesportsdb(canonical, season)
 
-    if not live_standings:
-        live_standings = _fetch_league_standings_thesportsdb(canonical, season)
+    if not live_standings and canonical.api_source == 'api_sports':
+        live_standings = _fetch_soccer_standings(canonical.external_id, int(season))
 
     if live_standings:
         # Write each team's standing back to DB if matching Entity exists
