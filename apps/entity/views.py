@@ -1656,6 +1656,10 @@ def get_team_standings(request, team_id):
                 Q(name__iexact=team_entity.name)
             ).values_list('id', flat=True)
         )
+        event = Event.objects.filter(
+            (Q(home_entity_id__in=team_ids) | Q(away_entity_id__in=team_ids)),
+            league__isnull=False
+        ).select_related('league').first()
         if event:
             league = event.league
 
