@@ -484,12 +484,42 @@ def _fetch_stats_from_db_events(team_entity):
     }
 
 
+CRICKET_TEAM_ALIAS_MAP = {
+    'usa': 'united states of america',
+    'u.s.a.': 'united states of america',
+    'uae': 'united arab emirates',
+    'u.a.e.': 'united arab emirates',
+    'uk': 'england',
+    'ban': 'bangladesh',
+    'bd': 'bangladesh',
+    'ind': 'india',
+    'aus': 'australia',
+    'pak': 'pakistan',
+    'eng': 'england',
+    'sa': 'south africa',
+    'nz': 'new zealand',
+    'sl': 'sri lanka',
+    'wi': 'west indies',
+    'afg': 'afghanistan',
+    'zim': 'zimbabwe',
+    'ire': 'ireland',
+    'sco': 'scotland',
+    'ned': 'netherlands',
+}
+
+def _normalize_cricket_team_key(name):
+    if not name:
+        return ''
+    clean = str(name).lower().replace('cricket', '').replace('women', '').replace('team', '').strip()
+    return CRICKET_TEAM_ALIAS_MAP.get(clean, clean)
+
+
 def fetch_live_icc_rankings():
     """
-    Scrape live ICC Team Rankings (Test, ODI, T20I) from Cricbuzz and cache for 24 hours.
+    Scrape live ICC Team Rankings (Test, ODI, T20I) for ALL countries from Cricbuzz and cache for 24 hours.
     100% rate-limit safe because it only executes external HTTP GET once every 24 hours.
     """
-    cache_key = 'scraped_icc_team_rankings'
+    cache_key = 'scraped_icc_team_rankings_v3'
     try:
         from django.core.cache import cache
         cached_data = cache.get(cache_key)
@@ -499,6 +529,8 @@ def fetch_live_icc_rankings():
         pass
 
     rankings_by_team = {}
+    tables_by_format = {'test': [], 'odi': [], 't20i': []}
+
     try:
         import requests, re
 
@@ -516,26 +548,46 @@ def fetch_live_icc_rankings():
                 item_matches = re.finditer(r'\\"rank\\":\\"(?P<rank>\d+)\\",\\"name\\":\\"(?P<name>[^\\]+)\\",\\"matches\\":\\"(?P<matches>\d+)\\",\\"rating\\":\\"(?P<rating>\d+)\\",\\"points\\":\\"(?P<points>\d+)\\"', items_raw)
                 for it in item_matches:
                     d = it.groupdict()
-                    team_name = d['name'].lower().replace('cricket', '').replace('women', '').strip()
-                    if team_name not in rankings_by_team:
-                        rankings_by_team[team_name] = {}
-                    rankings_by_team[team_name][fmt_name] = {
-                        'rank': int(d['rank']),
-                        'matches': int(d['matches']),
-                        'points': int(d['points']),
-                        'rating': int(d['rating']),
+                    display_name = d['name']
+                    team_key = display_name.lower().replace('cricket', '').replace('women', '').strip()
+                    rank_val = int(d['rank'])
+                    matches_val = int(d['matches'])
+                    points_val = int(d['points'])
+                    rating_val = int(d['rating'])
+
+                    if team_key not in rankings_by_team:
+                        rankings_by_team[team_key] = {}
+                    rankings_by_team[team_key][fmt_name] = {
+                        'rank': rank_val,
+                        'matches': matches_val,
+                        'points': points_val,
+                        'rating': rating_val,
                     }
+
+                    tables_by_format[fmt_name].append({
+                        'rank': rank_val,
+                        'team_name': display_name,
+                        'matches': matches_val,
+                        'points': points_val,
+                        'rating': rating_val,
+                    })
+
+            result = {
+                'by_team': rankings_by_team,
+                'by_format': tables_by_format,
+            }
 
             if rankings_by_team:
                 try:
                     from django.core.cache import cache
-                    cache.set(cache_key, rankings_by_team, 86400)
+                    cache.set(cache_key, result, 86400)
                 except Exception:
                     pass
+                return result
     except Exception:
         pass
 
-    return rankings_by_team
+    return {'by_team': rankings_by_team, 'by_format': tables_by_format}
 
 
 def _normalize_team_stats(stats_data, team_entity=None):
@@ -634,12 +686,14 @@ def _normalize_team_stats(stats_data, team_entity=None):
 
     is_cricket = (team_entity and getattr(team_entity, 'sport', '').lower() == 'cricket') or ('cricket' in team_name)
     if is_cricket:
-        clean_name = team_name.replace('cricket', '').replace('women', '').strip()
-        icc_map = fetch_live_icc_rankings()
-        icc_info = icc_map.get(clean_name) if clean_name else None
-        if not icc_info and clean_name:
+        clean_name = _normalize_cricket_team_key(team_name)
+        icc_res = fetch_live_icc_rankings()
+        icc_map = icc_res.get('by_team', {}) if isinstance(icc_res, dict) and 'by_team' in icc_res else icc_res
+        icc_info = None
+        if clean_name:
             for k, v in icc_map.items():
-                if k in clean_name or clean_name in k:
+                ck = _normalize_cricket_team_key(k)
+                if ck == clean_name or ck in clean_name or clean_name in ck:
                     icc_info = v
                     break
 
@@ -648,13 +702,20 @@ def _normalize_team_stats(stats_data, team_entity=None):
 
         stats_data['rank'] = 0  # Format-agnostic top level rank is 0 for cricket (rankings belong inside icc_rankings)
 
-        stats_data['runs_scored'] = goals_for
-        stats_data['runs_conceded'] = goals_against
-        stats_data['run_difference'] = g_diff
-        # Reset soccer specific goal terms to 0 for cricket
-        stats_data['goals_for'] = 0
-        stats_data['goals_against'] = 0
-        stats_data['goal_diff'] = 0
+        # Only add runs_scored / runs_conceded if runs > 0
+        if goals_for > 0 or goals_against > 0:
+            stats_data['runs_scored'] = goals_for
+            stats_data['runs_conceded'] = goals_against
+            stats_data['run_difference'] = g_diff
+        else:
+            stats_data.pop('runs_scored', None)
+            stats_data.pop('runs_conceded', None)
+            stats_data.pop('run_difference', None)
+
+        # Pop soccer specific goal terms for cricket so response is clean
+        stats_data.pop('goals_for', None)
+        stats_data.pop('goals_against', None)
+        stats_data.pop('goal_diff', None)
 
     return stats_data
 
@@ -1394,11 +1455,39 @@ def get_team_standings(request, team_id):
                 pass
 
     if not league:
+        icc_tables = {}
+        cricket_standings_list = []
+
+        if team_entity.sport == 'cricket':
+            clean_name = _normalize_cricket_team_key(team_entity.name)
+            icc_res = fetch_live_icc_rankings()
+            by_format = icc_res.get('by_format', {}) if isinstance(icc_res, dict) else {}
+
+            # Build format tables with is_highlighted flag for the current team
+            for fmt, rows in by_format.items():
+                fmt_rows = []
+                for row in rows:
+                    t_name = row.get('team_name', '')
+                    t_key = _normalize_cricket_team_key(t_name)
+                    is_hl = (t_key == clean_name) or (clean_name and (clean_name in t_key or t_key in clean_name))
+                    row_copy = dict(row)
+                    row_copy['is_highlighted'] = is_hl
+                    fmt_rows.append(row_copy)
+                icc_tables[fmt] = fmt_rows
+
+            # Build flat list for standings array with format identifier
+            for fmt, rows in icc_tables.items():
+                for r in rows:
+                    r_item = dict(r)
+                    r_item['format'] = fmt.upper()
+                    cricket_standings_list.append(r_item)
+
         return Response({
-            'team':     EntitySerializer(team_entity, context={'request': request}).data,
-            'season':   season,
-            'standings': [],
-            'message':  'No league linked to this team',
+            'team': EntitySerializer(team_entity, context={'request': request}).data,
+            'season': season,
+            'standings': cricket_standings_list,
+            'icc_rankings': icc_tables,
+            'message': 'No league linked to this team' if not icc_tables else 'ICC Rankings for all countries provided for Cricket team.',
         })
  
     # Delegate to league standings view logic
