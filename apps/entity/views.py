@@ -1449,7 +1449,7 @@ def get_team_roster(request, team_id):
         | Q(current_team__external_id=team_entity.external_id, current_team__sport=team_entity.sport)
     ).select_related('entity').distinct()
  
-    if not athletes.exists():
+    if athletes.count() < 10:
         try:
             from apps.sports_apis.services.thesportsdb import TheSportsDBService
             tsdb = TheSportsDBService()
