@@ -510,16 +510,18 @@ CRICKET_TEAM_ALIAS_MAP = {
 def _normalize_cricket_team_key(name):
     if not name:
         return ''
-    clean = str(name).lower().replace('cricket', '').replace('women', '').replace('team', '').strip()
+    import re
+    clean = str(name).lower().replace('cricket', '').replace('team', '').strip()
+    clean = re.sub(r'\s+', ' ', clean)
     return CRICKET_TEAM_ALIAS_MAP.get(clean, clean)
 
 
 def fetch_live_icc_rankings():
     """
-    Scrape live ICC Team Rankings (Test, ODI, T20I) for ALL countries from Cricbuzz and cache for 24 hours.
+    Scrape live Men's and Women's ICC Team Rankings (Test, ODI, T20I, WODI, WT20I) for ALL countries from Cricbuzz and cache for 24 hours.
     100% rate-limit safe because it only executes external HTTP GET once every 24 hours.
     """
-    cache_key = 'scraped_icc_team_rankings_v3'
+    cache_key = 'scraped_icc_team_rankings_v7'
     try:
         from django.core.cache import cache
         cached_data = cache.get(cache_key)
@@ -529,7 +531,12 @@ def fetch_live_icc_rankings():
         pass
 
     rankings_by_team = {}
-    tables_by_format = {'test': [], 'odi': [], 't20i': []}
+    tables_by_format = {'test': [], 'odi': [], 't20i': [], 'wodi': [], 'wt20i': []}
+
+    targets = [
+        ('https://www.cricbuzz.com/cricket-stats/icc-rankings/men/teams', False),
+        ('https://www.cricbuzz.com/cricket-stats/icc-rankings/women/teams', True),
+    ]
 
     try:
         import requests, re
@@ -537,53 +544,63 @@ def fetch_live_icc_rankings():
         headers = {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36'
         }
-        url = 'https://www.cricbuzz.com/cricket-stats/icc-rankings/men/teams'
-        res = requests.get(url, headers=headers, timeout=10)
-        if res.status_code == 200:
-            format_matches = re.finditer(r'\\"(odi|test|t20)\\":\{\\"rank\\":\[(.*?)\]\}', res.text)
-            for m in format_matches:
-                fmt_key = m.group(1)
-                fmt_name = 't20i' if fmt_key == 't20' else fmt_key
-                items_raw = m.group(2)
-                item_matches = re.finditer(r'\\"rank\\":\\"(?P<rank>\d+)\\",\\"name\\":\\"(?P<name>[^\\]+)\\",\\"matches\\":\\"(?P<matches>\d+)\\",\\"rating\\":\\"(?P<rating>\d+)\\",\\"points\\":\\"(?P<points>\d+)\\"', items_raw)
-                for it in item_matches:
-                    d = it.groupdict()
-                    display_name = d['name']
-                    team_key = display_name.lower().replace('cricket', '').replace('women', '').strip()
-                    rank_val = int(d['rank'])
-                    matches_val = int(d['matches'])
-                    points_val = int(d['points'])
-                    rating_val = int(d['rating'])
 
-                    if team_key not in rankings_by_team:
-                        rankings_by_team[team_key] = {}
-                    rankings_by_team[team_key][fmt_name] = {
-                        'rank': rank_val,
-                        'matches': matches_val,
-                        'points': points_val,
-                        'rating': rating_val,
-                    }
+        for url, is_women in targets:
+            try:
+                res = requests.get(url, headers=headers, timeout=7)
+                if res.status_code == 200:
+                    format_matches = re.finditer(r'\\"(odi|test|t20)\\":\{\\"rank\\":\[(.*?)\]\}', res.text)
+                    for m in format_matches:
+                        fmt_key = m.group(1)
+                        if is_women:
+                            fmt_name = 'wodi' if fmt_key == 'odi' else ('wt20i' if fmt_key == 't20' else 'wtest')
+                        else:
+                            fmt_name = 't20i' if fmt_key == 't20' else fmt_key
 
-                    tables_by_format[fmt_name].append({
-                        'rank': rank_val,
-                        'team_name': display_name,
-                        'matches': matches_val,
-                        'points': points_val,
-                        'rating': rating_val,
-                    })
+                        items_raw = m.group(2)
+                        item_matches = re.finditer(r'\\"rank\\":\\"(?P<rank>\d+)\\",\\"name\\":\\"(?P<name>[^\\]+)\\",\\"matches\\":\\"(?P<matches>\d+)\\",\\"rating\\":\\"(?P<rating>\d+)\\",\\"points\\":\\"(?P<points>\d+)\\"', items_raw)
+                        for it in item_matches:
+                            d = it.groupdict()
+                            display_name = d['name']
+                            rank_val = int(d['rank'])
+                            matches_val = int(d['matches'])
+                            points_val = int(d['points'])
+                            rating_val = int(d['rating'])
 
-            result = {
-                'by_team': rankings_by_team,
-                'by_format': tables_by_format,
-            }
+                            team_key = display_name.lower().replace('cricket', '').strip()
 
-            if rankings_by_team:
-                try:
-                    from django.core.cache import cache
-                    cache.set(cache_key, result, 86400)
-                except Exception:
-                    pass
-                return result
+                            if team_key not in rankings_by_team:
+                                rankings_by_team[team_key] = {}
+                            rankings_by_team[team_key][fmt_name] = {
+                                'rank': rank_val,
+                                'matches': matches_val,
+                                'points': points_val,
+                                'rating': rating_val,
+                            }
+
+                            if fmt_name in tables_by_format:
+                                tables_by_format[fmt_name].append({
+                                    'rank': rank_val,
+                                    'team_name': display_name,
+                                    'matches': matches_val,
+                                    'points': points_val,
+                                    'rating': rating_val,
+                                })
+            except Exception:
+                pass
+
+        result = {
+            'by_team': rankings_by_team,
+            'by_format': tables_by_format,
+        }
+
+        if rankings_by_team:
+            try:
+                from django.core.cache import cache
+                cache.set(cache_key, result, 86400)
+            except Exception:
+                pass
+            return result
     except Exception:
         pass
 
