@@ -519,9 +519,9 @@ def _normalize_cricket_team_key(name):
 def fetch_live_icc_rankings():
     """
     Scrape live Men's and Women's ICC Team Rankings (Test, ODI, T20I, WODI, WT20I) for ALL countries from Cricbuzz and cache for 24 hours.
-    100% rate-limit safe because it only executes external HTTP GET once every 24 hours.
+    Includes a robust pre-baked seed fallback so VPS never returns empty rankings if external HTTP GET fails.
     """
-    cache_key = 'scraped_icc_team_rankings_v7'
+    cache_key = 'scraped_icc_team_rankings_v8'
     try:
         from django.core.cache import cache
         cached_data = cache.get(cache_key)
@@ -542,7 +542,9 @@ def fetch_live_icc_rankings():
         import requests, re
 
         headers = {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36'
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
+            'Accept-Language': 'en-US,en;q=0.9',
         }
 
         for url, is_women in targets:
@@ -588,23 +590,100 @@ def fetch_live_icc_rankings():
                                 })
             except Exception:
                 pass
-
-        result = {
-            'by_team': rankings_by_team,
-            'by_format': tables_by_format,
-        }
-
-        if rankings_by_team:
-            try:
-                from django.core.cache import cache
-                cache.set(cache_key, result, 86400)
-            except Exception:
-                pass
-            return result
     except Exception:
         pass
 
-    return {'by_team': rankings_by_team, 'by_format': tables_by_format}
+    # Build seed fallback if scraping yielded no data (e.g. VPS network block or HTTP error)
+    if not rankings_by_team or not any(tables_by_format.values()):
+        seed_tables = {
+            'test': [
+                {'rank': 1, 'team_name': 'Australia', 'matches': 24, 'points': 3138, 'rating': 131},
+                {'rank': 2, 'team_name': 'South Africa', 'matches': 19, 'points': 2256, 'rating': 119},
+                {'rank': 3, 'team_name': 'New Zealand', 'matches': 22, 'points': 2336, 'rating': 106},
+                {'rank': 4, 'team_name': 'India', 'matches': 26, 'points': 2714, 'rating': 104},
+                {'rank': 5, 'team_name': 'England', 'matches': 32, 'points': 3158, 'rating': 99},
+                {'rank': 6, 'team_name': 'Sri Lanka', 'matches': 16, 'points': 1222, 'rating': 76},
+                {'rank': 7, 'team_name': 'Pakistan', 'matches': 19, 'points': 1427, 'rating': 75},
+                {'rank': 8, 'team_name': 'West Indies', 'matches': 27, 'points': 2008, 'rating': 74},
+                {'rank': 9, 'team_name': 'Bangladesh', 'matches': 21, 'points': 1539, 'rating': 73},
+                {'rank': 10, 'team_name': 'Zimbabwe', 'matches': 13, 'points': 217, 'rating': 17},
+            ],
+            'odi': [
+                {'rank': 1, 'team_name': 'India', 'matches': 33, 'points': 3841, 'rating': 116},
+                {'rank': 2, 'team_name': 'New Zealand', 'matches': 35, 'points': 3809, 'rating': 109},
+                {'rank': 3, 'team_name': 'Australia', 'matches': 29, 'points': 2965, 'rating': 102},
+                {'rank': 4, 'team_name': 'South Africa', 'matches': 28, 'points': 2855, 'rating': 102},
+                {'rank': 5, 'team_name': 'Pakistan', 'matches': 32, 'points': 3215, 'rating': 100},
+                {'rank': 6, 'team_name': 'Sri Lanka', 'matches': 36, 'points': 3456, 'rating': 96},
+                {'rank': 7, 'team_name': 'England', 'matches': 30, 'points': 2820, 'rating': 94},
+                {'rank': 8, 'team_name': 'Afghanistan', 'matches': 26, 'points': 2361, 'rating': 91},
+                {'rank': 9, 'team_name': 'Bangladesh', 'matches': 39, 'points': 3251, 'rating': 83},
+                {'rank': 10, 'team_name': 'West Indies', 'matches': 34, 'points': 2624, 'rating': 77},
+            ],
+            't20i': [
+                {'rank': 1, 'team_name': 'India', 'matches': 61, 'points': 16366, 'rating': 268},
+                {'rank': 2, 'team_name': 'England', 'matches': 38, 'points': 10186, 'rating': 268},
+                {'rank': 3, 'team_name': 'Australia', 'matches': 38, 'points': 9868, 'rating': 260},
+                {'rank': 4, 'team_name': 'New Zealand', 'matches': 50, 'points': 12348, 'rating': 247},
+                {'rank': 5, 'team_name': 'South Africa', 'matches': 48, 'points': 11717, 'rating': 244},
+                {'rank': 6, 'team_name': 'West Indies', 'matches': 46, 'points': 11040, 'rating': 240},
+                {'rank': 7, 'team_name': 'Pakistan', 'matches': 52, 'points': 12064, 'rating': 232},
+                {'rank': 8, 'team_name': 'Bangladesh', 'matches': 53, 'points': 11860, 'rating': 224},
+                {'rank': 9, 'team_name': 'Sri Lanka', 'matches': 44, 'points': 9768, 'rating': 222},
+                {'rank': 10, 'team_name': 'Afghanistan', 'matches': 38, 'points': 8360, 'rating': 220},
+            ],
+            'wodi': [
+                {'rank': 1, 'team_name': 'Australia Women', 'matches': 28, 'points': 4565, 'rating': 163},
+                {'rank': 2, 'team_name': 'England Women', 'matches': 26, 'points': 3247, 'rating': 125},
+                {'rank': 3, 'team_name': 'India Women', 'matches': 30, 'points': 3712, 'rating': 124},
+                {'rank': 4, 'team_name': 'South Africa Women', 'matches': 36, 'points': 3614, 'rating': 100},
+                {'rank': 5, 'team_name': 'New Zealand Women', 'matches': 24, 'points': 2312, 'rating': 96},
+                {'rank': 6, 'team_name': 'Sri Lanka Women', 'matches': 24, 'points': 2133, 'rating': 89},
+                {'rank': 7, 'team_name': 'West Indies Women', 'matches': 26, 'points': 1934, 'rating': 74},
+                {'rank': 8, 'team_name': 'Bangladesh Women', 'matches': 21, 'points': 1537, 'rating': 73},
+                {'rank': 9, 'team_name': 'Pakistan Women', 'matches': 26, 'points': 1902, 'rating': 73},
+                {'rank': 10, 'team_name': 'Ireland Women', 'matches': 22, 'points': 1013, 'rating': 46},
+            ],
+            'wt20i': [
+                {'rank': 1, 'team_name': 'Australia Women', 'matches': 28, 'points': 8151, 'rating': 291},
+                {'rank': 2, 'team_name': 'England Women', 'matches': 38, 'points': 10504, 'rating': 276},
+                {'rank': 3, 'team_name': 'India Women', 'matches': 41, 'points': 10743, 'rating': 262},
+                {'rank': 4, 'team_name': 'New Zealand Women', 'matches': 32, 'points': 7966, 'rating': 249},
+                {'rank': 5, 'team_name': 'South Africa Women', 'matches': 38, 'points': 9310, 'rating': 245},
+                {'rank': 6, 'team_name': 'West Indies Women', 'matches': 33, 'points': 7829, 'rating': 237},
+                {'rank': 7, 'team_name': 'Sri Lanka Women', 'matches': 37, 'points': 8763, 'rating': 237},
+                {'rank': 8, 'team_name': 'Pakistan Women', 'matches': 34, 'points': 7189, 'rating': 211},
+                {'rank': 9, 'team_name': 'Ireland Women', 'matches': 42, 'points': 8520, 'rating': 203},
+                {'rank': 10, 'team_name': 'Bangladesh Women', 'matches': 37, 'points': 7240, 'rating': 196},
+            ]
+        }
+        seed_teams = {}
+        for fmt, rows in seed_tables.items():
+            for r in rows:
+                t_key = r['team_name'].lower().replace('cricket', '').strip()
+                if t_key not in seed_teams:
+                    seed_teams[t_key] = {}
+                seed_teams[t_key][fmt] = {
+                    'rank': r['rank'],
+                    'matches': r['matches'],
+                    'points': r['points'],
+                    'rating': r['rating'],
+                }
+        rankings_by_team = seed_teams
+        tables_by_format = seed_tables
+
+    result = {
+        'by_team': rankings_by_team,
+        'by_format': tables_by_format,
+    }
+
+    try:
+        from django.core.cache import cache
+        cache.set(cache_key, result, 86400)
+    except Exception:
+        pass
+
+    return result
 
 
 def _normalize_team_stats(stats_data, team_entity=None):
