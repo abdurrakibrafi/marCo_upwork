@@ -2308,36 +2308,24 @@ def _fetch_league_standings_thesportsdb(league_entity, season):
                 s_year = int(str(season).split('-', 1)[0].split('/', 1)[0])
             except Exception:
                 s_year = 2026
-            s_param = f"{s_year}-{s_year+1}"
-            tbl_url = f"https://www.thesportsdb.com/api/v1/json/3/lookuptable.php?l={league_id}&s={s_param}"
-            tbl_res = requests.get(tbl_url, timeout=5)
-            table = []
-            if tbl_res.status_code == 200:
-                table = tbl_res.json().get('table') or []
-            if not table:
-                tbl_url = f"https://www.thesportsdb.com/api/v1/json/3/lookuptable.php?l={league_id}&s={s_year}"
-                tbl_res = requests.get(tbl_url, timeout=5)
-                if tbl_res.status_code == 200:
-                    table = tbl_res.json().get('table') or []
 
-            rows = []
-            for row in table:
-                rows.append({
-                    'rank': int(row.get('intRank') or 0),
-                    'team_external_id': str(row.get('idTeam') or ''),
-                    'team_name': str(row.get('strTeam') or ''),
-                    'team_logo': str(row.get('strBadge') or row.get('strLogo') or ''),
-                    'points': int(row.get('intPoints') or 0),
-                    'played': int(row.get('intPlayed') or 0),
-                    'win': int(row.get('intWin') or 0),
-                    'draw': int(row.get('intDraw') or 0),
-                    'lose': int(row.get('intLoss') or 0),
-                    'goals_for': int(row.get('intGoalsFor') or 0),
-                    'goals_against': int(row.get('intGoalsAgainst') or 0),
-                    'goal_diff': int(row.get('intGoalDifference') or 0),
-                    'form': str(row.get('strForm') or ''),
-                })
-            return rows
+            # Use TheSportsDBService to benefit from premium API key
+            from apps.sports_apis.services.thesportsdb import TheSportsDBService
+            tsdb = TheSportsDBService()
+
+            # Try current year, then walk back up to 2 seasons to find a full table
+            table = []
+            for try_year in [s_year, s_year - 1, s_year - 2]:
+                for s_fmt in [f"{try_year}-{try_year+1}", str(try_year), f"{try_year-1}-{try_year}"]:
+                    candidate = tsdb.get_league_table(str(league_id), s_fmt)
+                    if len(candidate) > len(table):
+                        table = candidate
+                    if len(table) >= 10:
+                        break
+                if len(table) >= 10:
+                    break
+
+            return table
     except Exception:
         pass
 
