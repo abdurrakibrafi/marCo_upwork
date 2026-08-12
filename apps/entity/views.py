@@ -2227,16 +2227,15 @@ def _get_standings_for_league(request, league_entity, season, highlight_team_id=
             'logo_url': getattr(ent, 'logo_url', '') if hasattr(ent, 'logo_url') else '',
         }
 
-    from django.utils import timezone
-
+    valid_db_teams_count = 0
     for team in teams_in_league:
         stats = EntityStats.objects.filter(
             entity=team.entity, season=str(season), stat_type='season'
         ).first()
-        if stats and stats.stats_data.get('rank'):
-            # Only consider DB data valid if updated within the last 24 hours (86,400s)
-            if stats.updated_at and (timezone.now() - stats.updated_at).total_seconds() < 86400:
-                has_db_data = True
+        if stats and stats.stats_data and stats.stats_data.get('rank'):
+            p_val = stats.stats_data.get('played') or stats.stats_data.get('points') or 0
+            if p_val > 0 and stats.updated_at and (timezone.now() - stats.updated_at).total_seconds() < 86400:
+                valid_db_teams_count += 1
         standings.append({
             'rank':       stats.stats_data.get('rank', 0) if stats else 0,
             'team_id':    team.entity.id,
@@ -2255,7 +2254,8 @@ def _get_standings_for_league(request, league_entity, season, highlight_team_id=
             'is_highlighted': str(team.entity.external_id) == str(highlight_team_id) or str(team.entity.id) == str(highlight_team_id),
         })
 
-    if has_db_data:
+    # Only consider DB standings valid if AT LEAST 10 teams have real non-zero played/points data
+    if valid_db_teams_count >= 10:
         standings.sort(key=lambda x: (
             -x['points'],
             -x['goal_diff'],
