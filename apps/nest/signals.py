@@ -1,10 +1,27 @@
-from django.db.models.signals import post_save
+from django.db.models.signals import post_save, post_delete
 from django.dispatch import receiver
+from django.core.cache import cache
 from apps.nest.models import UserNest
+
+
+def _clear_user_nest_feed_cache(user_id):
+    """Invalidate nest feed cache keys for this user."""
+    try:
+        if hasattr(cache, 'delete_pattern'):
+            cache.delete_pattern(f"nest_feed:{user_id}:*")
+        else:
+            for page in range(1, 10):
+                for sort in ['newest', 'oldest', 'popular', 'trending', 'least', 'likes', 'most_liked', 'least_liked']:
+                    cache.delete(f"nest_feed:{user_id}:p{page}:l10:s{sort}:f:t:src:q")
+                    cache.delete(f"nest_feed:{user_id}:p{page}:l20:s{sort}:f:t:src:q")
+    except Exception:
+        pass
 
 
 @receiver(post_save, sender=UserNest)
 def on_entity_added_to_nest(sender, instance, created, **kwargs):
+    _clear_user_nest_feed_cache(instance.user_id)
+
     if not created:
         return
 
@@ -21,3 +38,8 @@ def on_entity_added_to_nest(sender, instance, created, **kwargs):
             discover_rss_feeds_for_entity.delay(entity_id)
     except Entity.DoesNotExist:
         pass
+
+
+@receiver(post_delete, sender=UserNest)
+def on_entity_removed_from_nest(sender, instance, **kwargs):
+    _clear_user_nest_feed_cache(instance.user_id)
