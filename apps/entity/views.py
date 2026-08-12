@@ -1008,15 +1008,18 @@ def get_team_stats(request, team_id):
     )
     api_season = int(str(season).split('-', 1)[0])
  
-    # 1 — try DB first (only return from DB if played > 0)
+    # 1 — try DB first (only return from DB if stats are recent and full)
+    from django.utils import timezone
     stats = EntityStats.objects.filter(entity=team_entity, season=stats_season).first()
     has_valid_db_stats = (
         stats and stats.stats_data and 
-        (stats.stats_data.get('played', 0) > 0 or stats.stats_data.get('matches_played', 0) > 0)
+        (stats.stats_data.get('played', 0) >= 15 or stats.stats_data.get('matches_played', 0) >= 15) and
+        stats.updated_at and (timezone.now() - stats.updated_at).total_seconds() < 86400
     )
 
+    from apps.entity.utils.matcher import find_team_logo_by_name
     if not team_entity.logo_url or 'api-sports' in team_entity.logo_url:
-        _fetch_soccer_team_stats_thesportsdb(team_entity)
+        find_team_logo_by_name(team_entity.name)
         team_entity.refresh_from_db()
 
     if has_valid_db_stats:
@@ -1032,9 +1035,57 @@ def get_team_stats(request, team_id):
     stats_data = {}
  
     if team_entity.sport == 'soccer':
-        stats_data = _fetch_soccer_team_stats_statpal(team_entity.external_id, api_season)
+        # Primary lookup: fetch team stats row from the official league table
+        try:
+            league = None
+            try:
+                if team_entity.team_details.league:
+                    league = team_entity.team_details.league
+            except Exception:
+                pass
+
+            if not league:
+                from apps.sports_apis.services.thesportsdb import TheSportsDBService
+                tsdb_info = TheSportsDBService().search_team(team_entity.name)
+                if tsdb_info and tsdb_info.get('idLeague'):
+                    league = Entity(
+                        name=tsdb_info.get('strLeague', ''),
+                        external_id=str(tsdb_info.get('idLeague')),
+                        api_source='thesportsdb',
+                        type='league',
+                        sport=team_entity.sport or 'soccer'
+                    )
+
+            if league:
+                st_res = _get_standings_for_league(request, league, season, highlight_team_id=team_entity.external_id, highlight_team_name=team_entity.name)
+                if st_res.data and st_res.data.get('standings'):
+                    clean_team = team_entity.name.lower().replace(' fc', '').replace(' utd', ' united').strip()
+                    for row in st_res.data['standings']:
+                        t_name = str(row.get('team_name', '')).lower().replace(' fc', '').replace(' utd', ' united').strip()
+                        is_match = (clean_team in t_name) or (t_name in clean_team) or (str(row.get('team_id')) == str(team_entity.id)) or (str(row.get('team_external_id')) == str(team_entity.external_id))
+                        if is_match:
+                            p_num = row.get('played', 0)
+                            w_num = row.get('wins', row.get('win', 0))
+                            stats_data = {
+                                'rank': row.get('rank', 0),
+                                'points': row.get('points', 0),
+                                'played': p_num,
+                                'matches_played': p_num,
+                                'wins': w_num,
+                                'draws': row.get('draws', row.get('draw', 0)),
+                                'losses': row.get('losses', row.get('lose', 0)),
+                                'goals_for': row.get('goals_for', 0),
+                                'goals_against': row.get('goals_against', 0),
+                                'goal_diff': row.get('goal_diff', 0),
+                                'form': row.get('form', ''),
+                                'win_percentage': round((w_num / p_num) * 100, 1) if p_num else 0,
+                            }
+                            break
+        except Exception as e:
+            logger.warning(f"Error resolving team stats from league standings: {e}")
+
         if not stats_data:
-            stats_data = _fetch_soccer_team_stats_thesportsdb(team_entity)
+            stats_data = _fetch_soccer_team_stats_statpal(team_entity.external_id, api_season)
         if not stats_data and team_entity.api_source == 'api_sports':
             stats_data = _fetch_soccer_team_stats(team_entity.external_id, api_season)
  
