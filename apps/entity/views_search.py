@@ -145,6 +145,28 @@ def search_entities(request):
     matches.sort(key=lambda x: x[1], reverse=True)
     matched_entities = [m[0] for m in matches[:limit]]
     
+    if not matched_entities and len(query) >= 3:
+        try:
+            from apps.sports_apis.services.thesportsdb import TheSportsDBService
+            tsdb_info = TheSportsDBService().search_team(query)
+            if tsdb_info and tsdb_info.get('strTeam'):
+                team_name = tsdb_info.get('strTeam')
+                sport_name = (tsdb_info.get('strSport') or 'soccer').lower()
+                logo = tsdb_info.get('strBadge', '')
+                
+                live_entity, _ = Entity.objects.get_or_create(
+                    name=team_name,
+                    type='team',
+                    sport=sport_name,
+                    defaults={'logo_url': logo, 'has_api_data': True}
+                )
+                if not live_entity.logo_url and logo:
+                    live_entity.logo_url = logo
+                    live_entity.save(update_fields=['logo_url'])
+                matched_entities = [live_entity]
+        except Exception as e:
+            logger.warning(f"Live search fallback error for {query}: {e}")
+
     if matched_entities:
         result = {
             'query': query,
