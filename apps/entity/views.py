@@ -2434,6 +2434,15 @@ def _fetch_team_fixtures_live(team_entity):
                 h_score = ev.get('intHomeScore')
                 a_score = ev.get('intAwayScore')
 
+                v_name = ev.get('strVenue', '') or ''
+                v_city = ev.get('strCity', '') or ev.get('strCountry', '') or ''
+                if not v_name or not v_city:
+                    auto_v_name, auto_v_city = resolve_team_venue(home_name)
+                    if not v_name:
+                        v_name = auto_v_name
+                    if not v_city:
+                        v_city = auto_v_city
+
                 fixtures.append({
                     'id': str(ev.get('idEvent', '')),
                     'sport': (ev.get('strSport') or team_entity.sport or 'soccer').lower(),
@@ -2463,8 +2472,8 @@ def _fetch_team_fixtures_live(team_entity):
                     'home_score': int(h_score) if h_score is not None and str(h_score).isdigit() else None,
                     'away_score': int(a_score) if a_score is not None and str(a_score).isdigit() else None,
                     'start_time': ev.get('strTimestamp') or ev.get('dateEvent'),
-                    'venue_name': ev.get('strVenue', '') or '',
-                    'venue_city': ev.get('strCity', '') or '',
+                    'venue_name': v_name,
+                    'venue_city': v_city,
                     'broadcaster': '',
                     'stream_url': ev.get('strVideo', '') or '',
                     # Convenience aliases
