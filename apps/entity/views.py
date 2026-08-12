@@ -269,7 +269,10 @@ def get_entity_fixtures(request, entity_id):
             'home_entity', 'away_entity', 'league'
         ).order_by('-start_time')[:50]
 
-    if not events.exists() and entity.type == 'team':
+    else:
+        events = Event.objects.none()
+
+    if events and not events.exists() and entity.type == 'team':
         live_fixtures = _fetch_team_fixtures_live(entity)
         if live_fixtures:
             return Response({
