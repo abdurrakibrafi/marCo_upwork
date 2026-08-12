@@ -40,6 +40,26 @@ def search_entities(request):
             'results': []
         })
     
+    # Auto-detect sport from query text if sport parameter is not provided
+    if not sport:
+        q_lower = query.lower()
+        SPORT_KEYWORDS = {
+            'field hockey': 'hockey',
+            'ice hockey': 'hockey',
+            'hockey': 'hockey',
+            'cricket': 'cricket',
+            'basketball': 'basketball',
+            'baseball': 'baseball',
+            'volleyball': 'volleyball',
+            'handball': 'handball',
+            'tennis': 'tennis',
+            'golf': 'golf',
+        }
+        for kw, sp in SPORT_KEYWORDS.items():
+            if kw in q_lower:
+                sport = sp
+                break
+
     # Normalize query
     normalized_query = normalize_entity_name(query)
     
@@ -83,7 +103,7 @@ def search_entities(request):
     
     # Fuzzy match (similar names across all types)
     words = [w.lower() for w in query.split() if len(w) > 2]
-    NOISE = {'fc', 'united', 'city', 'real', 'club', 'town', 'athletic', 'rovers', 'wanderers', 'county', 'saint', 'st', 'de', 'la', 'sports', 'league', 'team'}
+    NOISE = {'fc', 'united', 'city', 'real', 'club', 'town', 'athletic', 'rovers', 'wanderers', 'county', 'saint', 'st', 'de', 'la', 'sports', 'league', 'team', 'national', 'field', 'men', "men's", 'mens', 'women', "women's", 'womens'}
     search_words = [w for w in words if w not in NOISE]
     
     if not search_words:
@@ -115,7 +135,10 @@ def search_entities(request):
         words = entity_norm.split()
         db_aliases = [normalize_entity_name(a) for a in entity.metadata.get('aliases', [])] if entity.metadata else []
         
-        # Check direct match, DB metadata aliases, substring, or prefix match
+        entity_clean_words = set(w.lower() for w in entity_norm.split() if w.lower() not in NOISE)
+        query_clean_words = set(w.lower() for w in normalized_query.split() if w.lower() not in NOISE)
+        is_word_subset = bool(entity_clean_words and entity_clean_words.issubset(query_clean_words))
+        
         is_exact = (normalized_query == entity_norm)
         is_alias = (normalized_query in db_aliases)
         is_prefix = entity_norm.startswith(normalized_query)
@@ -124,12 +147,14 @@ def search_entities(request):
         is_substring = (normalized_query in entity_norm)
         is_reverse_substring = (entity_norm in normalized_query) and len(entity_norm) >= 4
         
-        if is_exact or is_alias or is_prefix or is_reverse_prefix or is_word_prefix or is_substring or is_reverse_substring:
+        if is_exact or is_alias or is_prefix or is_reverse_prefix or is_word_prefix or is_substring or is_reverse_substring or is_word_subset:
             score = 1.0
             if is_exact:
                 score += 3.0
             elif is_alias:
                 score += 2.8
+            elif is_word_subset:
+                score += 2.2
             elif is_prefix:
                 score += 2.0
             elif is_reverse_prefix:
