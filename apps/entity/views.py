@@ -269,13 +269,21 @@ def get_entity_fixtures(request, entity_id):
             'home_entity', 'away_entity', 'league'
         ).order_by('-start_time')[:50]
 
-    else:
-        events = Event.objects.none()
+    if not events.exists() and entity.type == 'team':
+        live_fixtures = _fetch_team_fixtures_live(entity)
+        if live_fixtures:
+            return Response({
+                'entity':          EntitySerializer(entity, context={'request': request}).data,
+                'fixtures_count':  len(live_fixtures),
+                'fixtures':        live_fixtures,
+                'source':          'live_api',
+            })
 
     return Response({
         'entity':          EntitySerializer(entity, context={'request': request}).data,
         'fixtures_count':  events.count(),
         'fixtures':        EvSerializer(events, many=True).data,
+        'source':          'db',
     })
 
 
@@ -2330,6 +2338,46 @@ def _fetch_league_standings_thesportsdb(league_entity, season):
         pass
 
     return []
+
+
+def _fetch_team_fixtures_live(team_entity):
+    """Fallback to live provider API (TheSportsDB) for team fixtures when DB has 0 events."""
+    try:
+        from apps.sports_apis.services.thesportsdb import TheSportsDBService
+        tsdb = TheSportsDBService()
+        team_info = tsdb.search_team(team_entity.name)
+        if not team_info or not team_info.get('idTeam'):
+            return []
+        
+        team_id = str(team_info.get('idTeam'))
+        next_data = tsdb._get('eventsnext.php', {'id': team_id})
+        last_data = tsdb._get('eventslast.php', {'id': team_id})
+        
+        raw_events = (last_data.get('results') or []) + (next_data.get('events') or [])
+        fixtures = []
+        for ev in raw_events:
+            try:
+                fixtures.append({
+                    'id': str(ev.get('idEvent', '')),
+                    'event_name': ev.get('strEvent', ''),
+                    'league_name': ev.get('strLeague', ''),
+                    'home_team': ev.get('strHomeTeam', ''),
+                    'away_team': ev.get('strAwayTeam', ''),
+                    'home_logo': ev.get('strHomeTeamBadge', ''),
+                    'away_logo': ev.get('strAwayTeamBadge', ''),
+                    'home_score': ev.get('intHomeScore'),
+                    'away_score': ev.get('intAwayScore'),
+                    'start_time': ev.get('strTimestamp') or ev.get('dateEvent'),
+                    'status': ev.get('strStatus', ''),
+                    'venue': ev.get('strVenue', ''),
+                    'video_url': ev.get('strVideo', '') or '',
+                })
+            except Exception:
+                continue
+        return fixtures
+    except Exception as e:
+        logger.error(f"Error in _fetch_team_fixtures_live: {str(e)}")
+        return []
 
 
 def _fetch_soccer_standings(external_id, season):
