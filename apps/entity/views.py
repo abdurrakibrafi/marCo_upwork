@@ -2142,6 +2142,19 @@ def _get_standings_for_league(request, league_entity, season, highlight_team_id=
     standings = []
     has_db_data = False
 
+    def _safe_league_data(ent, req):
+        """Return league data safe for serialization — handles pk-less in-memory Entity objects."""
+        if ent and getattr(ent, 'pk', None):
+            return EntitySerializer(ent, context={'request': req}).data
+        return {
+            'id': None,
+            'name': getattr(ent, 'name', ''),
+            'external_id': getattr(ent, 'external_id', ''),
+            'sport': getattr(ent, 'sport', ''),
+            'type': 'league',
+            'logo_url': getattr(ent, 'logo_url', '') if hasattr(ent, 'logo_url') else '',
+        }
+
     from django.utils import timezone
 
     for team in teams_in_league:
@@ -2180,7 +2193,7 @@ def _get_standings_for_league(request, league_entity, season, highlight_team_id=
         for i, item in enumerate(standings, 1):
             item['rank'] = i
         return Response({
-            'league':    EntitySerializer(league_entity, context={'request': request}).data,
+            'league':    _safe_league_data(league_entity, request),
             'season':    season,
             'standings': standings,
             'source':    'db',
@@ -2254,7 +2267,7 @@ def _get_standings_for_league(request, league_entity, season, highlight_team_id=
         for i, item in enumerate(live_response, 1):
             item['rank'] = i
         return Response({
-            'league':    EntitySerializer(league_entity, context={'request': request}).data,
+            'league':    _safe_league_data(league_entity, request),
             'season':    season,
             'standings': live_response,
             'source':    'live_api',
@@ -2262,7 +2275,7 @@ def _get_standings_for_league(request, league_entity, season, highlight_team_id=
 
     # Nothing available
     return Response({
-        'league':    EntitySerializer(league_entity, context={'request': request}).data,
+        'league':    _safe_league_data(league_entity, request),
         'season':    season,
         'standings': standings,
         'source':    'empty',
