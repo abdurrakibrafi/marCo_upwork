@@ -2230,7 +2230,7 @@ def get_athlete_bio(request, athlete_id):
         'id':                     athlete_entity.id,
         'name':                   f"{athlete.first_name} {athlete.last_name}".strip() or athlete_entity.name,
         'photo':                  athlete_entity.logo_url or '',
-        'date_of_birth':          athlete.date_of_birth,
+        'date_of_birth':          str(athlete.date_of_birth) if athlete.date_of_birth else '',
         'age':                    athlete.age,
         'nationality':            nationality,
         'height_cm':              athlete.height_cm,
