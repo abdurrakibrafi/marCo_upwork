@@ -1641,7 +1641,7 @@ def get_team_roster(request, team_id):
 def get_team_standings(request, team_id):
     """
     GET /api/entities/team/{team_id}/standings/
-    Returns the full league table so the app can highlight this team's row.
+    Returns the official primary league standings for clubs or national rankings for national teams.
     """
     entity = get_object_or_404(Entity, id=team_id)
     entity = entity.canonical_entity or entity
@@ -1652,50 +1652,30 @@ def get_team_standings(request, team_id):
 
     team_entity = entity
     season = request.GET.get('season') or str(_current_season(team_entity.sport))
- 
-    try:
-        league = team_entity.team_details.league
-    except Exception:
-        league = None
- 
-    if not league:
-        # Fallback 1: Try to find a league from the team's events in DB (by ID or matching name/canonical)
-        from django.db.models import Q
-        from apps.event.models import Event
-        team_ids = set(
-            Entity.objects.filter(
-                Q(id=team_entity.id) |
-                Q(canonical_entity=team_entity) |
-                Q(name__iexact=team_entity.name)
-            ).values_list('id', flat=True)
-        )
-        event = Event.objects.filter(
-            (Q(home_entity_id__in=team_ids) | Q(away_entity_id__in=team_ids)),
-            league__isnull=False
-        ).select_related('league').first()
-        if event:
-            league = event.league
 
-    if not league:
+    # 1. Check if Cricket National Team -> ICC World Rankings
+    if team_entity.sport == 'cricket':
+        clean_name = _normalize_cricket_team_key(team_entity.name)
+        icc_res = fetch_live_icc_rankings()
+        by_format = icc_res.get('by_format', {}) if isinstance(icc_res, dict) else {}
+
         icc_tables = {}
         cricket_standings_list = []
+        is_national = False
+        for fmt, rows in by_format.items():
+            fmt_rows = []
+            for row in rows:
+                t_name = row.get('team_name', '')
+                t_key = _normalize_cricket_team_key(t_name)
+                is_hl = (t_key == clean_name) or (clean_name and (clean_name in t_key or t_key in clean_name))
+                if is_hl:
+                    is_national = True
+                row_copy = dict(row)
+                row_copy['is_highlighted'] = is_hl
+                fmt_rows.append(row_copy)
+            icc_tables[fmt] = fmt_rows
 
-        if team_entity.sport == 'cricket':
-            clean_name = _normalize_cricket_team_key(team_entity.name)
-            icc_res = fetch_live_icc_rankings()
-            by_format = icc_res.get('by_format', {}) if isinstance(icc_res, dict) else {}
-
-            for fmt, rows in by_format.items():
-                fmt_rows = []
-                for row in rows:
-                    t_name = row.get('team_name', '')
-                    t_key = _normalize_cricket_team_key(t_name)
-                    is_hl = (t_key == clean_name) or (clean_name and (clean_name in t_key or t_key in clean_name))
-                    row_copy = dict(row)
-                    row_copy['is_highlighted'] = is_hl
-                    fmt_rows.append(row_copy)
-                icc_tables[fmt] = fmt_rows
-
+        if is_national:
             for fmt, rows in icc_tables.items():
                 for r in rows:
                     r_item = dict(r)
@@ -1711,101 +1691,8 @@ def get_team_standings(request, team_id):
                 'message': 'ICC Rankings provided for Cricket national team.',
             })
 
-        if team_entity.sport == 'soccer':
-            clean_name = team_entity.name.lower().replace(' w', '').strip()
-            fifa_res = fetch_live_fifa_rankings()
-            by_format = fifa_res.get('by_format', {}) if isinstance(fifa_res, dict) else {}
-
-            fifa_tables = {}
-            for fmt, rows in by_format.items():
-                fmt_rows = []
-                for row in rows:
-                    t_name = row.get('team_name', '')
-                    t_key = t_name.lower().replace(' w', '').strip()
-                    is_hl = (t_key == clean_name) or (clean_name and (clean_name in t_key or t_key in clean_name))
-                    row_copy = dict(row)
-                    row_copy['is_highlighted'] = is_hl
-                    fmt_rows.append(row_copy)
-                fifa_tables[fmt] = fmt_rows
-
-            active_gender = 'women' if ' w' in team_entity.name.lower() else 'men'
-            selected_table = fifa_tables.get(active_gender, [])
-
-            return Response({
-                'team': EntitySerializer(team_entity, context={'request': request}).data,
-                'season': season,
-                'standings': selected_table,
-                'fifa_rankings': fifa_tables,
-                'source': 'fifa_rankings',
-                'message': 'FIFA World Rankings provided for Soccer national team.',
-            })
-
-        # Fallback for all other sports (Basketball, Ice Hockey, Baseball, NFL, F1, etc.)
-        DEFAULT_SPORT_LEAGUES = {
-            'basketball': ('NBA', '4387'),
-            'ice_hockey': ('NHL', '4380'),
-            'american_football': ('NFL', '4391'),
-            'baseball': ('MLB', '4424'),
-            'motorsport': ('Formula 1', '4370'),
-        }
-
-        sport_key = (team_entity.sport or '').lower()
-        if sport_key in DEFAULT_SPORT_LEAGUES:
-            lg_name, lg_id = DEFAULT_SPORT_LEAGUES[sport_key]
-            mock_league = Entity(name=lg_name, external_id=lg_id, api_source='thesportsdb', type='league', sport=sport_key)
-            live_rows = _fetch_league_standings_thesportsdb(mock_league, season)
-            if live_rows:
-                for row in live_rows:
-                    t_name = row.get('team_name', '').lower()
-                    row['is_highlighted'] = (team_entity.name.lower() in t_name or t_name in team_entity.name.lower())
-                return Response({
-                    'team': EntitySerializer(team_entity, context={'request': request}).data,
-                    'season': season,
-                    'standings': live_rows,
-                    'source': 'thesportsdb',
-                    'message': f'{lg_name} standings provided for {team_entity.sport}.',
-                })
-
-        return Response({
-            'team': EntitySerializer(team_entity, context={'request': request}).data,
-            'season': season,
-            'standings': [],
-            'message': 'No league linked to this team',
-        })
-
-    # Delegate to league standings view logic
-    res = _get_standings_for_league(request, league, season, highlight_team_id=team_entity.external_id)
-
-    if team_entity.sport == 'cricket':
-        clean_name = _normalize_cricket_team_key(team_entity.name)
-        icc_res = fetch_live_icc_rankings()
-        by_format = icc_res.get('by_format', {}) if isinstance(icc_res, dict) else {}
-
-        icc_tables = {}
-        cricket_standings_list = []
-        for fmt, rows in by_format.items():
-            fmt_rows = []
-            for row in rows:
-                t_name = row.get('team_name', '')
-                t_key = _normalize_cricket_team_key(t_name)
-                is_hl = (t_key == clean_name) or (clean_name and (clean_name in t_key or t_key in clean_name))
-                row_copy = dict(row)
-                row_copy['is_highlighted'] = is_hl
-                fmt_rows.append(row_copy)
-            icc_tables[fmt] = fmt_rows
-
-        for fmt, rows in icc_tables.items():
-            for r in rows:
-                r_item = dict(r)
-                r_item['format'] = fmt.upper()
-                cricket_standings_list.append(r_item)
-
-        res.data['icc_rankings'] = icc_tables
-        if not res.data.get('standings'):
-            res.data['standings'] = cricket_standings_list
-            res.data['source'] = 'icc_rankings'
-
-    elif team_entity.sport == 'soccer':
+    # 2. Check if Soccer National Team -> FIFA World Rankings
+    if team_entity.sport == 'soccer':
         clean_name = team_entity.name.lower().replace(' w', '').strip()
         fifa_res = fetch_live_fifa_rankings()
         by_format = fifa_res.get('by_format', {}) if isinstance(fifa_res, dict) else {}
@@ -1828,45 +1715,52 @@ def get_team_standings(request, team_id):
         if is_national:
             active_gender = 'women' if ' w' in team_entity.name.lower() else 'men'
             selected_table = fifa_tables.get(active_gender, [])
-            res.data['fifa_rankings'] = fifa_tables
-            res.data['standings'] = selected_table
-            res.data['source'] = 'fifa_rankings'
+            return Response({
+                'team': EntitySerializer(team_entity, context={'request': request}).data,
+                'season': season,
+                'standings': selected_table,
+                'fifa_rankings': fifa_tables,
+                'source': 'fifa_rankings',
+                'message': 'FIFA World Rankings provided for Soccer national team.',
+            })
 
-    return res
- 
-    # Delegate to league standings view logic
-    res = _get_standings_for_league(request, league, season, highlight_team_id=team_entity.external_id)
+    # 3. For Club Teams -> Primary Official League Standings Lookup via TheSportsDB
+    league = None
+    try:
+        if team_entity.team_details.league:
+            league = team_entity.team_details.league
+    except Exception:
+        pass
 
-    if team_entity.sport == 'cricket':
-        clean_name = _normalize_cricket_team_key(team_entity.name)
-        icc_res = fetch_live_icc_rankings()
-        by_format = icc_res.get('by_format', {}) if isinstance(icc_res, dict) else {}
+    if not league:
+        from apps.sports_apis.services.thesportsdb import TheSportsDBService
+        tsdb_info = TheSportsDBService().search_team(team_entity.name)
+        if tsdb_info and tsdb_info.get('idLeague'):
+            league = Entity(
+                name=tsdb_info.get('strLeague', ''),
+                external_id=str(tsdb_info.get('idLeague')),
+                api_source='thesportsdb',
+                type='league',
+                sport=team_entity.sport or 'soccer'
+            )
 
-        icc_tables = {}
-        cricket_standings_list = []
-        for fmt, rows in by_format.items():
-            fmt_rows = []
-            for row in rows:
-                t_name = row.get('team_name', '')
-                t_key = _normalize_cricket_team_key(t_name)
-                is_hl = (t_key == clean_name) or (clean_name and (clean_name in t_key or t_key in clean_name))
-                row_copy = dict(row)
-                row_copy['is_highlighted'] = is_hl
-                fmt_rows.append(row_copy)
-            icc_tables[fmt] = fmt_rows
+    if league:
+        res = _get_standings_for_league(request, league, season, highlight_team_id=team_entity.external_id, highlight_team_name=team_entity.name)
+        if res.data and res.data.get('standings'):
+            clean_team = team_entity.name.lower().replace(' fc', '').replace(' utd', ' united').strip()
+            for row in res.data['standings']:
+                t_name = str(row.get('team_name', '')).lower().replace(' fc', '').replace(' utd', ' united').strip()
+                is_hl = (clean_team in t_name) or (t_name in clean_team) or (str(row.get('team_external_id')) == str(team_entity.external_id))
+                row['is_highlighted'] = is_hl
+            return res
 
-        for fmt, rows in icc_tables.items():
-            for r in rows:
-                r_item = dict(r)
-                r_item['format'] = fmt.upper()
-                cricket_standings_list.append(r_item)
+    return Response({
+        'team': EntitySerializer(team_entity, context={'request': request}).data,
+        'season': season,
+        'standings': [],
+        'message': 'No standings available from provider API for this team.',
+    })
 
-        res.data['icc_rankings'] = icc_tables
-        if not res.data.get('standings'):
-            res.data['standings'] = cricket_standings_list
-            res.data['source'] = 'icc_rankings'
-
-    return res
  
  
 # ─────────────────────────────────────────────────────────────────────────────
@@ -2224,34 +2118,40 @@ def get_league_standings(request, league_id):
     return _get_standings_for_league(request, league_entity, season)
 
 
-def _get_standings_for_league(request, league_entity, season, highlight_team_id=None):
+def _get_standings_for_league(request, league_entity, season, highlight_team_id=None, highlight_team_name=None):
     """
     Shared logic used by both get_league_standings and get_team_standings.
     DB first → live API fallback → write back to DB.
     """
-    # Resolve canonical league
-    canonical = Entity.objects.filter(
-        type='league',
-        api_source=league_entity.api_source,
-        external_id=league_entity.external_id,
-    ).first() or league_entity
-
-    # Try DB first
-    teams_in_league = Team.objects.filter(
-        league__api_source=canonical.api_source,
-        league__external_id=canonical.external_id,
-        entity__type='team',
-    ).select_related('entity')
+    # Resolve canonical league safely
+    try:
+        canonical = Entity.objects.filter(
+            type='league',
+            api_source=league_entity.api_source,
+            external_id=league_entity.external_id,
+        ).first() or league_entity
+        teams_in_league = list(Team.objects.filter(
+            league__api_source=canonical.api_source,
+            league__external_id=canonical.external_id,
+            entity__type='team',
+        ).select_related('entity'))
+    except Exception:
+        canonical = league_entity
+        teams_in_league = []
 
     standings = []
     has_db_data = False
+
+    from django.utils import timezone
 
     for team in teams_in_league:
         stats = EntityStats.objects.filter(
             entity=team.entity, season=str(season), stat_type='season'
         ).first()
         if stats and stats.stats_data.get('rank'):
-            has_db_data = True
+            # Only consider DB data valid if updated within the last 24 hours (86,400s)
+            if stats.updated_at and (timezone.now() - stats.updated_at).total_seconds() < 86400:
+                has_db_data = True
         standings.append({
             'rank':       stats.stats_data.get('rank', 0) if stats else 0,
             'team_id':    team.entity.id,
@@ -2295,24 +2195,29 @@ def _get_standings_for_league(request, league_entity, season, highlight_team_id=
     if live_standings:
         # Write each team's standing back to DB if matching Entity exists
         for row in live_standings:
-            team_entity = Entity.objects.filter(
-                name__iexact=row.get('team_name')
-            ).first() or (
-                Entity.objects.filter(api_source='api_sports', external_id=str(row.get('team_external_id'))).first()
-                if row.get('team_external_id') else None
-            )
-            if team_entity:
-                EntityStats.objects.update_or_create(
-                    entity=team_entity,
-                    season=str(season),
-                    stat_type='season',
-                    defaults={'stats_data': row},
+            try:
+                team_entity = Entity.objects.filter(
+                    name__iexact=row.get('team_name')
+                ).first() or (
+                    Entity.objects.filter(api_source='api_sports', external_id=str(row.get('team_external_id'))).first()
+                    if row.get('team_external_id') else None
                 )
+                if team_entity:
+                    EntityStats.objects.update_or_create(
+                        entity=team_entity,
+                        season=str(season),
+                        stat_type='season',
+                        defaults={'stats_data': row},
+                    )
+            except Exception:
+                pass
 
-        # Build response from live data
         live_response = []
         for row in live_standings:
-            team_ent = Entity.objects.filter(name__iexact=row.get('team_name')).first()
+            try:
+                team_ent = Entity.objects.filter(name__iexact=row.get('team_name')).first()
+            except Exception:
+                team_ent = None
             live_response.append({
                 'rank':      row.get('rank', 0),
                 'team_id':   team_ent.id if team_ent else None,
@@ -2329,7 +2234,11 @@ def _get_standings_for_league(request, league_entity, season, highlight_team_id=
                 'form':      row.get('form', ''),
                 'is_highlighted': (
                     str(row.get('team_external_id')) == str(highlight_team_id) or
-                    (team_ent and str(team_ent.id) == str(highlight_team_id))
+                    (team_ent and str(team_ent.id) == str(highlight_team_id)) or
+                    (bool(highlight_team_name) and (
+                        highlight_team_name.lower().replace(' fc', '').replace(' utd', ' united').strip() in row.get('team_name', '').lower().replace(' fc', '').replace(' utd', ' united').strip() or
+                        row.get('team_name', '').lower().replace(' fc', '').replace(' utd', ' united').strip() in highlight_team_name.lower().replace(' fc', '').replace(' utd', ' united').strip()
+                    ))
                 ),
             })
         live_response.sort(key=lambda x: (

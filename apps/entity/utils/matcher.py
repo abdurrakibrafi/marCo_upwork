@@ -178,18 +178,24 @@ def find_team_logo_by_name(name):
     cache_key = f"logo_by_name_{name_clean.lower().replace(' ', '_')}"
     
     from django.core.cache import cache
-    cached_logo = cache.get(cache_key)
-    if cached_logo is not None:
-        return cached_logo
+    try:
+        cached_logo = cache.get(cache_key)
+        if cached_logo is not None:
+            return cached_logo
+    except Exception:
+        pass
 
     def _query_logo(target_name):
-        logos = Entity.objects.filter(
-            name__iexact=target_name,
-            type="team"
-        ).exclude(logo_url="").values_list("logo_url", flat=True)
-        for l in logos:
-            if l:
-                return l
+        try:
+            logos = Entity.objects.filter(
+                name__iexact=target_name,
+                type="team"
+            ).exclude(logo_url="").values_list("logo_url", flat=True)
+            for l in logos:
+                if l:
+                    return l
+        except Exception:
+            pass
         return ""
 
     # 1. Try exact name match
@@ -202,7 +208,10 @@ def find_team_logo_by_name(name):
             logo_val = _query_logo(base_name)
             
     # Cache for 24 hours (86400 seconds)
-    cache.set(cache_key, logo_val, timeout=86400)
+    try:
+        cache.set(cache_key, logo_val, timeout=86400)
+    except Exception:
+        pass
     return logo_val
 
 
