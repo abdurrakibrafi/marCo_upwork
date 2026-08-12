@@ -183,7 +183,8 @@ def search_entities(request):
         }
     
     try:
-        cache.set(cache_key, result, 300)
+        if matched_entities:
+            cache.set(cache_key, result, 300)
     except Exception:
         pass
     return Response(result)
