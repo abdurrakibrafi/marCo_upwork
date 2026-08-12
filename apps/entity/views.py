@@ -273,7 +273,7 @@ def get_entity_fixtures(request, entity_id):
     else:
         events = Event.objects.none()
 
-    if events and not events.exists() and entity.type == 'team':
+    if not events.exists() and entity.type == 'team':
         live_fixtures = _fetch_team_fixtures_live(entity)
         if live_fixtures:
             return Response({
@@ -2479,7 +2479,21 @@ def _fetch_team_fixtures_live(team_entity):
     try:
         from apps.sports_apis.services.thesportsdb import TheSportsDBService
         tsdb = TheSportsDBService()
-        team_info = tsdb.search_team(team_entity.name)
+        
+        NOISE = {'fc', 'united', 'city', 'real', 'club', 'town', 'athletic', 'rovers', 'wanderers', 'county', 'saint', 'st', 'de', 'la', 'sports', 'league', 'team', 'national', 'field', 'men', "men's", 'mens', 'women', "women's", 'womens'}
+        query_vars = [team_entity.name]
+        cleaned = [w for w in team_entity.name.split() if w.lower() not in NOISE]
+        if cleaned:
+            query_vars.append(" ".join(cleaned))
+        if len(cleaned) > 1:
+            query_vars.append(cleaned[0])
+
+        team_info = None
+        for qv in query_vars:
+            team_info = tsdb.search_team(qv)
+            if team_info and team_info.get('idTeam'):
+                break
+
         if not team_info or not team_info.get('idTeam'):
             return []
         
@@ -2556,6 +2570,44 @@ def _fetch_team_fixtures_live(team_entity):
                 })
             except Exception:
                 continue
+
+        if not fixtures:
+            try:
+                from apps.sports_apis.services.statpal import statpal_service
+                sp_data = statpal_service.get_fixtures(team_entity.sport or 'soccer')
+                raw_sp_events = sp_data.get('data') or sp_data.get('fixtures') or sp_data.get('livescore') or []
+                if isinstance(raw_sp_events, list):
+                    t_name_lower = team_entity.name.lower()
+                    for item in raw_sp_events:
+                        if isinstance(item, dict):
+                            h_name = item.get('home_team', '') or item.get('home', '') or item.get('homeTeam', '')
+                            a_name = item.get('away_team', '') or item.get('away', '') or item.get('awayTeam', '')
+                            if t_name_lower in h_name.lower() or t_name_lower in a_name.lower():
+                                fixtures.append({
+                                    'id': str(item.get('id', '')),
+                                    'sport': team_entity.sport or 'soccer',
+                                    'status': item.get('status', 'upcoming'),
+                                    'status_detail': item.get('status', ''),
+                                    'home_entity': {'id': None, 'name': h_name, 'logo_url': item.get('home_logo', ''), 'type': 'team', 'sport': team_entity.sport},
+                                    'away_entity': {'id': None, 'name': a_name, 'logo_url': item.get('away_logo', ''), 'type': 'team', 'sport': team_entity.sport},
+                                    'league': {'id': None, 'name': item.get('league_name', ''), 'logo_url': '', 'type': 'league', 'sport': team_entity.sport},
+                                    'home_score': item.get('home_score'),
+                                    'away_score': item.get('away_score'),
+                                    'start_time': item.get('start_time') or item.get('date'),
+                                    'venue_name': '',
+                                    'venue_city': '',
+                                    'broadcaster': '',
+                                    'stream_url': '',
+                                    'event_name': f"{h_name} vs {a_name}",
+                                    'home_team': h_name,
+                                    'away_team': a_name,
+                                    'home_logo': item.get('home_logo', ''),
+                                    'away_logo': item.get('away_logo', ''),
+                                    'video_url': '',
+                                })
+            except Exception as sp_err:
+                logger.debug(f"StatPal fallback error in _fetch_team_fixtures_live: {sp_err}")
+
         return fixtures
     except Exception as e:
         logger.error(f"Error in _fetch_team_fixtures_live: {str(e)}")
