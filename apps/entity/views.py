@@ -280,7 +280,7 @@ def get_entity_fixtures(request, entity_id):
             })
 
     serialized_fixtures = EvSerializer(events, many=True).data
-    from apps.entity.utils.matcher import find_team_logo_by_name
+    from apps.entity.utils.matcher import find_team_logo_by_name, resolve_team_venue
 
     for f in serialized_fixtures:
         if f.get('home_entity') and not f['home_entity'].get('logo_url'):
@@ -306,6 +306,15 @@ def get_entity_fixtures(request, entity_id):
                     f['primary_logo_url'] = l_url
                 else:
                     f['opponent_entity_logo'] = l_url
+
+        # Auto-fill missing venue name and city
+        if not f.get('venue_name') or not f.get('venue_city'):
+            home_team_name = f.get('home_entity', {}).get('name') or f.get('home_team', '')
+            v_name, v_city = resolve_team_venue(home_team_name)
+            if not f.get('venue_name') and v_name:
+                f['venue_name'] = v_name
+            if not f.get('venue_city') and v_city:
+                f['venue_city'] = v_city
 
     return Response({
         'entity':          EntitySerializer(entity, context={'request': request}).data,

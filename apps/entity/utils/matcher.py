@@ -237,6 +237,62 @@ def find_team_logo_by_name(name):
     return logo_val
 
 
+def resolve_team_venue(team_name: str):
+    """
+    Resolve stadium name and location city for a team.
+    Returns (venue_name, venue_city). Uses Django cache (24h).
+    """
+    if not team_name or not str(team_name).strip():
+        return ("", "")
+    
+    clean_name = team_name.strip()
+    cache_key = f"venue_by_name_{clean_name.lower().replace(' ', '_')}"
+    
+    from django.core.cache import cache
+    try:
+        cached_venue = cache.get(cache_key)
+        if cached_venue is not None:
+            return cached_venue
+    except Exception:
+        pass
+
+    venue_name = ""
+    venue_city = ""
+
+    # 1. Query Entity metadata in DB first
+    try:
+        ent = Entity.objects.filter(
+            name__iexact=clean_name,
+            type="team"
+        ).exclude(metadata={}).first()
+        if ent and ent.metadata:
+            venue_name = ent.metadata.get('stadium') or ent.metadata.get('strStadium') or ent.metadata.get('venue_name') or ""
+            venue_city = ent.metadata.get('location') or ent.metadata.get('strLocation') or ent.metadata.get('venue_city') or ent.metadata.get('city') or ""
+    except Exception:
+        pass
+
+    # 2. Query TheSportsDB live search if missing
+    if not venue_name:
+        try:
+            from apps.sports_apis.services.thesportsdb import TheSportsDBService
+            tsdb = TheSportsDBService()
+            info = tsdb.search_team(clean_name)
+            if not info and clean_name != clean_national_team_name(clean_name):
+                info = tsdb.search_team(clean_national_team_name(clean_name))
+            if info:
+                venue_name = info.get('strStadium') or ""
+                venue_city = info.get('strLocation') or info.get('strCity') or info.get('strCountry') or ""
+        except Exception:
+            pass
+
+    res = (venue_name.strip(), venue_city.strip())
+    try:
+        cache.set(cache_key, res, timeout=86400)
+    except Exception:
+        pass
+    return res
+
+
 def get_or_create_precise_entity(
     statpal_id,
     name: str,
