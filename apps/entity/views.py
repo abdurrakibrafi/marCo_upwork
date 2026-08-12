@@ -9,6 +9,7 @@ from rest_framework.pagination import PageNumberPagination
 from django.shortcuts import get_object_or_404
 from django.core.cache import cache
 from datetime import datetime
+from django.utils import timezone
 import requests as req
 from django.conf import settings
 
@@ -2324,8 +2325,9 @@ def _get_standings_for_league(request, league_entity, season, highlight_team_id=
             'is_highlighted': str(team.entity.external_id) == str(highlight_team_id) or str(team.entity.id) == str(highlight_team_id),
         })
 
-    # Only consider DB standings valid if AT LEAST 10 teams have real non-zero played/points data
-    if valid_db_teams_count >= 10:
+    # Only consider DB standings valid if AT LEAST 10 teams have real non-zero data, or if ALL teams in a small DB league have data
+    total_teams_in_league = len(teams_in_league)
+    if valid_db_teams_count >= 10 or (total_teams_in_league > 0 and valid_db_teams_count == total_teams_in_league):
         standings.sort(key=lambda x: (
             -x['points'],
             -x['goal_diff'],
