@@ -702,7 +702,7 @@ def fetch_live_fifa_rankings():
     Dynamically scrape/fetch live Men's and Women's FIFA World Rankings for Soccer National Teams.
     No hardcoded static data. Cached for 24 hours.
     """
-    cache_key = 'scraped_fifa_team_rankings_live_v1'
+    cache_key = 'scraped_fifa_team_rankings_live_v2'
     try:
         from django.core.cache import cache
         cached_data = cache.get(cache_key)
@@ -725,11 +725,18 @@ def fetch_live_fifa_rankings():
             soup = BeautifulSoup(res.text, 'html.parser')
             tables = soup.find_all('table', {'class': 'wikitable'})
             for tbl in tables:
+                headers_text = ' '.join([th.text.strip().lower() for th in tbl.find_all('th')])
+                if 'year' in headers_text or 'team of the year' in headers_text:
+                    continue
+
                 for row in tbl.find_all('tr'):
                     cols = [c.text.strip() for c in row.find_all(['td', 'th'])]
                     if len(cols) >= 4 and cols[0].isdigit():
                         rank = int(cols[0])
+                        if not (1 <= rank <= 220):
+                            continue
                         team_name = re.sub(r'\[.*?\]', '', cols[2]).strip()
+                        team_name = re.sub(r'\s*\(\+?[\d.]+\s*pts\)', '', team_name).strip()
                         pts_str = re.sub(r'[^\d.]', '', cols[3])
                         try:
                             pts = float(pts_str) if pts_str else 0.0
