@@ -699,10 +699,10 @@ def fetch_live_icc_rankings():
 
 def fetch_live_fifa_rankings():
     """
-    Dynamically scrape/fetch live Men's and Women's FIFA World Rankings for Soccer National Teams.
-    No hardcoded static data. Cached for 24 hours.
+    Dynamically scrape/fetch live Men's and Women's FIFA World Rankings for ALL National Teams (Rank 1 to 211).
+    Cached in Redis for 24 hours.
     """
-    cache_key = 'scraped_fifa_team_rankings_live_v2'
+    cache_key = 'scraped_fifa_team_rankings_live_v3'
     try:
         from django.core.cache import cache
         cached_data = cache.get(cache_key)
@@ -720,44 +720,61 @@ def fetch_live_fifa_rankings():
 
     scraped_men = []
     try:
-        res = requests.get('https://en.wikipedia.org/wiki/FIFA_Men%27s_World_Ranking', headers=headers, timeout=10)
-        if res.status_code == 200:
-            soup = BeautifulSoup(res.text, 'html.parser')
-            tables = soup.find_all('table', {'class': 'wikitable'})
-            for tbl in tables:
-                headers_text = ' '.join([th.text.strip().lower() for th in tbl.find_all('th')])
-                if 'year' in headers_text or 'team of the year' in headers_text:
-                    continue
-
-                for row in tbl.find_all('tr'):
-                    cols = [c.text.strip() for c in row.find_all(['td', 'th'])]
-                    if len(cols) >= 4 and cols[0].isdigit():
+        for page in range(1, 6):
+            url = f'https://football-ranking.com/fifa-rankings?page={page}'
+            res = requests.get(url, headers=headers, timeout=5)
+            if res.status_code == 200:
+                soup = BeautifulSoup(res.text, 'html.parser')
+                for row in soup.find_all('tr'):
+                    cols = [c.text.strip() for c in row.find_all(['td', 'th']) if c.text.strip()]
+                    if len(cols) >= 3 and cols[0].isdigit():
                         rank = int(cols[0])
-                        if not (1 <= rank <= 220):
-                            continue
-                        team_name = re.sub(r'\[.*?\]', '', cols[2]).strip()
-                        team_name = re.sub(r'\s*\(\+?[\d.]+\s*pts\)', '', team_name).strip()
-                        pts_str = re.sub(r'[^\d.]', '', cols[3])
+                        team_name = cols[1].split('(')[0].strip()
+                        pts_str = cols[2].replace(',', '').strip()
                         try:
-                            pts = float(pts_str) if pts_str else 0.0
-                        except ValueError:
+                            pts = float(pts_str)
+                        except Exception:
                             pts = 0.0
-                        if team_name and len(team_name) > 2 and not team_name.isdigit():
+                        prev_rank = int(cols[4]) if len(cols) >= 5 and cols[4].isdigit() else rank
+                        if team_name and len(team_name) > 1:
+                            scraped_men.append({
+                                'rank': rank,
+                                'team_name': team_name,
+                                'points': pts,
+                                'previous_rank': prev_rank,
+                            })
+    except Exception as e:
+        logger.warning(f"Live FIFA scraping failed: {e}")
+
+    # Fallback to Wikipedia if primary source failed
+    if not scraped_men:
+        try:
+            res = requests.get('https://en.wikipedia.org/wiki/FIFA_Men%27s_World_Ranking', headers=headers, timeout=10)
+            if res.status_code == 200:
+                soup = BeautifulSoup(res.text, 'html.parser')
+                tables = soup.find_all('table', {'class': 'wikitable'})
+                for tbl in tables:
+                    headers_text = ' '.join([th.text.strip().lower() for th in tbl.find_all('th')])
+                    if 'year' in headers_text or 'team of the year' in headers_text:
+                        continue
+                    for row in tbl.find_all('tr'):
+                        cols = [c.text.strip() for c in row.find_all(['td', 'th'])]
+                        if len(cols) >= 4 and cols[0].isdigit():
+                            rank = int(cols[0])
+                            if not (1 <= rank <= 220):
+                                continue
+                            team_name = re.sub(r'\[.*?\]', '', cols[2]).strip()
+                            team_name = re.sub(r'\s*\(\+?[\d.]+\s*pts\)', '', team_name).strip()
+                            pts_str = re.sub(r'[^\d.]', '', cols[3])
+                            pts = float(pts_str) if pts_str else 0.0
                             scraped_men.append({
                                 'rank': rank,
                                 'team_name': team_name,
                                 'points': pts,
                                 'previous_rank': rank,
                             })
-    except Exception as e:
-        logger.warning(f"Live FIFA scraping failed: {e}")
-
-    # Ensure key regional nations (Bangladesh, India) are always present even if not in Top 20
-    team_names = [t['team_name'].lower() for t in scraped_men]
-    if 'bangladesh' not in team_names:
-        scraped_men.append({'rank': 184, 'team_name': 'Bangladesh', 'points': 892.44, 'previous_rank': 184})
-    if 'india' not in team_names:
-        scraped_men.append({'rank': 125, 'team_name': 'India', 'points': 1133.78, 'previous_rank': 125})
+        except Exception as e:
+            logger.warning(f"Wikipedia FIFA fallback scraping failed: {e}")
 
     scraped_men.sort(key=lambda x: x['rank'])
 
