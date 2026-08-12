@@ -183,11 +183,26 @@ def search_entities(request):
     if not matched_entities and len(query) >= 3:
         try:
             from apps.sports_apis.services.thesportsdb import TheSportsDBService
-            tsdb_info = TheSportsDBService().search_team(query)
+            tsdb_service = TheSportsDBService()
+            
+            # Try query variations (raw query, noise-cleaned query, first main word)
+            query_vars = [query]
+            cleaned_words = [w for w in query.split() if w.lower() not in NOISE]
+            if cleaned_words:
+                query_vars.append(" ".join(cleaned_words))
+            if len(cleaned_words) > 1:
+                query_vars.append(cleaned_words[0])
+            
+            tsdb_info = None
+            for q_var in query_vars:
+                tsdb_info = tsdb_service.search_team(q_var)
+                if tsdb_info and tsdb_info.get('strTeam'):
+                    break
+            
             if tsdb_info and tsdb_info.get('strTeam'):
                 team_name = tsdb_info.get('strTeam')
-                sport_name = (tsdb_info.get('strSport') or 'soccer').lower()
-                logo = tsdb_info.get('strBadge', '')
+                sport_name = (tsdb_info.get('strSport') or sport or 'soccer').lower()
+                logo = tsdb_info.get('strBadge', '') or tsdb_info.get('strLogo', '')
                 
                 live_entity, _ = Entity.objects.get_or_create(
                     name=team_name,
