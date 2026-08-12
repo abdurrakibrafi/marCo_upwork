@@ -109,27 +109,60 @@ def search_entities(request):
     else:
         all_entities = Entity.objects.filter(filters).order_by('-follower_count')[:100]
     
+    COMMON_ALIASES = {
+        'inter milan': 'inter',
+        'inter milano': 'inter',
+        'internazionale': 'inter',
+        'ac milan': 'ac milan',
+        'man utd': 'manchester united',
+        'man united': 'manchester united',
+        'man city': 'manchester city',
+        'barca': 'barcelona',
+        'fcb': 'barcelona',
+        'psg': 'paris saint-germain',
+        'real': 'real madrid',
+        'atletico': 'atletico madrid',
+        'juve': 'juventus',
+        'bayern': 'bayern munich',
+        'csk': 'chennai super kings',
+        'rcb': 'royal challengers bangalore',
+        'mi': 'mumbai indians',
+        'kkr': 'kolkata knight riders',
+        'bpl': 'bangladesh premier league',
+        'ipl': 'indian premier league',
+    }
+    alias_target = COMMON_ALIASES.get(normalized_query)
+
     matches = []
     for entity in all_entities:
         entity_norm = entity.normalized_name or normalize_entity_name(entity.name)
         words = entity_norm.split()
         
-        # Check direct substring or word-prefix match (e.g. 'man' in 'manchester', 'lakers' in 'los angeles lakers')
+        # Check direct substring, alias, or reverse substring match
         is_exact = (normalized_query == entity_norm)
+        is_alias = (alias_target and entity_norm == alias_target)
         is_prefix = entity_norm.startswith(normalized_query)
+        is_reverse_prefix = normalized_query.startswith(entity_norm) and len(entity_norm) >= 3
         is_word_prefix = any(w.startswith(normalized_query) for w in words)
         is_substring = (normalized_query in entity_norm)
+        is_reverse_substring = (entity_norm in normalized_query) and len(entity_norm) >= 4
         
-        if is_exact or is_prefix or is_word_prefix or is_substring:
+        if is_exact or is_alias or is_prefix or is_reverse_prefix or is_word_prefix or is_substring or is_reverse_substring:
             score = 1.0
             if is_exact:
                 score += 3.0
+            elif is_alias:
+                score += 2.8
             elif is_prefix:
                 score += 2.0
+            elif is_reverse_prefix:
+                score += 1.8
             elif is_word_prefix:
                 score += 1.5
             elif is_substring:
                 score += 1.0
+            elif is_reverse_substring:
+                score += 0.8
 
             if entity_type and entity.type == entity_type:
                 score += 0.3
