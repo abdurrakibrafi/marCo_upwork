@@ -109,38 +109,15 @@ def search_entities(request):
     else:
         all_entities = Entity.objects.filter(filters).order_by('-follower_count')[:100]
     
-    COMMON_ALIASES = {
-        'inter milan': 'inter',
-        'inter milano': 'inter',
-        'internazionale': 'inter',
-        'ac milan': 'ac milan',
-        'man utd': 'manchester united',
-        'man united': 'manchester united',
-        'man city': 'manchester city',
-        'barca': 'barcelona',
-        'fcb': 'barcelona',
-        'psg': 'paris saint-germain',
-        'real': 'real madrid',
-        'atletico': 'atletico madrid',
-        'juve': 'juventus',
-        'bayern': 'bayern munich',
-        'csk': 'chennai super kings',
-        'rcb': 'royal challengers bangalore',
-        'mi': 'mumbai indians',
-        'kkr': 'kolkata knight riders',
-        'bpl': 'bangladesh premier league',
-        'ipl': 'indian premier league',
-    }
-    alias_target = COMMON_ALIASES.get(normalized_query)
-
     matches = []
     for entity in all_entities:
         entity_norm = entity.normalized_name or normalize_entity_name(entity.name)
         words = entity_norm.split()
+        db_aliases = [normalize_entity_name(a) for a in entity.metadata.get('aliases', [])] if entity.metadata else []
         
-        # Check direct substring, alias, or reverse substring match
+        # Check direct match, DB metadata aliases, substring, or prefix match
         is_exact = (normalized_query == entity_norm)
-        is_alias = (alias_target and entity_norm == alias_target)
+        is_alias = (normalized_query in db_aliases)
         is_prefix = entity_norm.startswith(normalized_query)
         is_reverse_prefix = normalized_query.startswith(entity_norm) and len(entity_norm) >= 3
         is_word_prefix = any(w.startswith(normalized_query) for w in words)
