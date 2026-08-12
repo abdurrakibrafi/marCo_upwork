@@ -1017,10 +1017,7 @@ def get_team_stats(request, team_id):
         stats.updated_at and (timezone.now() - stats.updated_at).total_seconds() < 86400
     )
 
-    from apps.entity.utils.matcher import find_team_logo_by_name
-    if not team_entity.logo_url or 'api-sports' in team_entity.logo_url:
-        find_team_logo_by_name(team_entity.name)
-        team_entity.refresh_from_db()
+ 
 
     if has_valid_db_stats:
         normalized_stats = _normalize_team_stats(stats.stats_data, team_entity=team_entity)
@@ -1086,8 +1083,8 @@ def get_team_stats(request, team_id):
 
         if not stats_data:
             stats_data = _fetch_soccer_team_stats_statpal(team_entity.external_id, api_season)
-        if not stats_data and team_entity.api_source == 'api_sports':
-            stats_data = _fetch_soccer_team_stats(team_entity.external_id, api_season)
+        if not stats_data:
+            stats_data = _fetch_soccer_team_stats_thesportsdb(team_entity)
  
     elif team_entity.sport == 'basketball':
         # Always use StatPal standings (balldontlie is no longer in use)
@@ -1518,6 +1515,25 @@ def _fetch_soccer_team_stats(external_id, season):
         cache.set(cache_key, stats_data, timeout=3600)
         return stats_data
  
+    except Exception:
+        return {}
+
+
+def _fetch_soccer_team_stats_thesportsdb(team_entity):
+    """Fallback team stats lookup via TheSportsDB search_team."""
+    try:
+        from apps.sports_apis.services.thesportsdb import TheSportsDBService
+        tsdb = TheSportsDBService()
+        info = tsdb.search_team(team_entity.name)
+        if not info:
+            return {}
+        return {
+            'form': info.get('strForm', '') or '',
+            'stadium': info.get('strStadium', '') or '',
+            'stadium_location': info.get('strLocation', '') or '',
+            'stadium_capacity': info.get('intStadiumCapacity', 0) or 0,
+            'website': info.get('strWebsite', '') or '',
+        }
     except Exception:
         return {}
  
@@ -2408,7 +2424,8 @@ def _get_standings_for_league(request, league_entity, season, highlight_team_id=
 def _fetch_league_standings_thesportsdb(league_entity, season):
     """Fallback: Search league on TheSportsDB API and fetch lookup table standings."""
     try:
-        import requests
+        from apps.sports_apis.services.thesportsdb import TheSportsDBService
+        tsdb = TheSportsDBService()
         league_name = league_entity.name if hasattr(league_entity, 'name') else str(league_entity)
         league_id = None
 
@@ -2416,25 +2433,20 @@ def _fetch_league_standings_thesportsdb(league_entity, season):
             league_id = league_entity.external_id
 
         if not league_id:
-            res = requests.get('https://www.thesportsdb.com/api/v1/json/3/all_leagues.php', timeout=5)
-            if res.status_code == 200:
-                leagues = res.json().get('leagues') or []
-                for l in leagues:
-                    str_lg = str(l.get('strLeague', '')).lower()
-                    lg_lower = league_name.lower()
-                    if lg_lower in str_lg or str_lg in lg_lower:
-                        league_id = l.get('idLeague')
-                        break
+            all_l_data = tsdb._get('all_leagues.php')
+            leagues = (all_l_data.get('leagues') if isinstance(all_l_data, dict) else []) or []
+            clean_lname = league_name.lower().replace(' league', '').replace(' division', '').strip()
+            for l in leagues:
+                str_lg = str(l.get('strLeague', '')).lower()
+                if clean_lname in str_lg or str_lg in clean_lname or league_name.lower() in str_lg:
+                    league_id = l.get('idLeague')
+                    break
 
         if league_id:
             try:
                 s_year = int(str(season).split('-', 1)[0].split('/', 1)[0])
             except Exception:
                 s_year = 2026
-
-            # Use TheSportsDBService to benefit from premium API key
-            from apps.sports_apis.services.thesportsdb import TheSportsDBService
-            tsdb = TheSportsDBService()
 
             # Try current year, then walk back up to 2 seasons to find a full table
             table = []
@@ -2449,8 +2461,10 @@ def _fetch_league_standings_thesportsdb(league_entity, season):
                     break
 
             return table
-    except Exception:
-        pass
+    except Exception as e:
+        logger.warning(f"Error fetching TSDB standings for {league_entity}: {e}")
+
+    return []
 
     return []
 
