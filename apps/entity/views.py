@@ -2357,19 +2357,58 @@ def _fetch_team_fixtures_live(team_entity):
         fixtures = []
         for ev in raw_events:
             try:
+                home_name = ev.get('strHomeTeam', '')
+                away_name = ev.get('strAwayTeam', '')
+                home_logo = ev.get('strHomeTeamBadge', '')
+                away_logo = ev.get('strAwayTeamBadge', '')
+                league_name = ev.get('strLeague', '')
+                league_logo = ev.get('strLeagueBadge', '')
+
+                home_ent = Entity.objects.filter(name__iexact=home_name).first()
+                away_ent = Entity.objects.filter(name__iexact=away_name).first()
+
+                h_score = ev.get('intHomeScore')
+                a_score = ev.get('intAwayScore')
+
                 fixtures.append({
                     'id': str(ev.get('idEvent', '')),
-                    'event_name': ev.get('strEvent', ''),
-                    'league_name': ev.get('strLeague', ''),
-                    'home_team': ev.get('strHomeTeam', ''),
-                    'away_team': ev.get('strAwayTeam', ''),
-                    'home_logo': ev.get('strHomeTeamBadge', ''),
-                    'away_logo': ev.get('strAwayTeamBadge', ''),
-                    'home_score': ev.get('intHomeScore'),
-                    'away_score': ev.get('intAwayScore'),
+                    'sport': (ev.get('strSport') or team_entity.sport or 'soccer').lower(),
+                    'status': 'completed' if ev.get('strStatus') in ('FT', 'AET', 'PEN') else 'upcoming',
+                    'status_detail': ev.get('strStatus') or '',
+                    'home_entity': {
+                        'id': home_ent.id if home_ent else None,
+                        'name': home_name,
+                        'logo_url': home_logo,
+                        'type': 'team',
+                        'sport': team_entity.sport or 'soccer',
+                    },
+                    'away_entity': {
+                        'id': away_ent.id if away_ent else None,
+                        'name': away_name,
+                        'logo_url': away_logo,
+                        'type': 'team',
+                        'sport': team_entity.sport or 'soccer',
+                    },
+                    'league': {
+                        'id': None,
+                        'name': league_name,
+                        'logo_url': league_logo,
+                        'type': 'league',
+                        'sport': team_entity.sport or 'soccer',
+                    },
+                    'home_score': int(h_score) if h_score is not None and str(h_score).isdigit() else None,
+                    'away_score': int(a_score) if a_score is not None and str(a_score).isdigit() else None,
                     'start_time': ev.get('strTimestamp') or ev.get('dateEvent'),
-                    'status': ev.get('strStatus', ''),
-                    'venue': ev.get('strVenue', ''),
+                    'venue_name': ev.get('strVenue', '') or '',
+                    'venue_city': ev.get('strCity', '') or '',
+                    'broadcaster': '',
+                    'stream_url': ev.get('strVideo', '') or '',
+                    # Convenience aliases
+                    'event_name': ev.get('strEvent', ''),
+                    'home_team': home_name,
+                    'away_team': away_name,
+                    'home_logo': home_logo,
+                    'away_logo': away_logo,
                     'video_url': ev.get('strVideo', '') or '',
                 })
             except Exception:
