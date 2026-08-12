@@ -737,6 +737,13 @@ def fetch_live_fifa_rankings():
     except Exception as e:
         logger.warning(f"Live FIFA scraping failed: {e}")
 
+    # Ensure key regional nations (Bangladesh, India) are always present even if not in Top 20
+    team_names = [t['team_name'].lower() for t in scraped_men]
+    if 'bangladesh' not in team_names:
+        scraped_men.append({'rank': 184, 'team_name': 'Bangladesh', 'points': 892.44, 'previous_rank': 184})
+    if 'india' not in team_names:
+        scraped_men.append({'rank': 125, 'team_name': 'India', 'points': 1133.78, 'previous_rank': 125})
+
     scraped_men.sort(key=lambda x: x['rank'])
 
     seed_tables = {
@@ -1636,8 +1643,14 @@ def get_team_standings(request, team_id):
     GET /api/entities/team/{team_id}/standings/
     Returns the full league table so the app can highlight this team's row.
     """
-    team_entity = get_object_or_404(Entity, id=team_id, type='team')
-    team_entity = team_entity.canonical_entity or team_entity
+    entity = get_object_or_404(Entity, id=team_id)
+    entity = entity.canonical_entity or entity
+
+    if entity.type == 'league':
+        season = request.GET.get('season') or str(_current_season(entity.sport))
+        return _get_standings_for_league(request, entity, season)
+
+    team_entity = entity
     season = request.GET.get('season') or str(_current_season(team_entity.sport))
  
     try:
@@ -1726,6 +1739,32 @@ def get_team_standings(request, team_id):
                 'source': 'fifa_rankings',
                 'message': 'FIFA World Rankings provided for Soccer national team.',
             })
+
+        # Fallback for all other sports (Basketball, Ice Hockey, Baseball, NFL, F1, etc.)
+        DEFAULT_SPORT_LEAGUES = {
+            'basketball': ('NBA', '4387'),
+            'ice_hockey': ('NHL', '4380'),
+            'american_football': ('NFL', '4391'),
+            'baseball': ('MLB', '4424'),
+            'motorsport': ('Formula 1', '4370'),
+        }
+
+        sport_key = (team_entity.sport or '').lower()
+        if sport_key in DEFAULT_SPORT_LEAGUES:
+            lg_name, lg_id = DEFAULT_SPORT_LEAGUES[sport_key]
+            mock_league = Entity(name=lg_name, external_id=lg_id, api_source='thesportsdb', type='league', sport=sport_key)
+            live_rows = _fetch_league_standings_thesportsdb(mock_league, season)
+            if live_rows:
+                for row in live_rows:
+                    t_name = row.get('team_name', '').lower()
+                    row['is_highlighted'] = (team_entity.name.lower() in t_name or t_name in team_entity.name.lower())
+                return Response({
+                    'team': EntitySerializer(team_entity, context={'request': request}).data,
+                    'season': season,
+                    'standings': live_rows,
+                    'source': 'thesportsdb',
+                    'message': f'{lg_name} standings provided for {team_entity.sport}.',
+                })
 
         return Response({
             'team': EntitySerializer(team_entity, context={'request': request}).data,
