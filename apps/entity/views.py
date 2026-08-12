@@ -356,6 +356,59 @@ def get_entity_roster(request, entity_id):
 
 @api_view(['GET'])
 @permission_classes([AllowAny])
+def get_team_standings(request, team_id):
+    """
+    GET /api/entities/team/{team_id}/standings/?season=2024
+    """
+    team_entity = get_object_or_404(Entity, id=team_id)
+    team_entity = team_entity.canonical_entity or team_entity
+    
+    # Handle both Django HttpRequest and DRF Request
+    get_params = getattr(request, 'GET', {}) or getattr(getattr(request, '_request', None), 'GET', {})
+    season = get_params.get('season') or str(_current_season(team_entity.sport or 'soccer'))
+    
+    league_entity = None
+    try:
+        td = getattr(team_entity, 'team_details', None)
+        if td and td.league:
+            league_entity = td.league
+    except Exception:
+        pass
+        
+    if not league_entity:
+        league_entity = Entity.objects.filter(type='league', sport=team_entity.sport).first()
+        
+    if not league_entity:
+        try:
+            from apps.sports_apis.services.thesportsdb import TheSportsDBService
+            tsdb = TheSportsDBService()
+            info = tsdb.search_team(team_entity.name)
+            if info and info.get('strLeague'):
+                l_name = info.get('strLeague')
+                league_entity = Entity.objects.filter(type='league', name__icontains=l_name).first()
+                if not league_entity:
+                    league_entity, _ = Entity.objects.get_or_create(
+                        name=l_name,
+                        type='league',
+                        sport=team_entity.sport or 'soccer',
+                        defaults={'has_api_data': True}
+                    )
+        except Exception:
+            pass
+
+    if league_entity:
+        return _get_standings_for_league(request, league_entity, season, highlight_team_id=team_entity.id, highlight_team_name=team_entity.name)
+
+    return Response({
+        'entity': EntitySerializer(team_entity, context={'request': request}).data,
+        'standings': [],
+        'source': 'empty',
+        'message': 'No league standings found for this team'
+    })
+
+
+@api_view(['GET'])
+@permission_classes([AllowAny])
 def get_entity_standings(request, entity_id):
     """
     Universal standings — works for team and league.
@@ -366,10 +419,12 @@ def get_entity_standings(request, entity_id):
     """
     entity = get_object_or_404(Entity, id=entity_id)
     entity = entity.canonical_entity or entity
-    season = request.GET.get('season') or str(_current_season('soccer'))
+    get_params = getattr(request, 'GET', {}) or getattr(getattr(request, '_request', None), 'GET', {})
+    season = get_params.get('season') or str(_current_season(entity.sport or 'soccer'))
 
     if entity.type == 'team':
-        return get_team_standings(request._request, entity.id)
+        django_req = getattr(request, '_request', request)
+        return get_team_standings(django_req, entity.id)
 
     elif entity.type == 'league':
         return _get_standings_for_league(request, entity, season)
