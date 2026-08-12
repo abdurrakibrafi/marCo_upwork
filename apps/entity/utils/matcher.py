@@ -206,7 +206,29 @@ def find_team_logo_by_name(name):
         base_name = clean_national_team_name(name_clean)
         if base_name != name_clean:
             logo_val = _query_logo(base_name)
-            
+
+    # 3. Live provider fallback: query TheSportsDB if still empty in DB
+    if not logo_val:
+        try:
+            from apps.sports_apis.services.thesportsdb import TheSportsDBService
+            tsdb = TheSportsDBService()
+            info = tsdb.search_team(name_clean)
+            if not info and name_clean != clean_national_team_name(name_clean):
+                info = tsdb.search_team(clean_national_team_name(name_clean))
+            if info:
+                badge = info.get('strBadge') or info.get('strLogo') or ''
+                if badge:
+                    logo_val = badge
+                    try:
+                        Entity.objects.filter(
+                            name__iexact=name_clean,
+                            type="team"
+                        ).update(logo_url=badge)
+                    except Exception:
+                        pass
+        except Exception:
+            pass
+
     # Cache for 24 hours (86400 seconds)
     try:
         cache.set(cache_key, logo_val, timeout=86400)

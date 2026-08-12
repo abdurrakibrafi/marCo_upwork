@@ -279,10 +279,38 @@ def get_entity_fixtures(request, entity_id):
                 'source':          'live_api',
             })
 
+    serialized_fixtures = EvSerializer(events, many=True).data
+    from apps.entity.utils.matcher import find_team_logo_by_name
+
+    for f in serialized_fixtures:
+        if f.get('home_entity') and not f['home_entity'].get('logo_url'):
+            h_name = f['home_entity'].get('name', '')
+            l_url = find_team_logo_by_name(h_name)
+            if l_url:
+                f['home_entity']['logo_url'] = l_url
+                f['home_logo'] = l_url
+                if f.get('is_nest_entity_home'):
+                    f['nest_entity_logo'] = l_url
+                    f['primary_logo_url'] = l_url
+                else:
+                    f['opponent_entity_logo'] = l_url
+
+        if f.get('away_entity') and not f['away_entity'].get('logo_url'):
+            a_name = f['away_entity'].get('name', '')
+            l_url = find_team_logo_by_name(a_name)
+            if l_url:
+                f['away_entity']['logo_url'] = l_url
+                f['away_logo'] = l_url
+                if not f.get('is_nest_entity_home'):
+                    f['nest_entity_logo'] = l_url
+                    f['primary_logo_url'] = l_url
+                else:
+                    f['opponent_entity_logo'] = l_url
+
     return Response({
         'entity':          EntitySerializer(entity, context={'request': request}).data,
-        'fixtures_count':  events.count(),
-        'fixtures':        EvSerializer(events, many=True).data,
+        'fixtures_count':  len(serialized_fixtures),
+        'fixtures':        serialized_fixtures,
         'source':          'db',
     })
 
@@ -784,11 +812,14 @@ def fetch_live_fifa_rankings():
     }
 
     rankings_by_team = {}
+    from apps.entity.utils.matcher import find_team_logo_by_name
     for gender_key, rows in seed_tables.items():
         for r in rows:
             clean = r['team_name'].lower().replace(' w', '').strip()
             if clean not in rankings_by_team:
                 rankings_by_team[clean] = {}
+            if not r.get('logo_url'):
+                r['logo_url'] = find_team_logo_by_name(r['team_name'])
             rankings_by_team[clean][gender_key] = r
 
     result = {
