@@ -366,6 +366,39 @@ class TheSportsDBService:
             'raw_data': player,
         }
 
+    # ── LEAGUE STANDINGS ──────────────────────────────────────────────────
+
+    def get_league_table(self, league_id: str, season: str = None) -> list[dict]:
+        """
+        Get standings table for a league and season from TheSportsDB.
+        """
+        params = {'l': str(league_id)}
+        if season:
+            params['s'] = str(season)
+        data = self._get('lookuptable.php', params)
+        rows = data.get('table') or []
+        results = []
+        for r in rows:
+            try:
+                results.append({
+                    'rank': int(r.get('intRank', 0)),
+                    'team_external_id': str(r.get('idTeam', '')),
+                    'team_name': r.get('strTeam', ''),
+                    'team_logo': r.get('strBadge', '') or r.get('strTeamBadge', ''),
+                    'points': int(r.get('intPoints', 0)),
+                    'played': int(r.get('intPlayed', 0)),
+                    'win': int(r.get('intWin', 0)),
+                    'draw': int(r.get('intDraw', 0)),
+                    'lose': int(r.get('intLoss', 0)),
+                    'goals_for': int(r.get('intGoalsFor', 0)),
+                    'goals_against': int(r.get('intGoalsAgainst', 0)),
+                    'goal_diff': int(r.get('intGoalDifference', 0)),
+                    'form': r.get('strForm', '') or '',
+                })
+            except Exception:
+                continue
+        return results
+
 
 # Global instance
 thesportsdb_service = TheSportsDBService()

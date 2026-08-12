@@ -2189,8 +2189,12 @@ def _get_standings_for_league(request, league_entity, season, highlight_team_id=
     # Live API fallback — try TheSportsDB first, then API-Sports
     live_standings = _fetch_league_standings_thesportsdb(canonical, season)
 
-    if not live_standings and canonical.api_source == 'api_sports':
-        live_standings = _fetch_soccer_standings(canonical.external_id, int(season))
+    if not live_standings and getattr(canonical, 'api_source', '') == 'api_sports':
+        try:
+            season_year = int(str(season).split('-', 1)[0].split('/', 1)[0])
+        except Exception:
+            season_year = 2026
+        live_standings = _fetch_soccer_standings(canonical.external_id, season_year)
 
     if live_standings:
         # Write each team's standing back to DB if matching Entity exists
@@ -2287,7 +2291,10 @@ def _fetch_league_standings_thesportsdb(league_entity, season):
                         break
 
         if league_id:
-            s_year = int(str(season).split('-', 1)[0])
+            try:
+                s_year = int(str(season).split('-', 1)[0].split('/', 1)[0])
+            except Exception:
+                s_year = 2026
             s_param = f"{s_year}-{s_year+1}"
             tbl_url = f"https://www.thesportsdb.com/api/v1/json/3/lookuptable.php?l={league_id}&s={s_param}"
             tbl_res = requests.get(tbl_url, timeout=5)
@@ -2320,10 +2327,10 @@ def _fetch_league_standings_thesportsdb(league_entity, season):
             return rows
     except Exception:
         pass
- 
+
     return []
- 
- 
+
+
 def _fetch_soccer_standings(external_id, season):
     cache_key = f'standings:soccer:{external_id}:{season}'
     cached = cache.get(cache_key)
