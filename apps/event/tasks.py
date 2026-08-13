@@ -1327,6 +1327,9 @@ def _cricket_rows(data: dict) -> list:
                 "venue": match.get("venue", ""),
                 "raw":   match,
             })
+    return rows
+
+
 def _f1_rows(data: dict) -> list:
     races_data = data.get("livescores", {}).get("tournament") or data.get("tournament") or data.get("races")
     if not races_data:
@@ -1657,6 +1660,8 @@ def sync_statpal_data(self):
                     continue
 
                 extracted_rows = extract_fn(result["data"])
+                if not isinstance(extracted_rows, list):
+                    extracted_rows = []
             except Exception as exc:
                 errors += 1
                 logger.exception("[StatPal] %s fetch/extract crashed: %s", sport, exc)

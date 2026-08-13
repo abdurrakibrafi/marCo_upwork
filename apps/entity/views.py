@@ -919,6 +919,9 @@ def _normalize_team_stats(stats_data, team_entity=None):
     if not isinstance(stats_data, dict) or not stats_data:
         return stats_data
 
+    if 'rankings' in stats_data or 'leaderboard' in stats_data or 'position' in stats_data or 'date_of_birth' in stats_data:
+        return stats_data
+
     wins = int(stats_data.get('wins') or 0)
     losses = int(stats_data.get('losses') or 0)
     draws = int(stats_data.get('draws') or stats_data.get('ties') or stats_data.get('ot_losses') or 0)
@@ -1046,6 +1049,8 @@ def _normalize_team_stats(stats_data, team_entity=None):
         if fifa_info:
             stats_data['fifa_rankings'] = fifa_info
 
+    return stats_data
+
 def _get_tennis_rankings_helper(tour: str = "atp"):
     tour_slug = str(tour).lower()
     if tour_slug not in ("atp", "wta"):
@@ -1084,6 +1089,17 @@ def get_team_stats(request, team_id):
     """
     team_entity = get_object_or_404(Entity, id=team_id, type='team')
     team_entity = team_entity.canonical_entity or team_entity
+
+    if team_entity.type == 'athlete':
+        raw_req = getattr(request, '_request', request)
+        res = get_athlete_stats(raw_req, team_entity.id)
+        if res.status_code == 200 and isinstance(res.data, dict):
+            data = dict(res.data)
+            if 'athlete' in data:
+                data['team'] = data.pop('athlete')
+            return Response(data)
+        return res
+
     season = request.GET.get('season') or str(_current_season(team_entity.sport))
     # NBA standings are stored with the full season label (for example,
     # ``2025-26``), while StatPal requests use the season's start year.
@@ -1167,8 +1183,10 @@ def get_team_stats(request, team_id):
         except Exception as e:
             logger.warning(f"Error resolving team stats from league standings: {e}")
 
-        if not stats_data:
-            stats_data = _fetch_soccer_team_stats_statpal(team_entity.external_id, api_season)
+        if not stats_data or (isinstance(stats_data, dict) and stats_data.get('played', 0) == 0 and stats_data.get('matches_played', 0) == 0):
+            sp_data = _fetch_soccer_team_stats_statpal(team_entity.external_id, api_season)
+            if sp_data:
+                stats_data = sp_data
         if not stats_data:
             stats_data = _fetch_soccer_team_stats_thesportsdb(team_entity)
  
@@ -1199,8 +1217,36 @@ def get_team_stats(request, team_id):
             logger.warning(f"Error fetching {team_entity.sport} team stats: {e}")
 
     elif team_entity.sport == 'tennis':
-        tour = request.GET.get('tour', 'atp').lower()
-        stats_data = {'rankings': _get_tennis_rankings_helper(tour), 'tour': tour.upper()}
+        tour = request.GET.get('tour', '').lower()
+        if not tour:
+            tour = 'wta' if ('wta' in team_entity.name.lower() or 'women' in team_entity.name.lower()) else 'atp'
+        rankings = _get_tennis_rankings_helper(tour)
+        player_stats = _fetch_thesportsdb_player_stats(team_entity.name, team_entity=team_entity) or {}
+
+        clean_name = team_entity.name.lower().strip()
+        matched_rank = None
+        for r in rankings:
+            r_name = str(r.get('player_name', '')).lower().strip()
+            if clean_name and ((clean_name in r_name) or (r_name in clean_name)):
+                matched_rank = r
+                break
+
+        if not matched_rank and tour == 'atp':
+            wta_rankings = _get_tennis_rankings_helper('wta')
+            for r in wta_rankings:
+                r_name = str(r.get('player_name', '')).lower().strip()
+                if clean_name and ((clean_name in r_name) or (r_name in clean_name)):
+                    matched_rank = r
+                    tour = 'wta'
+                    break
+
+        stats_data = player_stats or {}
+        if matched_rank:
+            stats_data['rank'] = matched_rank.get('rank')
+            stats_data['points'] = matched_rank.get('points')
+            stats_data['tour'] = tour.upper()
+        elif not stats_data:
+            stats_data = {'rankings': rankings, 'tour': tour.upper()}
 
     elif team_entity.sport == 'golf':
         stats_data = {'leaderboard': _get_golf_leaderboard_helper(), 'tour': 'PGA'}
