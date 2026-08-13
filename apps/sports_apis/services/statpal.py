@@ -191,6 +191,14 @@ class StatPalService:
         """Response root: live_stats → tournament → match[]"""
         return self._get(f"{self.base_v1}/tennis/livestats")
 
+    def get_tennis_standings(self, tour: str = "atp") -> dict:
+        """Response root: standings → player[]"""
+        tour_slug = str(tour).lower()
+        if tour_slug not in ("atp", "wta"):
+            tour_slug = "atp"
+        return self._get(f"{self.base_v1}/tennis/standings/{tour_slug}")
+
+
     # ------------------------------------------------------------------ #
     # MLB (V1) - Baseball
     # ------------------------------------------------------------------ #
@@ -226,6 +234,10 @@ class StatPalService:
         token = f"d{offset}"  # StatPal only accepts d-7..d-1, d1..d7 (no d0, no d+ prefix)
         return self._get(f"{self.base_v1}/handball/daily/{token}")
 
+    def get_handball_standings(self, league_id: int) -> dict:
+        """Response root: standings → tournament → team[]"""
+        return self._get(f"{self.base_v1}/handball/standings/{league_id}")
+
     # ------------------------------------------------------------------ #
     # Volleyball (V1)
     # ------------------------------------------------------------------ #
@@ -234,13 +246,22 @@ class StatPalService:
         """Response root: livescores → tournament → match[]"""
         return self._get(f"{self.base_v1}/volleyball/livescores")
 
+    def get_volleyball_standings(self, league_id: int) -> dict:
+        """Response root: standings → tournament → team[]"""
+        return self._get(f"{self.base_v1}/volleyball/standings/{league_id}")
+
     # ------------------------------------------------------------------ #
     # Golf (V1)
     # ------------------------------------------------------------------ #
 
     def get_golf_live(self) -> dict:
-        """Response root: livescores → tournament[] → player[]"""
+        """Response root: livescore → tournament[] → player[]"""
         return self._get(f"{self.base_v1}/golf/livescores")
+
+    def get_golf_schedule(self) -> dict:
+        """Response root: fixtures → tournament[] → player[]"""
+        return self._get(f"{self.base_v1}/golf/schedule")
+
 
     # ------------------------------------------------------------------ #
     # Horse Racing (V1)

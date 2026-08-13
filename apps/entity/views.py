@@ -1046,12 +1046,39 @@ def _normalize_team_stats(stats_data, team_entity=None):
         if fifa_info:
             stats_data['fifa_rankings'] = fifa_info
 
-    return stats_data
+def _get_tennis_rankings_helper(tour: str = "atp"):
+    tour_slug = str(tour).lower()
+    if tour_slug not in ("atp", "wta"):
+        tour_slug = "atp"
+    cache_key = f"standings:tennis:{tour_slug}"
+    rankings = cache.get(cache_key)
+    if not rankings:
+        from apps.entity.tasks import update_tennis_rankings
+        try:
+            update_tennis_rankings()
+            rankings = cache.get(cache_key)
+        except Exception:
+            pass
+    return rankings or []
+
+
+def _get_golf_leaderboard_helper():
+    cache_key = "standings:golf:pga"
+    leaderboard = cache.get(cache_key)
+    if not leaderboard:
+        from apps.entity.tasks import update_golf_leaderboards
+        try:
+            update_golf_leaderboards()
+            leaderboard = cache.get(cache_key)
+        except Exception:
+            pass
+    return leaderboard or []
 
 
 @api_view(['GET'])
 @permission_classes([AllowAny])
 def get_team_stats(request, team_id):
+
     """
     GET /api/entities/team/{team_id}/stats/?season=2024
     """
@@ -1158,16 +1185,30 @@ def get_team_stats(request, team_id):
     elif team_entity.sport == 'baseball':
         stats_data = _fetch_mlb_team_stats(team_entity.external_id, api_season)
  
-    elif team_entity.sport == 'cricket':
-        stats_data = _fetch_cricket_team_stats(team_entity.external_id, api_season)
-        if not stats_data:
-            stats_data = _fetch_soccer_team_stats_thesportsdb(team_entity)
- 
-    # tennis / golf / mma / f1 have no team-standings API — return empty gracefully
- 
+    elif team_entity.sport in ['handball', 'volleyball']:
+        try:
+            league = team_entity.team_details.league if hasattr(team_entity, 'team_details') else None
+            if league:
+                st_res = _get_standings_for_league(request, league, season, highlight_team_id=team_entity.external_id, highlight_team_name=team_entity.name)
+                if st_res.data and st_res.data.get('standings'):
+                    for row in st_res.data['standings']:
+                        if str(row.get('team_id')) == str(team_entity.id) or str(row.get('team_external_id')) == str(team_entity.external_id) or team_entity.name.lower() in str(row.get('team_name', '')).lower():
+                            stats_data = row
+                            break
+        except Exception as e:
+            logger.warning(f"Error fetching {team_entity.sport} team stats: {e}")
+
+    elif team_entity.sport == 'tennis':
+        tour = request.GET.get('tour', 'atp').lower()
+        stats_data = {'rankings': _get_tennis_rankings_helper(tour), 'tour': tour.upper()}
+
+    elif team_entity.sport == 'golf':
+        stats_data = {'leaderboard': _get_golf_leaderboard_helper(), 'tour': 'PGA'}
+
     # Fallback to local DB Event calculation if live APIs return empty
     if not stats_data:
         stats_data = _fetch_stats_from_db_events(team_entity)
+
 
     # Standardize output keys across all sports
     stats_data = _normalize_team_stats(stats_data, team_entity=team_entity)
@@ -1921,6 +1962,34 @@ def get_team_standings(request, team_id):
                 'source': 'fifa_rankings',
                 'message': 'FIFA World Rankings provided for Soccer national team.',
             })
+
+    # 3. Tennis -> ATP / WTA Global Player Rankings
+    if team_entity.sport == 'tennis':
+        tour = request.GET.get('tour', 'atp').lower()
+        rankings = _get_tennis_rankings_helper(tour)
+        clean_name = team_entity.name.lower().strip()
+        for r in rankings:
+            r_name = str(r.get('player_name', '')).lower().strip()
+            r['is_highlighted'] = bool(clean_name and ((clean_name in r_name) or (r_name in clean_name)))
+        return Response({
+            'team': EntitySerializer(team_entity, context={'request': request}).data,
+            'season': season,
+            'tour': tour.upper(),
+            'standings': rankings,
+            'source': 'tennis_rankings',
+        })
+
+    # 4. Golf -> PGA Tour Leaderboards
+    if team_entity.sport == 'golf':
+        leaderboards = _get_golf_leaderboard_helper()
+        return Response({
+            'team': EntitySerializer(team_entity, context={'request': request}).data,
+            'season': season,
+            'tour': 'PGA',
+            'standings': leaderboards,
+            'source': 'golf_leaderboards',
+        })
+
 
     # 3. For Club Teams -> Primary Official League Standings Lookup via TheSportsDB
     league = None

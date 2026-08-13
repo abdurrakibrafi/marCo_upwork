@@ -41,32 +41,36 @@ def update_all_team_stats():
 
     dispatched = []
 
-    # 2. Soccer: Dispatch one task per unique soccer league ID
-    if 'soccer' in active_sports:
-        soccer_league_ids = (
-            Entity.objects
-            .filter(
-                type='team',
-                sport='soccer',
-                is_active=True,
-                api_source__in=['api_sports', 'statpal'],
-                team_details__league__isnull=False,
-                team_details__league__api_source__in=['api_sports', 'statpal'],
+    # 2. Soccer, Handball, Volleyball: Dispatch one task per unique league ID
+    league_sports = [
+        ('soccer', update_soccer_league_stats),
+        ('handball', update_handball_league_stats),
+        ('volleyball', update_volleyball_league_stats),
+    ]
+    for sport_key, task_fn in league_sports:
+        if sport_key in active_sports:
+            league_ids = (
+                Entity.objects
+                .filter(
+                    type='team',
+                    sport=sport_key,
+                    is_active=True,
+                    team_details__league__isnull=False,
+                )
+                .values_list('team_details__league__external_id', flat=True)
+                .distinct()
             )
-            .values_list('team_details__league__external_id', flat=True)
-            .distinct()
-        )
-        soccer_count = 0
-        for league_external_id in soccer_league_ids:
-            if not league_external_id:
-                continue
-            try:
-                league_id = int(league_external_id)
-            except (ValueError, TypeError):
-                continue
-            update_soccer_league_stats.delay(league_id)
-            soccer_count += 1
-        dispatched.append(f"{soccer_count} soccer leagues")
+            count = 0
+            for league_external_id in league_ids:
+                if not league_external_id:
+                    continue
+                try:
+                    league_id = int(league_external_id)
+                except (ValueError, TypeError):
+                    continue
+                task_fn.delay(league_id)
+                count += 1
+            dispatched.append(f"{count} {sport_key} leagues")
 
     # 3. Mapping for other sports to their respective Celery tasks
     other_sports_tasks = {
@@ -75,6 +79,8 @@ def update_all_team_stats():
         'football': ('NFL', update_football_league_stats),
         'baseball': ('MLB', update_baseball_team_stats),
         'hockey': ('NHL', update_hockey_team_stats),
+        'tennis': ('tennis ATP/WTA', update_tennis_rankings),
+        'golf': ('PGA golf', update_golf_leaderboards),
     }
 
     for sport, (label, task_fn) in other_sports_tasks.items():
@@ -85,6 +91,7 @@ def update_all_team_stats():
     msg = f"Dispatched stats updates: {', '.join(dispatched) if dispatched else 'no active sports found'}"
     logger.info(msg)
     return msg
+
 
 
 @shared_task
@@ -877,8 +884,293 @@ def update_hockey_team_stats(self):
         updated += 1
 
     logger.info(f"NHL: updated {updated} teams for season {season}")
+    return f"NHL: updated {updated} teams"
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# HANDBALL — one task per league
+# ─────────────────────────────────────────────────────────────────────────────
+
+@shared_task(bind=True, max_retries=3, default_retry_delay=300)
+def update_handball_league_stats(self, league_id: int):
+    """
+    Fetch handball standings for ONE league using StatPal, then update every team in DB.
+    """
+    season = _current_season('handball')
+    cache_key = f"standings:handball:{league_id}:{season}"
+
+    standings_response = cache.get(cache_key)
+
+    if standings_response is None:
+        result = statpal_service.get_handball_standings(league_id)
+        if not result.get('success'):
+            status_code = result.get('status_code')
+            if status_code == 429:
+                raise self.retry(exc=Exception("Rate limited"), countdown=300)
+            logger.error(f"Failed standings for handball league {league_id}: {result.get('error')}")
+            return f"Failed: handball league {league_id}"
+
+        standings_response = result.get('data', {}).get('standings', {})
+        cache.set(cache_key, standings_response, timeout=3600)
+
+    team_standings_by_id = {}
+    team_standings_by_name = {}
+
+    standings_list = standings_response.get('tournament', {}).get('team', [])
+    if isinstance(standings_list, dict):
+        standings_list = [standings_list]
+
+    for standing in standings_list:
+        if not isinstance(standing, dict):
+            continue
+        tid = str(standing.get('id', ''))
+        tname = standing.get('name', '')
+        if tid:
+            team_standings_by_id[tid] = standing
+        if tname:
+            team_standings_by_name[tname.lower()] = standing
+
+    teams = Team.objects.filter(
+        entity__sport='handball',
+        entity__is_active=True,
+        league__external_id=str(league_id),
+    ).select_related('entity')
+
+    updated = 0
+    for team in teams:
+        standing = team_standings_by_id.get(team.entity.external_id)
+        if not standing:
+            standing = team_standings_by_name.get(team.entity.name.lower())
+
+        if not standing:
+            continue
+
+        wins = int(standing.get('wins') or standing.get('won') or 0)
+        losses = int(standing.get('losses') or standing.get('lost') or 0)
+        draws = int(standing.get('draws') or 0)
+        played = int(standing.get('games_played') or standing.get('played') or (wins + losses + draws))
+
+        team.total_wins = wins
+        team.total_losses = losses
+        team.win_percentage = round((wins / played) * 100, 2) if played else 0
+        team.save(update_fields=['total_wins', 'total_losses', 'win_percentage'])
+
+        EntityStats.objects.update_or_create(
+            entity=team.entity,
+            season=str(season),
+            stat_type='season',
+            defaults={
+                'stats_data': {
+                    'rank': int(standing.get('position') or standing.get('rank') or 0),
+                    'points': int(standing.get('points') or 0),
+                    'played': played,
+                    'matches_played': played,
+                    'wins': wins,
+                    'draws': draws,
+                    'losses': losses,
+                    'goals_for': int(standing.get('goals_scored') or standing.get('goals_for') or 0),
+                    'goals_against': int(standing.get('goals_allowed') or standing.get('goals_against') or 0),
+                    'goal_diff': int(standing.get('goal_difference') or 0),
+                }
+            }
+        )
+        updated += 1
+
+    logger.info(f"Handball League {league_id}: updated {updated}/{len(teams)} teams")
+    return f"Handball League {league_id}: updated {updated} teams"
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# VOLLEYBALL — one task per league
+# ─────────────────────────────────────────────────────────────────────────────
+
+@shared_task(bind=True, max_retries=3, default_retry_delay=300)
+def update_volleyball_league_stats(self, league_id: int):
+    """
+    Fetch volleyball standings for ONE league using StatPal, then update team records in DB.
+    """
+    season = _current_season('volleyball')
+    cache_key = f"standings:volleyball:{league_id}:{season}"
+
+    standings_response = cache.get(cache_key)
+
+    if standings_response is None:
+        result = statpal_service.get_volleyball_standings(league_id)
+        if not result.get('success'):
+            status_code = result.get('status_code')
+            if status_code == 429:
+                raise self.retry(exc=Exception("Rate limited"), countdown=300)
+            logger.error(f"Failed standings for volleyball league {league_id}: {result.get('error')}")
+            return f"Failed: volleyball league {league_id}"
+
+        standings_response = result.get('data', {}).get('standings', {})
+        cache.set(cache_key, standings_response, timeout=3600)
+
+    team_standings_by_id = {}
+    team_standings_by_name = {}
+
+    standings_list = standings_response.get('tournament', {}).get('team', [])
+    if isinstance(standings_list, dict):
+        standings_list = [standings_list]
+
+    for standing in standings_list:
+        if not isinstance(standing, dict):
+            continue
+        tid = str(standing.get('id', ''))
+        tname = standing.get('name', '')
+        if tid:
+            team_standings_by_id[tid] = standing
+        if tname:
+            team_standings_by_name[tname.lower()] = standing
+
+    teams = Team.objects.filter(
+        entity__sport='volleyball',
+        entity__is_active=True,
+        league__external_id=str(league_id),
+    ).select_related('entity')
+
+    updated = 0
+    for team in teams:
+        standing = team_standings_by_id.get(team.entity.external_id)
+        if not standing:
+            standing = team_standings_by_name.get(team.entity.name.lower())
+
+        if not standing:
+            continue
+
+        wins = int(standing.get('wins') or standing.get('won') or 0)
+        losses = int(standing.get('losses') or standing.get('lost') or 0)
+        played = int(standing.get('games_played') or standing.get('played') or (wins + losses))
+
+        team.total_wins = wins
+        team.total_losses = losses
+        team.win_percentage = round((wins / played) * 100, 2) if played else 0
+        team.save(update_fields=['total_wins', 'total_losses', 'win_percentage'])
+
+        EntityStats.objects.update_or_create(
+            entity=team.entity,
+            season=str(season),
+            stat_type='season',
+            defaults={
+                'stats_data': {
+                    'rank': int(standing.get('position') or standing.get('rank') or 0),
+                    'points': int(standing.get('points') or 0),
+                    'played': played,
+                    'matches_played': played,
+                    'wins': wins,
+                    'losses': losses,
+                    'sets_won': int(standing.get('sets_won') or 0),
+                    'sets_lost': int(standing.get('sets_lost') or 0),
+                    'sets_ratio': standing.get('sets_ratio', ''),
+                    'points_ratio': standing.get('points_ratio', ''),
+                }
+            }
+        )
+        updated += 1
+
+    logger.info(f"Volleyball League {league_id}: updated {updated}/{len(teams)} teams")
+    return f"Volleyball League {league_id}: updated {updated} teams"
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# TENNIS — ATP & WTA Global Player Rankings
+# ─────────────────────────────────────────────────────────────────────────────
+
+@shared_task(bind=True, max_retries=2, default_retry_delay=300)
+def update_tennis_rankings(self):
+    """
+    Fetch ATP and WTA singles rankings from StatPal and store in cache for 24h.
+    """
+    updated_tours = []
+    for tour in ['atp', 'wta']:
+        try:
+            res = statpal_service.get_tennis_standings(tour)
+            if res.get('success'):
+                players_list = res.get('data', {}).get('standings', {}).get('player', [])
+                if isinstance(players_list, dict):
+                    players_list = [players_list]
+
+                clean_rankings = []
+                for p in players_list[:100]:  # Top 100
+                    if not isinstance(p, dict):
+                        continue
+                    clean_rankings.append({
+                        'rank': int(p.get('rank') or p.get('position') or 0),
+                        'player_name': p.get('name') or p.get('player_name', ''),
+                        'country': p.get('country') or p.get('nationality', ''),
+                        'points': int(p.get('points') or 0),
+                        'movement': p.get('movement', '0'),
+                    })
+
+                if clean_rankings:
+                    cache.set(f"standings:tennis:{tour}", clean_rankings, timeout=86400)
+                    updated_tours.append(tour.upper())
+        except Exception as exc:
+            logger.warning(f"Failed to update tennis rankings for {tour}: {exc}")
+
+    return f"Tennis rankings updated for: {', '.join(updated_tours) if updated_tours else 'none'}"
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# GOLF — PGA Tour Live & Tournament Leaderboards
+# ─────────────────────────────────────────────────────────────────────────────
+
+@shared_task(bind=True, max_retries=2, default_retry_delay=300)
+def update_golf_leaderboards(self):
+    """
+    Fetch current PGA tournament leaderboards from StatPal live/schedule and cache for 1h.
+    """
+    try:
+        res = statpal_service.get_golf_live()
+        if not res.get('success'):
+            res = statpal_service.get_golf_schedule()
+
+        if res.get('success'):
+            tournaments = res.get('data', {}).get('livescore', {}).get('tournament', [])
+            if not tournaments:
+                tournaments = res.get('data', {}).get('fixtures', {}).get('tournament', [])
+            if isinstance(tournaments, dict):
+                tournaments = [tournaments]
+
+            leaderboard_data = []
+            for tourney in tournaments:
+                if not isinstance(tourney, dict):
+                    continue
+                t_name = tourney.get('name') or tourney.get('tournament_name', 'PGA Tournament')
+                players = tourney.get('player', [])
+                if isinstance(players, dict):
+                    players = [players]
+
+                player_ranks = []
+                for p in players[:50]:
+                    if not isinstance(p, dict):
+                        continue
+                    player_ranks.append({
+                        'rank': p.get('rank') or p.get('position', '-'),
+                        'player_name': p.get('name', ''),
+                        'total_score': p.get('total') or p.get('score', ''),
+                        'thru': p.get('thru', ''),
+                        'rounds': p.get('rounds', {}),
+                    })
+
+                leaderboard_data.append({
+                    'tournament_name': t_name,
+                    'venue': tourney.get('venue', ''),
+                    'leaderboard': player_ranks,
+                })
+
+            if leaderboard_data:
+                cache.set("standings:golf:pga", leaderboard_data, timeout=3600)
+                return f"Golf PGA Leaderboard updated ({len(leaderboard_data)} tournaments)"
+    except Exception as exc:
+        logger.warning(f"Golf leaderboards update failed: {exc}")
+
+    return "Golf leaderboards update completed with no new data"
+
+
 @shared_task
 def update_fifa_world_rankings_task():
+
     """
     Periodic task: Refreshes FIFA Men and Women World Rankings in Redis cache and DB.
     Runs every 24 hours to ensure fresh rankings for all member nations.
