@@ -5,9 +5,6 @@ from django.core.cache import cache
 from datetime import datetime
 import requests as req
 from django.conf import settings
-from apps.entity.models import Entity, Team, EntityStats
-from apps.sports_apis.services.api_sports import api_sports_service
-from apps.sports_apis.services.balldontlie import balldontlie_service
 from apps.sports_apis.services.statpal import statpal_service
 
 logger = get_task_logger(__name__)
@@ -292,13 +289,13 @@ def update_soccer_league_stats(self, league_id: int):
     if not team_standings_by_id and not team_standings_by_name:
         return f"No standings data for league {league_id} season {season}"
 
-    # Find all teams in this league in our DB (supporting both api_sports and statpal sources)
+    # Find all teams in this league in our DB (statpal source)
     teams = Team.objects.filter(
         entity__sport='soccer',
         entity__is_active=True,
-        entity__api_source__in=['api_sports', 'statpal'],
+        entity__api_source='statpal',
         league__external_id=str(league_id),
-        league__api_source__in=['api_sports', 'statpal'],
+        league__api_source='statpal',
     ).select_related('entity')
 
     updated = 0
@@ -526,7 +523,7 @@ def update_nba_standings(self):
     teams = Team.objects.filter(
         entity__sport='basketball',
         entity__is_active=True,
-        entity__api_source__in=['balldontlie', 'statpal'],
+        entity__api_source='statpal',
     ).select_related('entity')
 
     season_label = f"{season}-{str(season + 1)[-2:]}"
@@ -1231,11 +1228,11 @@ def bootstrap_all_entities():
             )
         
         # Seed roster for soccer teams with no players yet
-        if entity.type == 'team' and entity.sport == 'soccer' and entity.api_source == 'api_sports':
+        if entity.type == 'team' and entity.sport == 'soccer' and entity.api_source == 'statpal':
             from apps.entity.models import Athlete
             has_players = Athlete.objects.filter(
                 entity__external_id=entity.external_id,
-                entity__api_source='api_sports'
+                entity__api_source='statpal'
             ).exists()
             
             # Check if team has been linked to players (indirect way through current_team)

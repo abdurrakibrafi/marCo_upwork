@@ -334,21 +334,6 @@ def get_event_detail(request, event_id: int):
                     ).get(id=event_id)
                 except Exception:
                     pass
-            elif event.api_source == "api_sports":
-                from apps.event.tasks import fetch_event_details
-                try:
-                    fetch_event_details(event.id)
-                    # Re-fetch event to include newly fetched data
-                    event = Event.objects.select_related(
-                        "home_entity", "away_entity", "league"
-                    ).prefetch_related(
-                        "timeline", "lineups", "statistics",
-                        "player_stats", "highlights"
-                    ).get(id=event_id)
-                    event.metadata["details_fetched"] = True
-                    event.save(update_fields=["metadata"])
-                except Exception:
-                    pass
 
         # Auto-ensure EventStatistics exist for any sport if scores exist
         if (event.home_score is not None or event.away_score is not None) and event.home_entity and event.away_entity:
@@ -678,11 +663,9 @@ def trigger_event_detail_fetch(request, event_id):
         from apps.event.tasks import fetch_event_details
         from apps.event.models import Event
 
-        event = get_object_or_404(Event, id=event_id)
-
-        if event.api_source not in ['api_sports', 'statpal']:
+        if event.api_source != 'statpal':
             return mixin.error_response(
-                message=f'Only api_sports and statpal events supported. This event is from {event.api_source}',
+                message=f'Only statpal events supported. This event is from {event.api_source}',
                 status_code=status.HTTP_400_BAD_REQUEST
             )
 

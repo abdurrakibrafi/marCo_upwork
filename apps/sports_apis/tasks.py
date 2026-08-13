@@ -4,8 +4,6 @@ from celery import shared_task
 from django.core.cache import cache
 from django.conf import settings
 from django.utils import timezone
-from apps.sports_apis.services.balldontlie import balldontlie_service
-from apps.sports_apis.services.api_sports import api_sports_service
 from apps.score.models import LiveScore
 from apps.score.serializers import LiveScoreSerializer
 from asgiref.sync import async_to_sync

@@ -20,11 +20,6 @@ app.conf.beat_schedule = {
         'schedule': crontab(hour='*/6', minute=15),
     },
 
-    # ── NFL live scores (BallDontLie — active Sep-Feb) ───────────────────
-    'live-scores-nfl': {
-        'task': 'apps.sports_apis.tasks.update_nfl_live_scores',
-        'schedule': crontab(minute='*/5', month_of_year='9,10,11,12,1,2'),
-    },
 
     # ── Fixtures ─────────────────────────────────────────────────────────
     'fixtures-daily': {

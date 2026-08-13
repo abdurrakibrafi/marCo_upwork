@@ -5,10 +5,7 @@ from django.utils import timezone
 from datetime import datetime, timedelta
 from apps.event.models import Event, EventStatistics, EventLineup, EventPlayerStats, EventTimeline
 from apps.score.models import LiveScore
-from apps.entity.models import Entity
-from apps.sports_apis.services.balldontlie import balldontlie_service
-from apps.sports_apis.tasks import _publish 
-from apps.sports_apis.services.api_sports import api_sports_service
+from apps.sports_apis.tasks import _publish
 import logging
 from django.utils.timezone import make_aware
 import time
@@ -760,265 +757,14 @@ def fetch_event_details(self, event_id: int):
     except Event.DoesNotExist:
         return f"Event {event_id} not found"
 
-    # ── StatPal events: parse metadata for timeline/scores ──
-    if event.api_source == 'statpal':
-        _populate_statpal_event_details(event)
-        try:
-            from apps.sports_apis.tasks import fetch_highlight_for_event
-            fetch_highlight_for_event.apply_async(args=[event_id], countdown=900)
-        except Exception as e:
-            logger.error(f"Failed to queue highlight fetch for event {event_id}: {e}")
-        return f"Event {event_id} (statpal) details populated"
-
-    # ── api_sports & thesportsdb events: fetch from API ──
-    if event.api_source not in ['api_sports', 'thesportsdb']:
-        return f"Event {event_id} has unknown source '{event.api_source}' — skipping"
-
-    fixture_id = event.external_id
-    headers = {'x-apisports-key': getattr(settings, 'API_SPORTS_KEY', '')}
-
-    # ── 1. Team statistics ────────────────────────────────────────────────
-    try:
-        if event.api_source == 'thesportsdb':
-            from apps.sports_apis.services.thesportsdb import TheSportsDBService
-            tsdb = TheSportsDBService()
-            event_info = tsdb.get_event_details(fixture_id)
-        else:
-            event_info = None
-
-        resp = req.get(
-            'https://v3.football.api-sports.io/fixtures/statistics',
-            headers=headers,
-            params={'fixture': fixture_id},
-            timeout=10,
-        )
-        if resp.status_code == 200:
-            for team_stats in resp.json().get('response', []):
-                team_data = team_stats.get('team', {})
-                team_entity = Entity.objects.filter(
-                    external_id=str(team_data.get('id', '')),
-                    type='team',
-                ).first() or Entity.objects.filter(name__iexact=team_data.get('name'), type='team').first()
- 
-                if not team_entity:
-                    continue
- 
-                raw_stats_dict = {
-                    s['type'].lower().replace(' ', '_'): s['value']
-                    for s in team_stats.get('statistics', [])
-                    if s.get('type')
-                }
-                stats_dict = normalize_event_stats(raw_stats_dict)
- 
-                EventStatistics.objects.update_or_create(
-                    event=event,
-                    team=team_entity,
-                    defaults={'stats': stats_dict},
-                )
-    except Exception as e:
-        logger.warning(f"fetch_event_details: stats failed for {event_id}: {e}")
- 
-    # ── 2. Lineups ────────────────────────────────────────────────────────
-    try:
-        resp = req.get(
-            'https://v3.football.api-sports.io/fixtures/lineups',
-            headers=headers,
-            params={'fixture': fixture_id},
-            timeout=10,
-        )
-        if resp.status_code == 200:
-            for team_lineup in resp.json().get('response', []):
-                team_data  = team_lineup.get('team', {})
-                team_entity = Entity.objects.filter(
-                    api_source='api_sports',
-                    external_id=str(team_data.get('id', '')),
-                    type='team',
-                ).first()
- 
-                if not team_entity:
-                    continue
- 
-                for player in team_lineup.get('startXI', []):
-                    p = player.get('player', {})
-                    player_entity = Entity.objects.filter(
-                        api_source='api_sports',
-                        external_id=str(p.get('id', '')),
-                        type='athlete',
-                    ).first()
-                    if not player_entity:
-                        continue
- 
-                    EventLineup.objects.update_or_create(
-                        event=event,
-                        team=team_entity,
-                        player=player_entity,
-                        defaults={
-                            'position_type': 'starting',
-                            'position':      p.get('pos', ''),
-                            'jersey_number': p.get('number'),
-                            'grid_position': p.get('grid') or '',
-                        },
-                    )
- 
-                for player in team_lineup.get('substitutes', []):
-                    p = player.get('player', {})
-                    player_entity = Entity.objects.filter(
-                        api_source='api_sports',
-                        external_id=str(p.get('id', '')),
-                        type='athlete',
-                    ).first()
-                    if not player_entity:
-                        continue
- 
-                    EventLineup.objects.update_or_create(
-                        event=event,
-                        team=team_entity,
-                        player=player_entity,
-                        defaults={
-                            'position_type': 'substitute',
-                            'position':      p.get('pos', ''),
-                            'jersey_number': p.get('number'),
-                        },
-                    )
-    except Exception as e:
-        logger.warning(f"fetch_event_details: lineups failed for {event_id}: {e}")
- 
-    # ── 3. Player statistics ──────────────────────────────────────────────
-    try:
-        resp = req.get(
-            'https://v3.football.api-sports.io/fixtures/players',
-            headers=headers,
-            params={'fixture': fixture_id},
-            timeout=10,
-        )
-        if resp.status_code == 200:
-            for team_data in resp.json().get('response', []):
-                team_entity = Entity.objects.filter(
-                    api_source='api_sports',
-                    external_id=str(team_data.get('team', {}).get('id', '')),
-                    type='team',
-                ).first()
- 
-                if not team_entity:
-                    continue
- 
-                for p in team_data.get('players', []):
-                    player_info = p.get('player', {})
-                    player_entity = Entity.objects.filter(
-                        api_source='api_sports',
-                        external_id=str(player_info.get('id', '')),
-                        type='athlete',
-                    ).first()
- 
-                    if not player_entity:
-                        continue
- 
-                    stats_raw = p.get('statistics', [{}])[0]
-                    games   = stats_raw.get('games', {})
-                    goals   = stats_raw.get('goals', {})
-                    shots   = stats_raw.get('shots', {})
-                    passes  = stats_raw.get('passes', {})
-                    tackles = stats_raw.get('tackles', {})
-                    cards   = stats_raw.get('cards', {})
-                    dribbles= stats_raw.get('dribbles', {})
- 
-                    stats_dict = {
-                        'minutes':      games.get('minutes', 0),
-                        'rating':       games.get('rating'),
-                        'captain':      games.get('captain', False),
-                        'goals':        goals.get('total', 0) or 0,
-                        'assists':      goals.get('assists', 0) or 0,
-                        'shots_total':  shots.get('total', 0) or 0,
-                        'shots_on':     shots.get('on', 0) or 0,
-                        'passes_total': passes.get('total', 0) or 0,
-                        'passes_key':   passes.get('key', 0) or 0,
-                        'pass_accuracy':passes.get('accuracy', 0) or 0,
-                        'tackles':      tackles.get('total', 0) or 0,
-                        'blocks':       tackles.get('blocks', 0) or 0,
-                        'interceptions':tackles.get('interceptions', 0) or 0,
-                        'dribbles_success': dribbles.get('success', 0) or 0,
-                        'yellow_cards': cards.get('yellow', 0) or 0,
-                        'red_cards':    cards.get('red', 0) or 0,
-                    }
- 
-                    EventPlayerStats.objects.update_or_create(
-                        event=event,
-                        player=player_entity,
-                        defaults={
-                            'team':           team_entity,
-                            'stats':          stats_dict,
-                            'points_or_goals': stats_dict['goals'],
-                        },
-                    )
-    except Exception as e:
-        logger.warning(f"fetch_event_details: player stats failed for {event_id}: {e}")
- 
-    # ── 4. Timeline (goals, cards, subs) ─────────────────────────────────
-    try:
-        resp = req.get(
-            'https://v3.football.api-sports.io/fixtures/events',
-            headers=headers,
-            params={'fixture': fixture_id},
-            timeout=10,
-        )
-        if resp.status_code == 200:
-            EventTimeline.objects.filter(event=event).delete()
- 
-            for ev in resp.json().get('response', []):
-                team_data = ev.get('team', {})
-                team_entity = Entity.objects.filter(
-                    api_source='api_sports',
-                    external_id=str(team_data.get('id', '')),
-                    type='team',
-                ).first()
- 
-                player_data = ev.get('player', {})
-                player_entity = None
-                if player_data and player_data.get('id'):
-                    player_entity = Entity.objects.filter(
-                        api_source='api_sports',
-                        external_id=str(player_data.get('id')),
-                        type='athlete',
-                    ).first()
- 
-                ev_type = ev.get('type', '').lower()
-                detail  = ev.get('detail', '').lower()
- 
-                type_map = {
-                    'goal':  'goal',
-                    'card':  'yellow_card' if 'yellow' in detail else 'red_card',
-                    'subst': 'substitution',
-                    'var':   'var',
-                }
-                mapped_type = type_map.get(ev_type, ev_type)
- 
-                if 'own goal' in detail:
-                    mapped_type = 'goal'
-                if 'penalty' in detail and ev_type == 'goal':
-                    mapped_type = 'penalty'
- 
-                EventTimeline.objects.create(
-                    event=event,
-                    event_type=mapped_type,
-                    minute=ev.get('time', {}).get('elapsed', 0) or 0,
-                    extra_minute=ev.get('time', {}).get('extra', 0) or 0,
-                    team=team_entity,
-                    player=player_entity,
-                    description=f"{ev.get('detail', '')} — {ev.get('comments', '') or ''}".strip(' —'),
-                    metadata=ev,
-                )
-    except Exception as e:
-        logger.warning(f"fetch_event_details: timeline failed for {event_id}: {e}")
- 
-    logger.info(f"fetch_event_details: completed for event {event_id}")
-
+    # ── StatPal / default events: parse metadata for timeline/scores ──
+    _populate_statpal_event_details(event)
     try:
         from apps.sports_apis.tasks import fetch_highlight_for_event
         fetch_highlight_for_event.apply_async(args=[event_id], countdown=900)
     except Exception as e:
         logger.error(f"Failed to queue highlight fetch for event {event_id}: {e}")
-
-    return f"Event {event_id} details fetched"
+    return f"Event {event_id} (statpal) details populated"
  
  
 @shared_task
@@ -1028,7 +774,7 @@ def check_completed_events():
         .filter(
             status='completed',
             sport='soccer',
-            api_source__in=['api_sports', 'statpal'],
+            api_source='statpal',
         )
         .exclude(
             id__in=EventStatistics.objects.values_list('event_id', flat=True)

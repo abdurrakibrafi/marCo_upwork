@@ -22,9 +22,6 @@ from apps.entity.services import EntitySearchService
 from apps.core.utils.mixins import BaseResponseMixin
 
 logger = logging.getLogger(__name__)
-
-HEADERS_SPORTS = {'x-apisports-key': settings.API_SPORTS_KEY}
-HEADERS_BDL    = {'Authorization': settings.BALLDONTLIE_KEY}
  
  
 def _current_season(sport='soccer'):
@@ -1048,6 +1045,22 @@ def _normalize_team_stats(stats_data, team_entity=None):
 
         if fifa_info:
             stats_data['fifa_rankings'] = fifa_info
+            fifa_rank = None
+            if isinstance(fifa_info, dict):
+                if 'men' in fifa_info and isinstance(fifa_info['men'], dict) and 'rank' in fifa_info['men']:
+                    fifa_rank = fifa_info['men']['rank']
+                elif 'women' in fifa_info and isinstance(fifa_info['women'], dict) and 'rank' in fifa_info['women']:
+                    fifa_rank = fifa_info['women']['rank']
+                elif 'rank' in fifa_info:
+                    fifa_rank = fifa_info['rank']
+
+            if fifa_rank is not None:
+                try:
+                    f_rank_int = int(fifa_rank)
+                    if f_rank_int > 0 and stats_data.get('rank', 0) == 0:
+                        stats_data['rank'] = f_rank_int
+                except (ValueError, TypeError):
+                    pass
 
     return stats_data
 
@@ -1250,6 +1263,9 @@ def get_team_stats(request, team_id):
 
     elif team_entity.sport == 'golf':
         stats_data = {'leaderboard': _get_golf_leaderboard_helper(), 'tour': 'PGA'}
+
+    elif team_entity.sport == 'cricket':
+        stats_data = _fetch_cricket_team_stats(team_entity.external_id, season)
 
     # Fallback to local DB Event calculation if live APIs return empty
     if not stats_data:
@@ -1939,7 +1955,7 @@ def get_team_roster(request, team_id):
                 'roster':       roster,
             })
 
-    if not athletes.exists() and team_entity.api_source == 'api_sports':
+    if not athletes.exists() and team_entity.api_source == 'statpal':
         from apps.entity.tasks import seed_players_for_team
         season = _current_season(team_entity.sport)
         seed_players_for_team.delay(team_entity.external_id, season)
@@ -2568,7 +2584,7 @@ def _get_standings_for_league(request, league_entity, season, highlight_team_id=
     # Live API fallback — try TheSportsDB first, then API-Sports
     live_standings = _fetch_league_standings_thesportsdb(canonical, season)
 
-    if not live_standings and getattr(canonical, 'api_source', '') == 'api_sports':
+    if not live_standings and getattr(canonical, 'api_source', '') == 'statpal':
         try:
             season_year = int(str(season).split('-', 1)[0].split('/', 1)[0])
         except Exception:
@@ -2944,7 +2960,7 @@ def get_league_leaders(request, league_id):
         })
  
     # Live API fallback — top scorers / assists from API-Sports
-    if canonical.api_source == 'api_sports':
+    if canonical.api_source == 'statpal':
         live_leaders = _fetch_soccer_leaders(canonical.external_id, int(season), stat_type)
         return Response({
             'league':    EntitySerializer(league_entity, context={'request': request}).data,

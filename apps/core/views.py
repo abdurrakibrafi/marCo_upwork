@@ -19,10 +19,7 @@ from apps.core.utils.mixins import BaseResponseMixin
 
 
 
-logger = logging.getLogger(__name__)
-
-HEADERS_SPORTS = {'x-apisports-key': settings.API_SPORTS_KEY}
-HEADERS_BDL = {'Authorization': settings.BALLDONTLIE_KEY}
+from apps.sports_apis.services.statpal import statpal_service
 
 
 def _get_current_season(sport='soccer'):
@@ -174,7 +171,7 @@ def seed_all_leagues(request):
                 entity_type='league',
                 sport='soccer',
                 external_id=league_id,
-                api_source='api_sports',
+                api_source='statpal',
                 logo_url=lg.get('logo', ''),
                 country=country_data.get('name', ''),
             )
@@ -188,7 +185,7 @@ def seed_all_leagues(request):
             'newly_created': created_count,
             'already_existed': skipped_count,
             'total_leagues_in_db': Entity.objects.filter(
-                type='league', sport='soccer', api_source='api_sports'
+                type='league', sport='soccer', api_source='statpal'
             ).count(),
         }
         return mixin.success_response(data=data)
@@ -227,13 +224,13 @@ def seed_all_teams(request):
         Entity.objects.filter(
             type='league',
             sport='soccer',
-            api_source='api_sports',
+            api_source='statpal',
             is_active=True,
         ).order_by('id')[offset: offset + limit]
     )
 
     total_leagues_in_db = Entity.objects.filter(
-        type='league', sport='soccer', api_source='api_sports'
+        type='league', sport='soccer', api_source='statpal'
     ).count()
 
     if not leagues:
@@ -275,7 +272,7 @@ def seed_all_teams(request):
                     entity_type='team',
                     sport='soccer',
                     external_id=t['id'],
-                    api_source='api_sports',
+                    api_source='statpal',
                     logo_url=t.get('logo', ''),
                     country=t.get('country', ''),
                 )
@@ -340,13 +337,13 @@ def seed_all_players(request):
         Entity.objects.filter(
             type='team',
             sport='soccer',
-            api_source='api_sports',
+            api_source='statpal',
             is_active=True,
         ).order_by('id')[offset: offset + limit]
     )
 
     total_teams = Entity.objects.filter(
-        type='team', sport='soccer', api_source='api_sports', is_active=True
+        type='team', sport='soccer', api_source='statpal', is_active=True
     ).count()
 
     if not teams:
@@ -393,7 +390,7 @@ def seed_all_players(request):
                     entity_type='athlete',
                     sport='soccer',
                     external_id=p['id'],
-                    api_source='api_sports',
+                    api_source='statpal',
                     logo_url=p.get('photo', ''),
                 )
 
@@ -438,23 +435,45 @@ def seed_all_players(request):
 @api_view(['POST'])
 @permission_classes([IsAdminUser])
 def seed_nba_teams(request):
-    resp = req.get('https://api.balldontlie.io/v1/teams', headers=HEADERS_BDL, timeout=15)
-    if resp.status_code != 200:
-        return Response({'error': f'BallDontLie returned {resp.status_code}'}, status=502)
+    resp = statpal_service.get_nba_standings()
+    if not resp.get('success'):
+        return Response({'error': f"StatPal returned {resp.get('error')}"}, status=502)
 
-    teams = resp.json().get('data', [])
+    standings = resp.get('data', {}).get('standings', {})
     created_count = 0
-    for t in teams:
-        _, created = _get_or_create_entity(
-            name=t['full_name'], entity_type='team', sport='basketball',
-            external_id=t['id'], api_source='balldontlie',
-            logo_url=f"https://cdn.nba.com/logos/nba/{t['id']}/global/L/logo.svg",
-            country='USA',
-        )
-        if created:
-            created_count += 1
+    teams_found = []
 
-    return Response({'success': True, 'total_from_api': len(teams), 'newly_created': created_count})
+    tournaments = standings.get('tournament', [])
+    if isinstance(tournaments, dict):
+        tournaments = [tournaments]
+
+    for tour in tournaments:
+        leagues = tour.get('league', [])
+        if isinstance(leagues, dict):
+            leagues = [leagues]
+        for lg in leagues:
+            divisions = lg.get('division', [])
+            if isinstance(divisions, dict):
+                divisions = [divisions]
+            for div in divisions:
+                teams = div.get('team', [])
+                if isinstance(teams, dict):
+                    teams = [teams]
+                for t in teams:
+                    t_name = t.get('name', '').strip()
+                    t_id = t.get('id', '')
+                    if not t_name or not t_id:
+                        continue
+                    teams_found.append(t)
+                    _, created = _get_or_create_entity(
+                        name=t_name, entity_type='team', sport='basketball',
+                        external_id=str(t_id), api_source='statpal',
+                        country='USA',
+                    )
+                    if created:
+                        created_count += 1
+
+    return Response({'success': True, 'total_from_api': len(teams_found), 'newly_created': created_count})
 
 
 from apps.core.tasks import seed_nba_players_task
@@ -484,60 +503,41 @@ def seed_nba_players(request):
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# CRICKET — fetch all leagues from API, same pattern
+# CRICKET — fetch all leagues from StatPal API
 # ─────────────────────────────────────────────────────────────────────────────
 
 @api_view(['POST'])
 @permission_classes([IsAdminUser])
 def seed_cricket_leagues(request):
-    print("=== STARTING CRICKET SEED ===")
-    print(f"API Key exists: {bool(settings.API_CRICKET_KEY)}")
-    
-    resp = req.get(
-        'https://apiv2.api-cricket.com/cricket/',
-        params={'method': 'get_leagues', 'APIkey': settings.API_CRICKET_KEY},
-        timeout=15,
-    )
-    print(f"Response status: {resp.status_code}")
-    
-    if resp.status_code != 200:
-        return Response({'error': f'API-Cricket returned {resp.status_code}'}, status=502)
+    resp = statpal_service.get_cricket_tournaments()
+    if not resp.get('success'):
+        return Response({'error': f"StatPal returned {resp.get('error')}"}, status=502)
 
-    data = resp.json()
-    print(f"API success: {data.get('success')}")
-    
-    leagues = data.get('result', [])
-    print(f"Leagues from API: {len(leagues)}")
-    
+    tours = resp.get('data', {}).get('tours', {}).get('category', [])
+    if isinstance(tours, dict):
+        tours = [tours]
+
     created_count = 0
-    for lg in leagues:
-        name = lg.get('league_name', '').strip()
-        league_key = lg.get('league_key', '')
-        if not name or not league_key:
+    for tour in tours:
+        name = tour.get('name', '').strip()
+        tour_id = tour.get('id', '')
+        if not name or not tour_id:
             continue
-            
-        print(f"Processing: {name} (ID: {league_key})")
-        
+
         entity, created = _get_or_create_entity(
             name=name, 
             entity_type='league', 
             sport='cricket',
-            external_id=league_key, 
-            api_source='api_cricket',
-            logo_url=lg.get('league_logo', ''),
-            country=lg.get('country_name', ''),
+            external_id=str(tour_id), 
+            api_source='statpal',
+            country='',
         )
         if created:
             created_count += 1
-            print(f"  → CREATED: {name}")
-        else:
-            print(f"  → Already exists: {name}")
-    
-    print(f"=== FINISHED: Created {created_count} new leagues ===")
-    
+
     return Response({
         'success': True,
-        'total_from_api': len(leagues),
+        'total_from_api': len(tours),
         'newly_created': created_count,
         'total_in_db': Entity.objects.filter(type='league', sport='cricket').count(),
     })

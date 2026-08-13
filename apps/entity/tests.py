@@ -11,7 +11,7 @@ class EntityMatcherTestCase(TestCase):
             name="Real Madrid CF",
             sport="soccer",
             type="team",
-            api_source="api_sports",
+            api_source="statpal",
             external_id="541"
         )
         Team.objects.create(entity=self.team_1)
@@ -190,7 +190,7 @@ class LogoRestoreCommandTestCase(TestCase):
             sport="basketball",
             type="team",
             logo_url="https://images.nba.com/lakers-logo.png",
-            api_source="api_sports",
+            api_source="statpal",
             external_id="456"
         )
 

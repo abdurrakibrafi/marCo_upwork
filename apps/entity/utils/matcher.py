@@ -437,7 +437,7 @@ def get_or_create_precise_entity(
     similar_entities = Entity.objects.filter(
         type=entity_type,
         sport=entity_sport,
-    ).exclude(api_source="statpal")
+    ).exclude(external_id=statpal_id)
 
     from apps.entity.utils.normalizers import find_similar_entity
     similar_entity, score = find_similar_entity(name, similar_entities, threshold=0.85)

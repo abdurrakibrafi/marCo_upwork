@@ -13,116 +13,58 @@ logger = logging.getLogger(__name__)
 
 @shared_task(bind=True, max_retries=5, default_retry_delay=60)
 def seed_nba_players_task(self, season=2026, per_page=100, cursor=None, page=1):
-    """Seed NBA players in background with pagination and rate-limit handling."""
+    """Seed NBA players in background using StatPal roster service."""
+    from apps.sports_apis.services.statpal import statpal_service
 
-    teams_dict = {
-        int(team.external_id): team
-        for team in Entity.objects.filter(
-            sport='basketball',
-            type='team',
-            api_source='balldontlie'
-        )
-    }
+    nba_teams = Entity.objects.filter(
+        sport='basketball',
+        type='team',
+    )
 
-    params = {'per_page': per_page, 'season': season}
-    if cursor:
-        params['cursor'] = cursor
-
-    url = 'https://api.balldontlie.io/v1/players'
-
-    try:
-        logger.info(f"NBA seed task page={page}, cursor={cursor}, params={params}")
-        resp = req.get(url, headers={'Authorization': settings.BALLDONTLIE_KEY}, params=params, timeout=15)
-
-        if resp.status_code == 429:
-            # API limit hit: wait and retry
-            logger.warning('BallDontLie rate limit hit; retrying...')
-            raise self.retry(countdown=60, exc=Exception('rate limited'))
-
-        if resp.status_code != 200:
-            message = f'BallDontLie returned {resp.status_code}'
-            logger.error(message)
-            raise Exception(message)
-
-        data = resp.json()
-        players = data.get('data', [])
-
-        created_count = 0
-        for p in players:
-            name = f"{p.get('first_name', '').strip()} {p.get('last_name', '').strip()}".strip()
-            if not name:
+    created_count = 0
+    for team_entity in nba_teams:
+        team_abbr = team_entity.name.split()[-1] if team_entity.name else ''
+        if not team_abbr:
+            continue
+        try:
+            resp = statpal_service.get_nba_roster(team_abbr)
+            if not resp.get('success'):
                 continue
 
-            team_data = p.get('team')
-            team_entity = None
-            if team_data and team_data.get('id') in teams_dict:
-                team_entity = teams_dict[team_data['id']]
+            players = resp.get('data', {}).get('team', {}).get('player', [])
+            if isinstance(players, dict):
+                players = [players]
 
-            entity, created = _get_or_create_entity(
-                name=name,
-                entity_type='athlete',
-                sport='basketball',
-                external_id=p['id'],
-                api_source='balldontlie',
-                logo_url=f"https://cdn.nba.com/headshots/nba/latest/1040x760/{p['id']}.png",
-                country=p.get('country', ''),
-            )
+            for p in players:
+                p_name = p.get('name', '').strip()
+                p_id = p.get('id', '')
+                if not p_name or not p_id:
+                    continue
 
-            try:
-                athlete = entity.athlete_details
-                athlete.position = p.get('position', '') or ''
-                jersey = p.get('jersey_number')
-                if jersey:
-                    jersey = str(jersey).split('-')[0]
-                    try:
-                        athlete.jersey_number = int(jersey)
-                    except (ValueError, TypeError):
-                        athlete.jersey_number = None
-                else:
-                    athlete.jersey_number = None
+                entity, created = _get_or_create_entity(
+                    name=p_name,
+                    entity_type='athlete',
+                    sport='basketball',
+                    external_id=str(p_id),
+                    api_source='statpal',
+                    country='USA',
+                )
 
-                if team_entity:
+                try:
+                    athlete = entity.athlete_details
+                    athlete.position = p.get('position', '') or ''
                     athlete.current_team = team_entity
-                athlete.save()
-            except Athlete.DoesNotExist:
-                pass
+                    athlete.save()
+                except Athlete.DoesNotExist:
+                    pass
 
-            if created:
-                created_count += 1
+                if created:
+                    created_count += 1
+        except Exception as exc:
+            logger.warning(f"Error seeding roster for NBA team {team_entity.name}: {exc}")
 
-        next_cursor = data.get('meta', {}).get('next_cursor')
+    return {
+        'status': 'completed',
+        'created_total': created_count,
+    }
 
-        if next_cursor:
-            # Enqueue the next page after a throttle-safe delay
-            delay = 12
-            if page % 5 == 0:
-                delay = 15
-
-            self.apply_async(
-                kwargs={
-                    'season': season,
-                    'per_page': per_page,
-                    'cursor': next_cursor,
-                    'page': page + 1,
-                },
-                countdown=delay,
-            )
-
-            return {
-                'status': 'in_progress',
-                'page': page,
-                'created_this_page': created_count,
-                'next_cursor': next_cursor,
-            }
-
-        return {
-            'status': 'completed',
-            'season': season,
-            'pages_fetched': page,
-            'created_this_page': created_count,
-            'total_players_fetched': len(players),
-        }
-
-    except Exception as exc:
-        logger.error(f"seed_nba_players_task failed: {exc}")
-        raise
