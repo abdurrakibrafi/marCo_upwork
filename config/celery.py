@@ -19,6 +19,12 @@ app.conf.beat_schedule = {
         'task': 'apps.event.tasks.sync_statpal_fixtures_data',
         'schedule': crontab(hour='*/6', minute=15),
     },
+    # TheSportsDB: fills long-range gap (StatPal only supports ±7 days)
+    # Runs daily at 7am — fetches soccer fixtures for next 30 days
+    'sync-thesportsdb-upcoming-fixtures-daily': {
+        'task': 'apps.event.tasks.sync_thesportsdb_upcoming_fixtures',
+        'schedule': crontab(hour=7, minute=0),
+    },
 
 
     # ── Fixtures ─────────────────────────────────────────────────────────

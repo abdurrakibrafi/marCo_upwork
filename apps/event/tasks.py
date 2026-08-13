@@ -11,6 +11,7 @@ from django.utils.timezone import make_aware
 import time
 import requests as req
 from apps.entity.utils.matcher import get_or_create_precise_entity
+from apps.entity.models import Entity
 from apps.sports_apis.services.statpal import statpal_service
 
 logger = logging.getLogger(__name__)
@@ -148,10 +149,10 @@ def update_statpal_fixtures_for_dates(dates: list[str] = None):
 
 @shared_task
 def update_all_fixtures():
-    """Update fixtures for all sports — past 30 days to next 60 days (agent_task.md Section 14)"""
+    """Update fixtures for all sports — past 30 days to next 90 days"""
     dates = [
         (timezone.now().date() + timedelta(days=i)).isoformat()
-        for i in range(-30, 61)
+        for i in range(-30, 91)
     ]
     update_statpal_fixtures_for_dates.delay(dates)
     logger.info(f"update_all_fixtures: Triggered update_statpal_fixtures_for_dates for {len(dates)} days.")
@@ -163,24 +164,22 @@ def update_all_fixtures():
 # ================================================================
 
 def _get_or_create_team_entity(api_source, external_id, name, sport, logo_url=''):
-    entity = Entity.objects.filter(
+    entity, created = Entity.objects.get_or_create(
         api_source=api_source,
-        external_id=external_id,
+        external_id=str(external_id),
         type='team',
-    ).first()
-
-    if entity:
-        return entity
-
-    entity = Entity.objects.create(
-        api_source=api_source,
-        external_id=external_id,
-        type='team',
-        name=name,
-        sport=sport,
-        logo_url=logo_url or '',
-        has_api_data=True,
+        defaults={
+            'name': name,
+            'sport': sport,
+            'logo_url': logo_url or '',
+            'has_api_data': True,
+        }
     )
+
+    if not created and logo_url and not entity.logo_url:
+        entity.logo_url = logo_url
+        entity.save(update_fields=['logo_url'])
+
     from apps.entity.models import Team
     Team.objects.get_or_create(entity=entity)
     return entity
@@ -189,7 +188,7 @@ def _get_or_create_team_entity(api_source, external_id, name, sport, logo_url=''
 def _get_or_create_league_entity(api_source, external_id, name, sport, logo_url=''):
     entity, created = Entity.objects.get_or_create(
         api_source=api_source,
-        external_id=external_id,
+        external_id=str(external_id),
         type='league',
         defaults={
             'name': name,
@@ -1212,7 +1211,7 @@ def _clean_score(val):
         return None
 
 
-def _save_event(row: dict) -> Event | None:
+def _save_event(row: dict, api_source: str = "statpal") -> Event | None:
     status = _map_status(row["status_raw"], sport=row.get("sport"), metadata=row.get("raw"))
     if status is None:
         if row.get("external_id"):
@@ -1271,7 +1270,7 @@ def _save_event(row: dict) -> Event | None:
         metadata_val = merged_meta
 
     event, _ = Event.objects.update_or_create(
-        api_source="statpal",
+        api_source=api_source,
         external_id=row["external_id"],
         defaults={
             "sport":        sport,
@@ -1354,6 +1353,135 @@ def _save_livescore(row: dict, event: Event):
 
     cache.set(f"live_scores_{ls_sport}", True, timeout=120)
     return live_obj
+
+
+
+# ================================================================
+# THESPORTSDB — Long-range upcoming fixtures (30-day window)
+# StatPal is limited to ±7 day offset; TheSportsDB eventsday.php
+# covers soccer fixtures up to ~30 days ahead.
+# ================================================================
+
+def _tsdb_soccer_row(event: dict) -> dict:
+    """
+    Convert a raw TheSportsDB event dict into the internal row format
+    expected by _save_event(). IDs are prefixed with 'tsdb_' to avoid
+    collision with StatPal external IDs.
+    """
+    from datetime import datetime as _dt
+
+    date_raw = event.get('dateEvent', '')    # YYYY-MM-DD
+    try:
+        d = _dt.strptime(date_raw, '%Y-%m-%d')
+        date_str = d.strftime('%d.%m.%Y')   # _parse_dt expects DD.MM.YYYY
+    except Exception:
+        date_str = ''
+
+    time_raw = (event.get('strTime') or '00:00:00').strip()
+    time_str = time_raw[:5]                  # HH:MM
+
+    home_score = None
+    away_score = None
+    try:
+        if event.get('intHomeScore') not in (None, ''):
+            home_score = int(event['intHomeScore'])
+    except (ValueError, TypeError):
+        pass
+    try:
+        if event.get('intAwayScore') not in (None, ''):
+            away_score = int(event['intAwayScore'])
+    except (ValueError, TypeError):
+        pass
+
+    return {
+        'external_id': f"tsdb_{event.get('idEvent', '')}",
+        'sport':        'soccer',
+        'league_id':    f"tsdb_league_{event.get('idLeague', '')}",
+        'league_name':  event.get('strLeague', ''),
+        'home_id':      f"tsdb_team_{event.get('idHomeTeam', '')}",
+        'home_name':    event.get('strHomeTeam', ''),
+        'away_id':      f"tsdb_team_{event.get('idAwayTeam', '')}",
+        'away_name':    event.get('strAwayTeam', ''),
+        'home_score':   home_score,
+        'away_score':   away_score,
+        'status_raw':   event.get('strStatus') or 'NS',
+        'date':         date_str,
+        'time':         time_str,
+        'venue':        event.get('strVenue', '') or '',
+        'home_logo':    event.get('strHomeTeamBadge', '') or '',
+        'away_logo':    event.get('strAwayTeamBadge', '') or '',
+        'raw':          event,
+    }
+
+
+@shared_task(bind=True, max_retries=2, default_retry_delay=300)
+def sync_thesportsdb_upcoming_fixtures(self):
+    """
+    Fetches upcoming soccer fixtures for the next 30 days from TheSportsDB
+    (eventsday.php endpoint). TheSportsDB has no day-offset limit unlike
+    StatPal (which caps at ±7 days), so this fills the long-range gap.
+
+    Runs once daily at 7am via Celery beat.
+    Rate-limited: TheSportsDB free key allows ~1 req/1.5s (enforced in service).
+    """
+    from apps.sports_apis.services.thesportsdb import thesportsdb_service
+
+    lock_id = 'sync_thesportsdb_upcoming_fixtures_lock'
+    if not cache.add(lock_id, 'true', timeout=3600):
+        logger.info('sync_thesportsdb_upcoming_fixtures already running, skipping')
+        return 'skipped — already running'
+
+    try:
+        today = timezone.now().date()
+        saved, skipped, errors = 0, 0, 0
+
+        for day_offset in range(1, 31):          # tomorrow → 30 days ahead
+            target_date = today + timedelta(days=day_offset)
+            date_str = target_date.strftime('%Y-%m-%d')
+
+            try:
+                events = thesportsdb_service.get_soccer_fixtures_for_date(date_str)
+            except Exception as exc:
+                errors += 1
+                logger.warning(
+                    '[TSDB Fixtures] fetch failed for %s: %s', date_str, exc
+                )
+                continue
+
+            for ev in events:
+                try:
+                    row = _tsdb_soccer_row(ev)
+                    if not row['external_id'] or not row['home_name']:
+                        skipped += 1
+                        continue
+
+                    from django.db import transaction
+                    with transaction.atomic():
+                        event_obj = _save_event(row, api_source='thesportsdb')
+                        if event_obj is None:
+                            skipped += 1
+                        else:
+                            saved += 1
+                except Exception as exc:
+                    errors += 1
+                    logger.warning(
+                        '[TSDB Fixtures] save failed for event %s: %s',
+                        ev.get('idEvent'), exc
+                    )
+
+        msg = (
+            f'sync_thesportsdb_upcoming_fixtures — '
+            f'saved={saved}, skipped={skipped}, errors={errors}'
+        )
+        logger.info(msg)
+        return msg
+
+    except Exception as exc:
+        logger.exception('sync_thesportsdb_upcoming_fixtures failed: %s', exc)
+        raise self.retry(exc=exc)
+    finally:
+        cache.delete(lock_id)
+
 
 @shared_task(bind=True, max_retries=3, default_retry_delay=60)
 def sync_statpal_data(self):
@@ -1454,6 +1582,12 @@ def sync_statpal_fixtures_data(self):
     """
     Fetches upcoming match fixtures for Soccer, NBA, Cricket, etc.
     Runs periodically (e.g., every 6 hours) to update match schedules without overloading the server.
+
+    Daily-offset sports (soccer, nba, etc.) are fetched for:
+      - past 7 days  (offset -7 … -1) → catch any late-updated past matches
+      - today        (offset  0)
+      - next 7 days  (offset +1 … +7) → StatPal API max limit is ±7
+    Cricket is fetched once (bulk future/current schedule, no offset needed).
     """
     lock_id = "sync_statpal_fixtures_data_lock"
     if not cache.add(lock_id, "true", timeout=600):
@@ -1461,31 +1595,34 @@ def sync_statpal_fixtures_data(self):
         return "skipped — already running"
 
     try:
-        fetches = [
-            ("soccer", statpal_service.get_soccer_fixtures, _soccer_rows, {'offset': 0}),
-            ("nba", statpal_service.get_nba_fixtures, _nba_rows, {'offset': 0}),
-            ("football", statpal_service.get_nfl_fixtures, _nfl_rows, {'offset': 0}),
-            ("cricket", statpal_service.get_cricket_fixtures, _cricket_rows, {}),
-            ("tennis", statpal_service.get_tennis_fixtures, _tennis_rows, {'offset': 0}),
-            ("baseball", statpal_service.get_mlb_fixtures, _mlb_rows, {'offset': 0}),
-            ("handball", statpal_service.get_handball_fixtures, _handball_rows, {'offset': 0}),
-            ("volleyball", statpal_service.get_volleyball_fixtures, _volleyball_rows, {'offset': 0}),
+        # Sports that use a daily offset parameter
+        daily_offset_sports = [
+            ("soccer",     statpal_service.get_soccer_fixtures,   _soccer_rows),
+            ("nba",        statpal_service.get_nba_fixtures,      _nba_rows),
+            ("football",   statpal_service.get_nfl_fixtures,      _nfl_rows),
+            ("tennis",     statpal_service.get_tennis_fixtures,   _tennis_rows),
+            ("baseball",   statpal_service.get_mlb_fixtures,      _mlb_rows),
+            ("handball",   statpal_service.get_handball_fixtures, _handball_rows),
+            ("volleyball", statpal_service.get_volleyball_fixtures, _volleyball_rows),
+        ]
+
+        # Bulk sports (no offset — API returns full upcoming schedule)
+        bulk_sports = [
+            ("cricket", statpal_service.get_cricket_fixtures, _cricket_rows),
         ]
 
         saved, skipped, errors = 0, 0, 0
 
-        for fetch_config in fetches:
-            sport, fetch_fn, extract_fn, params = fetch_config
-
+        # --- Bulk sports first ---
+        for sport, fetch_fn, extract_fn in bulk_sports:
             try:
-                result = fetch_fn(**params)
+                result = fetch_fn()
                 if not result["success"]:
                     continue
-
                 extracted_rows = extract_fn(result["data"])
             except Exception as exc:
                 errors += 1
-                logger.exception("[StatPal Fixtures] %s fetch failed: %s", sport, exc)
+                logger.exception("[StatPal Fixtures] %s bulk fetch failed: %s", sport, exc)
                 continue
 
             for row in extracted_rows:
@@ -1500,6 +1637,36 @@ def sync_statpal_fixtures_data(self):
                         saved += 1
                 except Exception as exc:
                     errors += 1
+
+        # --- Daily-offset sports: StatPal limit is -7 to +7 ---
+        for offset in range(-7, 8):  # -7 … 0 … +7
+            for sport, fetch_fn, extract_fn in daily_offset_sports:
+                try:
+                    result = fetch_fn(offset=offset)
+                    if not result["success"]:
+                        continue
+                    extracted_rows = extract_fn(result["data"])
+                except Exception as exc:
+                    errors += 1
+                    logger.exception(
+                        "[StatPal Fixtures] %s fetch failed (offset=%d): %s", sport, offset, exc
+                    )
+                    continue
+
+                for row in extracted_rows:
+                    try:
+                        from django.db import transaction
+                        with transaction.atomic():
+                            event_obj = _save_event(row)
+                            if event_obj is None:
+                                skipped += 1
+                                continue
+                            _save_livescore(row, event_obj)
+                            saved += 1
+                    except Exception as exc:
+                        errors += 1
+
+                time.sleep(0.3)  # Throttling prevention between API calls
 
         msg = f"sync_statpal_fixtures_data — saved={saved}, skipped={skipped}, errors={errors}"
         logger.info(msg)

@@ -98,7 +98,10 @@ def search_entities(request):
             'results': EntitySerializer(exact, many=True, context={'request': request}).data,
             'suggestions': []
         }
-        cache.set(cache_key, result, 300)
+        try:
+            cache.set(cache_key, result, 300)
+        except Exception:
+            pass
         return Response(result)
     
     # Fuzzy match (similar names across all types)

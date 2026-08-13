@@ -224,7 +224,7 @@ def get_nest_calendar(request):
 
         try:
             start_date = datetime.fromisoformat(start_date_str).date() if start_date_str else timezone.now().date() - timedelta(days=7)
-            end_date = datetime.fromisoformat(end_date_str).date() if end_date_str else start_date + timedelta(days=37)
+            end_date = datetime.fromisoformat(end_date_str).date() if end_date_str else start_date + timedelta(days=97)
         except ValueError:
             return mixin.error_response(
                 message="Invalid date format. Use YYYY-MM-DD",

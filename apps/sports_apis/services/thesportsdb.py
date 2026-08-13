@@ -250,6 +250,16 @@ class TheSportsDBService:
         data = self._get('eventsday.php', params)
         return data.get('events') or []
 
+    def get_soccer_fixtures_for_date(self, date_str: str) -> list[dict]:
+        """
+        Fetch all soccer events on a given date from TheSportsDB.
+        date_str: 'YYYY-MM-DD' format.
+        Returns a list of raw event dicts from TheSportsDB.
+        Free API (key=3) returns upcoming fixtures for the next ~30 days.
+        """
+        data = self._get('eventsday.php', {'d': date_str, 's': 'Soccer'})
+        return data.get('events') or []
+
     # ── PLAYER ──────────────────────────────────────────────────────────
 
     def search_player(self, player_name: str) -> dict | None:
