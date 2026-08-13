@@ -78,6 +78,44 @@ def find_similar_entity(name: str, entities_list, threshold: float = 0.85):
     return None, best_score
 
 
+def clean_team_prefix_suffix(name: str) -> str:
+    """
+    Strip common team prefixes and suffixes to find the base team name.
+    
+    Examples:
+        "AS Roma" → "roma"
+        "FC Barcelona" → "barcelona"
+        "Real Madrid CF" → "real madrid"
+        "AC Milan" → "milan"
+    """
+    norm = normalize_entity_name(name)
+    if not norm:
+        return ""
+    
+    prefixes = [
+        "as ", "fc ", "ac ", "sc ", "afc ", "ss ", "us ", "cd ", "cf ", "sv ",
+        "rcd ", "vfb ", "tsv ", "rb ", "bk ", "sk ", "if ", "fk "
+    ]
+    suffixes = [
+        " fc", " cf", " sc", " afc", " ss", " us", " cd", " sv", " rcd", " vfb",
+        " tsv", " rb", " bk", " sk", " if", " fk", " club", " football club", " sports club"
+    ]
+    
+    changed = True
+    while changed:
+        changed = False
+        for prefix in prefixes:
+            if norm.startswith(prefix):
+                norm = norm[len(prefix):].strip()
+                changed = True
+        for suffix in suffixes:
+            if norm.endswith(suffix):
+                norm = norm[:-len(suffix)].strip()
+                changed = True
+                
+    return norm
+
+
 def is_duplicate(name: str, existing_name: str, threshold: float = 0.90) -> bool:
     """
     Check if name is likely a duplicate of existing_name.
@@ -87,4 +125,7 @@ def is_duplicate(name: str, existing_name: str, threshold: float = 0.90) -> bool
         ("Real Madrid CF", "Real Madrid") → True (>90% match)
         ("Barcelona", "Real Madrid") → False
     """
+    if clean_team_prefix_suffix(name) == clean_team_prefix_suffix(existing_name):
+        return True
     return similarity_ratio(name, existing_name) >= threshold
+
