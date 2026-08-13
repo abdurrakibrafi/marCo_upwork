@@ -1841,6 +1841,58 @@ def get_team_roster(request, team_id):
         except Exception as err:
             logger.warning(f"TheSportsDB roster fetch error for {team_entity.name}: {err}")
 
+    if not athletes.exists():
+        INDIVIDUAL_SPORTS = ['tennis', 'golf', 'mma', 'boxing', 'combat_sports', 'motorsport', 'formula1', 'f1']
+        if team_entity.sport in INDIVIDUAL_SPORTS:
+            matching_ath = Athlete.objects.filter(
+                Q(entity=team_entity) | Q(entity__canonical_entity=team_entity)
+            ).first()
+            if not matching_ath:
+                name_parts = team_entity.name.replace('.', ' ').split()
+                last_name = name_parts[-1] if name_parts else ''
+                if len(last_name) > 2:
+                    matching_ath = Athlete.objects.filter(
+                        entity__sport=team_entity.sport,
+                        last_name__iexact=last_name
+                    ).first()
+                    if not matching_ath:
+                        ath_entity = Entity.objects.filter(
+                            sport=team_entity.sport,
+                            type='athlete',
+                            name__icontains=last_name
+                        ).first()
+                        if ath_entity:
+                            matching_ath = getattr(ath_entity, 'athlete_details', None)
+
+            if matching_ath:
+                roster = [{
+                    'id':            matching_ath.entity.id,
+                    'name':          f"{matching_ath.first_name} {matching_ath.last_name}".strip() or matching_ath.entity.name,
+                    'position':      matching_ath.position or 'Player',
+                    'jersey_number': matching_ath.jersey_number,
+                    'photo':         matching_ath.entity.logo_url or team_entity.logo_url or '',
+                    'height_cm':     matching_ath.height_cm,
+                    'weight_kg':     matching_ath.weight_kg,
+                    'nationality':   matching_ath.nationality or team_entity.country or '',
+                }]
+            else:
+                roster = [{
+                    'id':            team_entity.id,
+                    'name':          team_entity.name,
+                    'position':      'Player',
+                    'jersey_number': None,
+                    'photo':         team_entity.logo_url or '',
+                    'height_cm':     None,
+                    'weight_kg':     None,
+                    'nationality':   team_entity.country or '',
+                }]
+
+            return Response({
+                'team':         EntitySerializer(team_entity, context={'request': request}).data,
+                'roster_count': len(roster),
+                'roster':       roster,
+            })
+
     if not athletes.exists() and team_entity.api_source == 'api_sports':
         from apps.entity.tasks import seed_players_for_team
         season = _current_season(team_entity.sport)
