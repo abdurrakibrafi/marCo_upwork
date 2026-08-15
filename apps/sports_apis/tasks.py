@@ -437,11 +437,29 @@ def fetch_highlights_for_recently_completed_events():
     return f"Triggered highlight checks for {count} completed events"
 
 
+def _is_sport_in_season(sports: list, lookaround_days: int = 21) -> bool:
+    """Check if any active/upcoming events exist for given sport(s) in DB within lookaround window."""
+    try:
+        from apps.event.models import Event
+        now = timezone.now()
+        start_window = now - timedelta(days=lookaround_days)
+        end_window = now + timedelta(days=lookaround_days)
+        return Event.objects.filter(
+            sport__in=sports,
+            start_time__range=(start_window, end_window)
+        ).exists()
+    except Exception:
+        return True  # If check fails, default to allowing execution
+
+
 @shared_task(bind=True, max_retries=3, default_retry_delay=600)
-def backfill_mlb_nhl_rosters_task(self):
-    """Season-start task to backfill MLB and NHL rosters using official free APIs"""
+def backfill_mlb_nhl_rosters_task(self, force: bool = False):
+    """Weekly in-season task to backfill MLB and NHL rosters using official free APIs"""
     from django.core.management import call_command
     try:
+        if not force and not _is_sport_in_season(['baseball', 'hockey']):
+            logger.info("MLB/NHL currently off-season. Skipping weekly roster refresh.")
+            return "Skipped (off-season)"
         logger.info("Starting MLB/NHL rosters backfill task...")
         call_command('backfill_mlb_nhl_rosters')
         return "MLB/NHL rosters backfill completed successfully"
@@ -451,10 +469,13 @@ def backfill_mlb_nhl_rosters_task(self):
 
 
 @shared_task(bind=True, max_retries=3, default_retry_delay=600)
-def backfill_basketball_players_task(self):
-    """Season-start task to backfill NBA basketball rosters using StatPal API"""
+def backfill_basketball_players_task(self, force: bool = False):
+    """Weekly in-season task to backfill NBA basketball rosters using StatPal API"""
     from django.core.management import call_command
     try:
+        if not force and not _is_sport_in_season(['basketball', 'nba']):
+            logger.info("NBA basketball currently off-season. Skipping weekly roster refresh.")
+            return "Skipped (off-season)"
         logger.info("Starting basketball players backfill task...")
         call_command('backfill_basketball_players')
         return "Basketball players backfill completed successfully"
@@ -464,10 +485,13 @@ def backfill_basketball_players_task(self):
 
 
 @shared_task(bind=True, max_retries=3, default_retry_delay=600)
-def backfill_cricket_players_task(self):
-    """Season-start task to backfill cricket rosters using StatPal + Wikipedia"""
+def backfill_cricket_players_task(self, force: bool = False):
+    """Weekly in-season task to backfill cricket rosters using StatPal + Wikipedia"""
     from django.core.management import call_command
     try:
+        if not force and not _is_sport_in_season(['cricket']):
+            logger.info("Cricket currently off-season. Skipping weekly roster refresh.")
+            return "Skipped (off-season)"
         logger.info("Starting cricket players backfill task...")
         call_command('backfill_cricket_players')
         return "Cricket players backfill completed successfully"
@@ -477,10 +501,13 @@ def backfill_cricket_players_task(self):
 
 
 @shared_task(bind=True, max_retries=3, default_retry_delay=600)
-def backfill_soccer_players_task(self):
-    """Season-start task to backfill soccer rosters using StatPal API"""
+def backfill_soccer_players_task(self, force: bool = False):
+    """Weekly in-season task to backfill soccer rosters using StatPal API"""
     from django.core.management import call_command
     try:
+        if not force and not _is_sport_in_season(['soccer']):
+            logger.info("Soccer currently off-season. Skipping weekly roster refresh.")
+            return "Skipped (off-season)"
         logger.info("Starting soccer players backfill task...")
         call_command('backfill_soccer_players')
         return "Soccer players backfill completed successfully"
@@ -490,8 +517,8 @@ def backfill_soccer_players_task(self):
 
 
 @shared_task(bind=True, max_retries=3, default_retry_delay=600)
-def backfill_tennis_players_task(self):
-    """Season-start task to backfill tennis players using StatPal API"""
+def backfill_tennis_players_task(self, force: bool = False):
+    """Weekly in-season task to backfill tennis players using StatPal API"""
     from django.core.management import call_command
     try:
         logger.info("Starting tennis players backfill task...")
@@ -503,8 +530,8 @@ def backfill_tennis_players_task(self):
 
 
 @shared_task(bind=True, max_retries=3, default_retry_delay=600)
-def backfill_golf_players_task(self):
-    """Season-start task to backfill golf players using StatPal API"""
+def backfill_golf_players_task(self, force: bool = False):
+    """Weekly in-season task to backfill golf players using StatPal API"""
     from django.core.management import call_command
     try:
         logger.info("Starting golf players backfill task...")
@@ -516,10 +543,13 @@ def backfill_golf_players_task(self):
 
 
 @shared_task(bind=True, max_retries=3, default_retry_delay=600)
-def backfill_handball_players_task(self):
-    """Season-start task to backfill handball players using StatPal API"""
+def backfill_handball_players_task(self, force: bool = False):
+    """Weekly in-season task to backfill handball players using StatPal API"""
     from django.core.management import call_command
     try:
+        if not force and not _is_sport_in_season(['handball']):
+            logger.info("Handball currently off-season. Skipping weekly roster refresh.")
+            return "Skipped (off-season)"
         logger.info("Starting handball players backfill task...")
         call_command('backfill_handball_players')
         return "Handball players backfill completed successfully"
@@ -529,10 +559,13 @@ def backfill_handball_players_task(self):
 
 
 @shared_task(bind=True, max_retries=3, default_retry_delay=600)
-def backfill_volleyball_players_task(self):
-    """Season-start task to backfill volleyball players using StatPal API"""
+def backfill_volleyball_players_task(self, force: bool = False):
+    """Weekly in-season task to backfill volleyball players using StatPal API"""
     from django.core.management import call_command
     try:
+        if not force and not _is_sport_in_season(['volleyball']):
+            logger.info("Volleyball currently off-season. Skipping weekly roster refresh.")
+            return "Skipped (off-season)"
         logger.info("Starting volleyball players backfill task...")
         call_command('backfill_volleyball_players')
         return "Volleyball players backfill completed successfully"

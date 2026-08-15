@@ -138,17 +138,19 @@ class EventSerializer(serializers.ModelSerializer):
 
         data['primary_logo_url'] = data.get('nest_entity_logo') or (instance.home_entity.logo_url if instance.home_entity else '')
 
-        # Auto-fill missing venue name/city from home team lookup (non-blocking)
-        if not data.get('venue_name') or not data.get('venue_city'):
+        # Auto-fill missing venue name/city/country from home team lookup (non-blocking)
+        if not data.get('venue_name') or not data.get('venue_city') or not data.get('venue_country'):
             try:
                 from apps.entity.utils.matcher import resolve_team_venue_fast
                 home_name = instance.home_entity.name if instance.home_entity else ''
                 if home_name:
-                    v_name, v_city = resolve_team_venue_fast(home_name)
+                    v_name, v_city, v_country = resolve_team_venue_fast(home_name)
                     if not data.get('venue_name') and v_name:
                         data['venue_name'] = v_name
                     if not data.get('venue_city') and v_city:
                         data['venue_city'] = v_city
+                    if not data.get('venue_country') and v_country:
+                        data['venue_country'] = v_country
             except Exception:
                 pass
 
@@ -197,6 +199,22 @@ class EventDetailSerializer(serializers.ModelSerializer):
             status_det = str(data.get('status_detail') or '')
             if status_det in ('Not Started', '') or ':' in status_det:
                 data['status_detail'] = 'FT'
+
+        # Auto-fill missing venue name/city/country from home team lookup (non-blocking)
+        if not data.get('venue_name') or not data.get('venue_city') or not data.get('venue_country'):
+            try:
+                from apps.entity.utils.matcher import resolve_team_venue_fast
+                home_name = instance.home_entity.name if instance.home_entity else ''
+                if home_name:
+                    v_name, v_city, v_country = resolve_team_venue_fast(home_name)
+                    if not data.get('venue_name') and v_name:
+                        data['venue_name'] = v_name
+                    if not data.get('venue_city') and v_city:
+                        data['venue_city'] = v_city
+                    if not data.get('venue_country') and v_country:
+                        data['venue_country'] = v_country
+            except Exception:
+                pass
 
         # Exclude empty stats objects (e.g. when API has no stats for a minor league match)
         if data.get('statistics'):

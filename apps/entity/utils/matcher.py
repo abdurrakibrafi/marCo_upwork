@@ -239,11 +239,11 @@ def find_team_logo_by_name(name):
 
 def resolve_team_venue(team_name: str):
     """
-    Resolve stadium name and location city for a team.
-    Returns (venue_name, venue_city). Uses Django cache (24h).
+    Resolve stadium name, location city, and country for a team.
+    Returns (venue_name, venue_city, venue_country). Uses Django cache (24h).
     """
     if not team_name or not str(team_name).strip():
-        return ("", "")
+        return ("", "", "")
     
     clean_name = team_name.strip()
     cache_key = f"venue_by_name_{clean_name.lower().replace(' ', '_')}"
@@ -252,12 +252,16 @@ def resolve_team_venue(team_name: str):
     try:
         cached_venue = cache.get(cache_key)
         if cached_venue is not None:
-            return cached_venue
+            if isinstance(cached_venue, (list, tuple)):
+                if len(cached_venue) == 2:
+                    return (cached_venue[0], cached_venue[1], "")
+                return tuple(cached_venue[:3])
     except Exception:
         pass
 
     venue_name = ""
     venue_city = ""
+    venue_country = ""
 
     # 1. Query Entity metadata in DB first
     try:
@@ -268,6 +272,7 @@ def resolve_team_venue(team_name: str):
         if ent and ent.metadata:
             venue_name = ent.metadata.get('stadium') or ent.metadata.get('strStadium') or ent.metadata.get('venue_name') or ""
             venue_city = ent.metadata.get('location') or ent.metadata.get('strLocation') or ent.metadata.get('venue_city') or ent.metadata.get('city') or ""
+            venue_country = ent.metadata.get('country') or ent.metadata.get('strCountry') or ent.metadata.get('venue_country') or ""
     except Exception:
         pass
 
@@ -281,11 +286,12 @@ def resolve_team_venue(team_name: str):
                 info = tsdb.search_team(clean_national_team_name(clean_name))
             if info:
                 venue_name = info.get('strStadium') or ""
-                venue_city = info.get('strLocation') or info.get('strCity') or info.get('strCountry') or ""
+                venue_city = info.get('strLocation') or info.get('strCity') or ""
+                venue_country = info.get('strCountry') or ""
         except Exception:
             pass
 
-    res = (venue_name.strip(), venue_city.strip())
+    res = (venue_name.strip(), venue_city.strip(), venue_country.strip())
     try:
         cache.set(cache_key, res, timeout=86400)
     except Exception:
@@ -302,10 +308,10 @@ def resolve_team_venue_fast(team_name: str):
     Use this inside serializers / request handlers to avoid blocking
     the response thread on external API calls.
 
-    Returns (venue_name, venue_city) — may return ('', '') on cache miss.
+    Returns (venue_name, venue_city, venue_country) — may return ('', '', '') on cache miss.
     """
     if not team_name or not str(team_name).strip():
-        return ('', '')
+        return ('', '', '')
 
     clean_name = team_name.strip()
     cache_key = f"venue_by_name_{clean_name.lower().replace(' ', '_')}"
@@ -314,13 +320,17 @@ def resolve_team_venue_fast(team_name: str):
     try:
         cached = cache.get(cache_key)
         if cached is not None:
-            return cached
+            if isinstance(cached, (list, tuple)):
+                if len(cached) == 2:
+                    return (cached[0], cached[1], '')
+                return tuple(cached[:3])
     except Exception:
         pass
 
     # 2. Check DB metadata (no network call)
     venue_name = ''
     venue_city = ''
+    venue_country = ''
     try:
         ent = Entity.objects.filter(
             name__iexact=clean_name,
@@ -338,11 +348,16 @@ def resolve_team_venue_fast(team_name: str):
                 ent.metadata.get('venue_city') or
                 ent.metadata.get('city') or ''
             )
+            venue_country = (
+                ent.metadata.get('country') or
+                ent.metadata.get('strCountry') or
+                ent.metadata.get('venue_country') or ''
+            )
     except Exception:
         pass
 
-    if venue_name or venue_city:
-        res = (venue_name.strip(), venue_city.strip())
+    if venue_name or venue_city or venue_country:
+        res = (venue_name.strip(), venue_city.strip(), venue_country.strip())
         try:
             cache.set(cache_key, res, timeout=86400)
         except Exception:
@@ -357,7 +372,7 @@ def resolve_team_venue_fast(team_name: str):
     except Exception:
         pass
 
-    return ('', '')
+    return ('', '', '')
 
 
 def get_or_create_precise_entity(

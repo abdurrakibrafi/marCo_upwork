@@ -89,51 +89,49 @@ app.conf.beat_schedule = {
         'task': 'apps.sports_apis.tasks.fetch_highlights_for_recently_completed_events',
         'schedule': 7200.0,  # every 2 hours
     },
-    # ── Season-start roster backfills ────────────────────────────────────
-    # Each runs once at the start of that sport's new season.
-    # Timings are approximate — shift ±1 week as needed.
+    # ── Weekly In-Season Roster Backfills (3-7 days cadence) ────────────
+    # Each runs weekly at staggered times during active competition seasons.
+    # Tasks include built-in active-season event guards to skip off-season cycles.
 
-    # NBA season starts early October → run Oct 1 at 4am
-    'backfill-basketball-players-season-start': {
+    # NBA Basketball — every Tuesday at 4:00 AM
+    'backfill-basketball-players-weekly': {
         'task': 'apps.sports_apis.tasks.backfill_basketball_players_task',
-        'schedule': crontab(hour=4, minute=0, day_of_month=1, month_of_year=10),
+        'schedule': crontab(hour=4, minute=0, day_of_week=2),
     },
-    # NFL season starts early September → run Sep 1 at 4am
-    'backfill-mlb-nhl-rosters-season-start': {
+    # MLB & NHL — every Thursday at 4:30 AM
+    'backfill-mlb-nhl-rosters-weekly': {
         'task': 'apps.sports_apis.tasks.backfill_mlb_nhl_rosters_task',
-        'schedule': crontab(hour=4, minute=30, day_of_month=1, month_of_year=9),
+        'schedule': crontab(hour=4, minute=30, day_of_week=4),
     },
-    # NHL season starts October → run Oct 2 at 4am (offset from NBA)
-    # (MLB/NHL share the same command, NHL portion runs here)
-    # Soccer season starts August → run Aug 1 at 4am
-    'backfill-soccer-players-season-start': {
+    # Soccer — every Wednesday at 4:00 AM
+    'backfill-soccer-players-weekly': {
         'task': 'apps.sports_apis.tasks.backfill_soccer_players_task',
-        'schedule': crontab(hour=4, minute=0, day_of_month=1, month_of_year=8),
+        'schedule': crontab(hour=4, minute=0, day_of_week=3),
     },
-    # Cricket is year-round, refresh monthly on the 1st at 5am
-    'backfill-cricket-players-monthly': {
+    # Cricket — every Friday at 5:00 AM
+    'backfill-cricket-players-weekly': {
         'task': 'apps.sports_apis.tasks.backfill_cricket_players_task',
-        'schedule': crontab(hour=5, minute=0, day_of_month=1),
+        'schedule': crontab(hour=5, minute=0, day_of_week=5),
     },
-    # Tennis season starts January → run Jan 1 at 5am
-    'backfill-tennis-players-season-start': {
+    # Tennis — every Monday at 5:30 AM
+    'backfill-tennis-players-weekly': {
         'task': 'apps.sports_apis.tasks.backfill_tennis_players_task',
-        'schedule': crontab(hour=5, minute=30, day_of_month=1, month_of_year=1),
+        'schedule': crontab(hour=5, minute=30, day_of_week=1),
     },
-    # Golf season starts January → run Jan 2 at 5am
-    'backfill-golf-players-season-start': {
+    # Golf — every Monday at 5:00 AM
+    'backfill-golf-players-weekly': {
         'task': 'apps.sports_apis.tasks.backfill_golf_players_task',
-        'schedule': crontab(hour=5, minute=0, day_of_month=2, month_of_year=1),
+        'schedule': crontab(hour=5, minute=0, day_of_week=1),
     },
-    # Handball season starts September → run Sep 2 at 5am
-    'backfill-handball-players-season-start': {
+    # Handball — every Saturday at 5:00 AM
+    'backfill-handball-players-weekly': {
         'task': 'apps.sports_apis.tasks.backfill_handball_players_task',
-        'schedule': crontab(hour=5, minute=0, day_of_month=2, month_of_year=9),
+        'schedule': crontab(hour=5, minute=0, day_of_week=6),
     },
-    # Volleyball season starts September → run Sep 3 at 5am
-    'backfill-volleyball-players-season-start': {
+    # Volleyball — every Sunday at 5:30 AM
+    'backfill-volleyball-players-weekly': {
         'task': 'apps.sports_apis.tasks.backfill_volleyball_players_task',
-        'schedule': crontab(hour=5, minute=0, day_of_month=3, month_of_year=9),
+        'schedule': crontab(hour=5, minute=30, day_of_week=0),
     },
     # Broken logo cleanup — run monthly on the 1st at 3am
     'cleanup-broken-logos-monthly': {

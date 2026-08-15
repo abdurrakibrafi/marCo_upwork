@@ -1271,10 +1271,10 @@ def warm_venue_cache_task(self, team_name: str):
 
     try:
         from apps.entity.utils.matcher import resolve_team_venue
-        v_name, v_city = resolve_team_venue(team_name)
+        v_name, v_city, v_country = resolve_team_venue(team_name)
         logger.info(
-            'warm_venue_cache_task: %s → venue=%s city=%s',
-            team_name, v_name or '(empty)', v_city or '(empty)'
+            'warm_venue_cache_task: %s → venue=%s city=%s country=%s',
+            team_name, v_name or '(empty)', v_city or '(empty)', v_country or '(empty)'
         )
     except Exception as exc:
         logger.warning('warm_venue_cache_task failed for %s: %s', team_name, exc)

@@ -591,6 +591,8 @@ def live_score_detail(request, score_id):
         if not match_type:
             if sport == 'baseball':
                 match_type = "Regular Season"
+            elif sport == 'golf':
+                match_type = "PGA Tour"
             elif sport == 'cricket':
                 match_type = raw.get('event_type', 'Match')
                 
@@ -598,7 +600,7 @@ def live_score_detail(request, score_id):
         if not stadium and getattr(game, 'home_team', None):
             try:
                 from apps.entity.utils.matcher import resolve_team_venue_fast
-                v_name, v_city = resolve_team_venue_fast(game.home_team)
+                v_name, v_city, v_country = resolve_team_venue_fast(game.home_team)
                 if v_name:
                     stadium = f"{v_name}, {v_city}" if v_city else v_name
             except Exception:
@@ -1054,13 +1056,15 @@ def live_score_detail(request, score_id):
                 elif not isinstance(players, list):
                     players = []
                 leaderboard = []
-                for p in sorted(players, key=lambda x: str(x.get('pos', '999'))[:3])[:10]:
+                for p in sorted(players, key=lambda x: str(x.get('pos') or x.get('rank') or '999')[:3])[:50]:
                     leaderboard.append({
-                        "position": p.get("pos"),
-                        "player": p.get("name"),
-                        "score": p.get("par"),
-                        "today": p.get("today"),
-                        "total": p.get("total")
+                        "position": p.get("pos") or p.get("rank") or "-",
+                        "player": p.get("name") or p.get("player_name") or "",
+                        "score": p.get("par") or p.get("score") or "",
+                        "today": p.get("today") or "",
+                        "thru": p.get("thru") or "",
+                        "total": p.get("total") or "",
+                        "rounds": p.get("rounds", {})
                     })
                 scorecard = {"Leaderboard": leaderboard}
             elif sport == 'horse_racing':

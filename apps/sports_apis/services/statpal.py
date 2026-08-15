@@ -198,6 +198,17 @@ class StatPalService:
             tour_slug = "atp"
         return self._get(f"{self.base_v1}/tennis/standings/{tour_slug}")
 
+    def get_tennis_tournament_list(self, tour: str = "atp") -> dict:
+        """Response root: tournaments → tournament[]"""
+        tour_slug = str(tour).lower()
+        if tour_slug not in ("atp", "wta"):
+            tour_slug = "atp"
+        return self._get(f"{self.base_v1}/tennis/tournament-list/{tour_slug}")
+
+    def get_tennis_tournament_matches(self, tournament_id: int) -> dict:
+        """Response root: tournament → match[]"""
+        return self._get(f"{self.base_v1}/tennis/tournament/{tournament_id}")
+
 
     # ------------------------------------------------------------------ #
     # MLB (V1) - Baseball

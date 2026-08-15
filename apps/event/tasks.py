@@ -1121,7 +1121,11 @@ def _golf_position_sort_key(p):
         
 
 def _golf_rows(data: dict) -> list:
-    tour_data = data.get("livescore", {}).get("tournament") or data.get("tournament")
+    tour_data = (
+        data.get("livescore", {}).get("tournament")
+        or data.get("fixtures", {}).get("tournament")
+        or data.get("tournament")
+    )
     if not tour_data:
         return []
 
@@ -1306,12 +1310,7 @@ def _save_livescore(row: dict, event: Event):
         LiveScore.objects.filter(sport=ls_sport, external_id=external_id).delete()
         return None
 
-    # Extra safety guard: StatPal has no live stats for this soccer match
-    if ls_sport == "soccer":
-        raw_match = row.get("raw", {})
-        if str(raw_match.get("has_live_stats", "True")).strip().lower() == "false":
-            LiveScore.objects.filter(sport=ls_sport, external_id=external_id).delete()
-            return None
+
 
     from apps.entity.utils.matcher import find_team_logo_by_name
     home_logo_raw = event.home_entity.logo_url if event.home_entity else ""
@@ -1544,13 +1543,6 @@ def sync_statpal_data(self):
 
             for row in extracted_rows:
                 try:
-                    if sport == "soccer":
-                        raw_match = row.get("raw", {})
-                        if str(raw_match.get("has_live_stats", "True")).strip().lower() == "false":
-                            LiveScore.objects.filter(sport="soccer", external_id=row["external_id"]).delete()
-                            skipped += 1
-                            continue
-
                     from django.db import transaction
                     with transaction.atomic():
                         event_obj = _save_event(row)
@@ -1610,6 +1602,7 @@ def sync_statpal_fixtures_data(self):
         # Bulk sports (no offset — API returns full upcoming schedule)
         bulk_sports = [
             ("cricket", statpal_service.get_cricket_fixtures, _cricket_rows),
+            ("golf",    statpal_service.get_golf_schedule,    _golf_rows),
         ]
 
         saved, skipped, errors = 0, 0, 0

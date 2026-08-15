@@ -308,14 +308,16 @@ def get_entity_fixtures(request, entity_id):
                 else:
                     f['opponent_entity_logo'] = l_url
 
-        # Auto-fill missing venue name and city
-        if not f.get('venue_name') or not f.get('venue_city'):
+        # Auto-fill missing venue name, city, and country
+        if not f.get('venue_name') or not f.get('venue_city') or not f.get('venue_country'):
             home_team_name = f.get('home_entity', {}).get('name') or f.get('home_team', '')
-            v_name, v_city = resolve_team_venue(home_team_name)
+            v_name, v_city, v_country = resolve_team_venue(home_team_name)
             if not f.get('venue_name') and v_name:
                 f['venue_name'] = v_name
             if not f.get('venue_city') and v_city:
                 f['venue_city'] = v_city
+            if not f.get('venue_country') and v_country:
+                f['venue_country'] = v_country
 
     return Response({
         'entity':          EntitySerializer(entity, context={'request': request}).data,
@@ -2759,7 +2761,7 @@ def _fetch_team_fixtures_live(team_entity):
                 v_name = ev.get('strVenue', '') or ''
                 v_city = ev.get('strCity', '') or ev.get('strCountry', '') or ''
                 if not v_name or not v_city:
-                    auto_v_name, auto_v_city = resolve_team_venue(home_name)
+                    auto_v_name, auto_v_city, auto_v_country = resolve_team_venue(home_name)
                     if not v_name:
                         v_name = auto_v_name
                     if not v_city:
