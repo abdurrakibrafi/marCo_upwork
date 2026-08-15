@@ -73,7 +73,15 @@ class StatPalService:
 
     def get_soccer_match_stats(self, league_id) -> dict:
         """Response root: matches -> tournament -> week[] -> match[]"""
-        return self._get(f"{self.base_v2}/soccer/leagues/{league_id}/matches/stats")
+        from django.core.cache import cache
+        cache_key = f"statpal_404_league_stats:{league_id}"
+        if cache.get(cache_key):
+            return {"success": False, "error": "HTTP 404 (cached)"}
+
+        res = self._get(f"{self.base_v2}/soccer/leagues/{league_id}/matches/stats")
+        if not res.get("success") and res.get("error") == "HTTP 404":
+            cache.set(cache_key, True, 86400 * 7)  # Don't poll 404 league again for 7 days
+        return res
 
     def get_soccer_league_stats(self, league_id) -> dict:
         """Response root: statistics -> team[]"""
