@@ -319,12 +319,16 @@ def poll_single_source(self, source_id: int):
     candidate_entities = list(source.entities.all())
     is_global_source = not candidate_entities
     if is_global_source:
-        candidate_entities = list(Entity.objects.filter(is_active=True))
+        # Pre-cache only top active entities to avoid massive N*M loops
+        candidate_entities = list(Entity.objects.filter(is_active=True, follower_count__gt=0)[:300]) or list(Entity.objects.filter(is_active=True)[:100])
 
     from apps.feed.utils_url import resolve_real_article_url
 
     new_items = 0
-    for entry in result.get('entries', []):
+    # Process only top 20 most recent entries per feed to avoid 200s+ worker freezes
+    entries = result.get('entries', [])[:20]
+
+    for entry in entries:
         raw_url = entry.get('url')
         if not raw_url:
             continue
@@ -344,7 +348,14 @@ def poll_single_source(self, source_id: int):
         url = resolve_real_article_url(raw_url)
         url_hash = hashlib.md5(url.encode()).hexdigest()
 
-        # Resolve thumbnail
+        # Fast path: check if feed item already exists in DB to skip expensive Brave Search thumbnail lookup
+        existing_item = FeedItem.objects.filter(url_hash=url_hash).first()
+        if existing_item:
+            if matched_entities:
+                existing_item.entities.add(*matched_entities)
+            continue
+
+        # Resolve thumbnail only for new items
         thumbnail_url = entry.get('thumbnail_url', '')
         if not thumbnail_url:
             thumbnail_url = _resolve_thumbnail_for_article(
