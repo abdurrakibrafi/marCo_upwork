@@ -307,10 +307,13 @@ def poll_single_source(self, source_id: int):
     result = rss_polling_service.poll_feed(source)
     if not result.get('success'):
         source.poll_failures += 1
-        source.save(update_fields=['poll_failures'])
-        logger.warning(f"Polling failed for source {source.id}: {result.get('error')}")
-        if getattr(self, 'request', None) and self.request.id:
-            raise self.retry(exc=Exception(result.get('error')))
+        if source.poll_failures >= 5:
+            source.is_active = False
+            source.save(update_fields=['poll_failures', 'is_active'])
+            logger.warning(f"Source {source.id} ({source.name}) deactivated after 5 consecutive failures: {result.get('error')}")
+        else:
+            source.save(update_fields=['poll_failures'])
+            logger.warning(f"Polling failed for source {source.id} (attempt {source.poll_failures}/5): {result.get('error')}")
         return f"Polling failed for source {source.id}: {result.get('error')}"
 
     candidate_entities = list(source.entities.all())
