@@ -138,13 +138,13 @@ class EventSerializer(serializers.ModelSerializer):
 
         data['primary_logo_url'] = data.get('nest_entity_logo') or (instance.home_entity.logo_url if instance.home_entity else '')
 
-        # Auto-fill missing venue name/city from home team lookup
+        # Auto-fill missing venue name/city from home team lookup (non-blocking)
         if not data.get('venue_name') or not data.get('venue_city'):
             try:
-                from apps.entity.utils.matcher import resolve_team_venue
+                from apps.entity.utils.matcher import resolve_team_venue_fast
                 home_name = instance.home_entity.name if instance.home_entity else ''
                 if home_name:
-                    v_name, v_city = resolve_team_venue(home_name)
+                    v_name, v_city = resolve_team_venue_fast(home_name)
                     if not data.get('venue_name') and v_name:
                         data['venue_name'] = v_name
                     if not data.get('venue_city') and v_city:

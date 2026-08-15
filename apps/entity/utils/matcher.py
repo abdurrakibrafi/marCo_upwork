@@ -293,6 +293,73 @@ def resolve_team_venue(team_name: str):
     return res
 
 
+def resolve_team_venue_fast(team_name: str):
+    """
+    Non-blocking version of resolve_team_venue.
+    ONLY checks Django cache and local DB — never calls TheSportsDB.
+    If cache is empty, queues a background Celery task to populate it.
+
+    Use this inside serializers / request handlers to avoid blocking
+    the response thread on external API calls.
+
+    Returns (venue_name, venue_city) — may return ('', '') on cache miss.
+    """
+    if not team_name or not str(team_name).strip():
+        return ('', '')
+
+    clean_name = team_name.strip()
+    cache_key = f"venue_by_name_{clean_name.lower().replace(' ', '_')}"
+
+    # 1. Check cache first (fastest path)
+    try:
+        cached = cache.get(cache_key)
+        if cached is not None:
+            return cached
+    except Exception:
+        pass
+
+    # 2. Check DB metadata (no network call)
+    venue_name = ''
+    venue_city = ''
+    try:
+        ent = Entity.objects.filter(
+            name__iexact=clean_name,
+            type='team'
+        ).exclude(metadata={}).first()
+        if ent and ent.metadata:
+            venue_name = (
+                ent.metadata.get('stadium') or
+                ent.metadata.get('strStadium') or
+                ent.metadata.get('venue_name') or ''
+            )
+            venue_city = (
+                ent.metadata.get('location') or
+                ent.metadata.get('strLocation') or
+                ent.metadata.get('venue_city') or
+                ent.metadata.get('city') or ''
+            )
+    except Exception:
+        pass
+
+    if venue_name or venue_city:
+        res = (venue_name.strip(), venue_city.strip())
+        try:
+            cache.set(cache_key, res, timeout=86400)
+        except Exception:
+            pass
+        return res
+
+    # 3. Cache miss + DB miss: queue background task to populate cache
+    # Return empty now — next request will hit cache
+    try:
+        from apps.entity.tasks import warm_venue_cache_task
+        warm_venue_cache_task.delay(clean_name)
+    except Exception:
+        pass
+
+    return ('', '')
+
+
 def get_or_create_precise_entity(
     statpal_id,
     name: str,

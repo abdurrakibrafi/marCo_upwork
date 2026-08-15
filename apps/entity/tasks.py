@@ -1245,3 +1245,96 @@ def bootstrap_all_entities():
     
     logger.info(f"Bootstrap dispatched {total} entities")
     return f"Bootstrapped {total} entities — news + roster"
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# VENUE CACHE WARMER — called in background when a serializer gets a cache miss
+# ─────────────────────────────────────────────────────────────────────────────
+
+@shared_task(bind=True, max_retries=1, default_retry_delay=60, ignore_result=True)
+def warm_venue_cache_task(self, team_name: str):
+    """
+    Populates the venue cache for a single team name by calling the full
+    resolve_team_venue() (which includes a TheSportsDB search).
+
+    This task is dispatched in the background by resolve_team_venue_fast()
+    when the cache is empty. The next API request for the same team will
+    hit the warm cache and get venue data instantly.
+    """
+    if not team_name:
+        return
+
+    # Deduplicate: if another worker already started this, skip
+    lock_key = f"warm_venue_lock_{team_name.lower().replace(' ', '_')}"
+    if not cache.add(lock_key, '1', timeout=120):
+        return
+
+    try:
+        from apps.entity.utils.matcher import resolve_team_venue
+        v_name, v_city = resolve_team_venue(team_name)
+        logger.info(
+            'warm_venue_cache_task: %s → venue=%s city=%s',
+            team_name, v_name or '(empty)', v_city or '(empty)'
+        )
+    except Exception as exc:
+        logger.warning('warm_venue_cache_task failed for %s: %s', team_name, exc)
+        try:
+            raise self.retry(exc=exc)
+        except Exception:
+            pass
+    finally:
+        cache.delete(lock_key)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# PROACTIVE VENUE CACHE WARM — runs daily, pre-warms venue for ALL teams in DB
+# so that serializer requests ALWAYS hit cache (never TheSportsDB during a request)
+# ─────────────────────────────────────────────────────────────────────────────
+
+@shared_task(bind=True, max_retries=1, ignore_result=True)
+def warm_all_venue_caches(self):
+    """
+    Proactively warm venue name/city cache for every soccer team entity in the DB.
+    Dispatches one warm_venue_cache_task per team (staggered by 2s countdown)
+    so TheSportsDB rate limits are respected.
+
+    Runs daily at 3am via Celery beat.
+    After this task completes, all serialize calls will hit warm cache — no
+    blocking TheSportsDB calls during API requests.
+    """
+    from apps.entity.models import Entity
+
+    lock_id = 'warm_all_venue_caches_lock'
+    if not cache.add(lock_id, '1', timeout=7200):
+        logger.info('warm_all_venue_caches already running, skipping')
+        return 'skipped — already running'
+
+    try:
+        # Get all team entities — prioritize soccer, then other sports
+        teams = (
+            Entity.objects
+            .filter(type='team')
+            .exclude(name='')
+            .values_list('name', flat=True)
+            .distinct()
+        )
+
+        dispatched = 0
+        for i, name in enumerate(teams):
+            cache_key = f"venue_by_name_{name.lower().replace(' ', '_')}"
+            # Only dispatch if cache is empty — skip already-warm teams
+            if cache.get(cache_key) is None:
+                warm_venue_cache_task.apply_async(
+                    args=[name],
+                    countdown=i * 2,  # stagger 2s apart to respect rate limits
+                )
+                dispatched += 1
+
+        msg = f'warm_all_venue_caches: dispatched {dispatched} team venue warmers'
+        logger.info(msg)
+        return msg
+
+    except Exception as exc:
+        logger.exception('warm_all_venue_caches failed: %s', exc)
+    finally:
+        cache.delete(lock_id)

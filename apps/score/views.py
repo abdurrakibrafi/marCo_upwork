@@ -588,7 +588,21 @@ def live_score_detail(request, score_id):
         else:
             lineups = raw.get('lineups', {})
         match_type = raw.get('event_type', raw.get('type', ''))
+        if not match_type:
+            if sport == 'baseball':
+                match_type = "Regular Season"
+            elif sport == 'cricket':
+                match_type = raw.get('event_type', 'Match')
+                
         stadium = raw.get('event_stadium', raw.get('venue', ''))
+        if not stadium and getattr(game, 'home_team', None):
+            try:
+                from apps.entity.utils.matcher import resolve_team_venue_fast
+                v_name, v_city = resolve_team_venue_fast(game.home_team)
+                if v_name:
+                    stadium = f"{v_name}, {v_city}" if v_city else v_name
+            except Exception:
+                pass
 
         # Fetch League from database Event mapping if available
         from apps.event.models import Event
@@ -601,6 +615,16 @@ def live_score_detail(request, score_id):
         # Entity IDs for team linking (used in events/statistics)
         home_entity_id = event.home_entity.id if (event and event.home_entity) else 0
         away_entity_id = event.away_entity.id if (event and event.away_entity) else 0
+        if not home_entity_id and getattr(game, 'home_team', None):
+            from apps.entity.models import Entity
+            h_ent = Entity.objects.filter(name__iexact=game.home_team, type='team').first()
+            if h_ent:
+                home_entity_id = h_ent.id
+        if not away_entity_id and getattr(game, 'away_team', None):
+            from apps.entity.models import Entity
+            a_ent = Entity.objects.filter(name__iexact=game.away_team, type='team').first()
+            if a_ent:
+                away_entity_id = a_ent.id
 
         # 6. Extract sport-specific details
         if sport == 'cricket':
@@ -927,18 +951,102 @@ def live_score_detail(request, score_id):
                 except Exception:
                     pass
             elif sport == 'baseball':
+                # Parse inning-by-inning scorecard for Baseball (s1..s15, inn1..inn9, i1..i9)
+                home_raw = raw.get('home', {}) or {}
+                away_raw = raw.get('away', {}) or {}
+                if home_raw and away_raw:
+                    for key in ['s1', 's2', 's3', 's4', 's5', 's6', 's7', 's8', 's9', 's10', 's11', 's12', 's13', 's14', 's15',
+                                'inn1', 'inn2', 'inn3', 'inn4', 'inn5', 'inn6', 'inn7', 'inn8', 'inn9',
+                                'i1', 'i2', 'i3', 'i4', 'i5', 'i6', 'i7', 'i8', 'i9']:
+                        h_val = home_raw.get(key)
+                        a_val = away_raw.get(key)
+                        if h_val is not None or a_val is not None:
+                            num = re.sub(r'\D', '', key)
+                            label = f"Inning {num}" if num else key
+                            if label not in scorecard:
+                                scorecard[label] = {
+                                    "home": str(h_val if h_val is not None else "0"),
+                                    "away": str(a_val if a_val is not None else "0")
+                                }
+
+                # Parse events with correct team mapping and dynamic score
                 events_raw = raw.get('events', {}).get('event', [])
                 if isinstance(events_raw, dict):
                     events_raw = [events_raw]
                 elif not isinstance(events_raw, list):
                     events_raw = []
                 for ev in events_raw:
+                    if not isinstance(ev, dict):
+                        continue
+                    side = str(ev.get("team", "")).lower()
+                    if "home" in side:
+                        ev_team_name = game.home_team
+                        ev_team_id = home_entity_id
+                    elif "away" in side:
+                        ev_team_name = game.away_team
+                        ev_team_id = away_entity_id
+                    else:
+                        ev_team_name = ev.get("team") or ""
+                        ev_team_id = None
+
+                    # Dynamic score parsing
+                    ev_score = ev.get("score")
+                    if not ev_score:
+                        h_sc = ev.get("h", ev.get("home_score"))
+                        a_sc = ev.get("a", ev.get("away_score"))
+                        if h_sc is not None or a_sc is not None:
+                            ev_score = f"{h_sc or '0'} - {a_sc or '0'}"
+                        else:
+                            score_keys = [k for k in ev.keys() if k not in ("inn", "desc", "team", "type", "player", "player_id", "description", "inning")]
+                            if len(score_keys) >= 2:
+                                ev_score = f"{ev.get(score_keys[0], '0')} - {ev.get(score_keys[1], '0')}"
+                            else:
+                                ev_score = ""
+
                     events.append({
-                        "inning": ev.get("inn"),
-                        "description": ev.get("desc"),
-                        "team": ev.get("team"),
-                        "score": f"{ev.get('chw', '0')} - {ev.get('cle', '0')}"
+                        "inning": str(ev.get("inn") or ev.get("inning") or ""),
+                        "description": ev.get("desc") or ev.get("description") or "",
+                        "team": ev_team_name,
+                        "team_id": ev_team_id,
+                        "score": ev_score
                     })
+
+                # Parse/construct baseball statistics (R-H-E & box stats)
+                h_hits = home_raw.get('hits', home_raw.get('h', home_raw.get('hit')))
+                a_hits = away_raw.get('hits', away_raw.get('h', away_raw.get('hit')))
+                h_err = home_raw.get('errors', home_raw.get('e', home_raw.get('error')))
+                a_err = away_raw.get('errors', away_raw.get('e', away_raw.get('error')))
+                h_runs = home_raw.get('runs', home_raw.get('r', home_raw.get('totalscore', getattr(game, 'home_score', None))))
+                a_runs = away_raw.get('runs', away_raw.get('r', away_raw.get('totalscore', getattr(game, 'away_score', None))))
+
+                h_stats = []
+                a_stats = []
+                if h_runs is not None or a_runs is not None:
+                    h_stats.append({"type": "Runs", "value": str(h_runs if h_runs is not None else "0")})
+                    a_stats.append({"type": "Runs", "value": str(a_runs if a_runs is not None else "0")})
+                if h_hits is not None or a_hits is not None:
+                    h_stats.append({"type": "Hits", "value": str(h_hits if h_hits is not None else "0")})
+                    a_stats.append({"type": "Hits", "value": str(a_hits if a_hits is not None else "0")})
+                if h_err is not None or a_err is not None:
+                    h_stats.append({"type": "Errors", "value": str(h_err if h_err is not None else "0")})
+                    a_stats.append({"type": "Errors", "value": str(a_err if a_err is not None else "0")})
+
+                for stat_k, stat_lbl in [('hr', 'Home Runs'), ('so', 'Strikeouts'), ('bb', 'Base On Balls'), ('lob', 'Left On Base')]:
+                    if stat_k in home_raw or stat_k in away_raw:
+                        h_stats.append({"type": stat_lbl, "value": str(home_raw.get(stat_k, "0"))})
+                        a_stats.append({"type": stat_lbl, "value": str(away_raw.get(stat_k, "0"))})
+
+                if h_stats and a_stats:
+                    statistics = [
+                        {
+                            "team": {"id": home_entity_id, "name": game.home_team},
+                            "statistics": h_stats
+                        },
+                        {
+                            "team": {"id": away_entity_id, "name": game.away_team},
+                            "statistics": a_stats
+                        }
+                    ]
             elif sport == 'golf':
                 players = raw.get('player', [])
                 if isinstance(players, dict):

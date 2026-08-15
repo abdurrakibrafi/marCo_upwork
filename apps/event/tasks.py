@@ -1281,7 +1281,8 @@ def _save_event(row: dict, api_source: str = "statpal") -> Event | None:
             "status_detail": row["status_raw"],
             "home_score":   home_score_val,
             "away_score":   away_score_val,
-            "venue_name":   row["venue"],
+            # StatPal always returns venue="" — preserve existing venue if new one is empty
+            "venue_name":   row["venue"] or (existing_event.venue_name if existing_event else ""),
             "start_time":   start_time,
             "metadata":     metadata_val,
         },

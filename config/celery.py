@@ -56,6 +56,11 @@ app.conf.beat_schedule = {
         'task': 'apps.feed.tasks.cleanup_old_feed_items',
         'schedule': crontab(hour=4, minute=0),
     },
+    # Venue cache pre-warm: populate venue name/city for all teams so API never blocks
+    'warm-all-venue-caches-daily': {
+        'task': 'apps.entity.tasks.warm_all_venue_caches',
+        'schedule': crontab(hour=3, minute=30),  # 3:30am daily
+    },
     'mark-trending-hourly': {
         'task': 'apps.feed.tasks.mark_trending_items',
         'schedule': crontab(minute=30),
