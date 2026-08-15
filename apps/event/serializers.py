@@ -74,6 +74,86 @@ class EventHighlightSerializer(serializers.ModelSerializer):
         fields = ['id', 'title', 'video_url', 'thumbnail_url', 'duration_seconds', 'views']
 
 
+def _extract_event_venue_info(instance, data):
+    """
+    Extract venue_name, venue_city, venue_country with comprehensive fallbacks:
+    1. Direct fields in data / instance (venue_name, venue_city, venue_country)
+    2. Event metadata (e.g. cricket matchinfo.info, soccer match_info, venue, stadium, etc.)
+    3. Home team venue resolution from local DB / TheSportsDB
+    """
+    v_name = data.get('venue_name') or getattr(instance, 'venue_name', '') or ''
+    v_city = data.get('venue_city') or getattr(instance, 'venue_city', '') or ''
+    v_country = data.get('venue_country') or getattr(instance, 'venue_country', '') or ''
+
+    # 1. Check metadata (e.g. StatPal Cricket matchinfo.info, Soccer, Golf, etc.)
+    meta = getattr(instance, 'metadata', None) or {}
+    if isinstance(meta, dict):
+        # Cricket matchinfo.info list
+        matchinfo = meta.get('matchinfo', {})
+        if isinstance(matchinfo, dict):
+            info_list = matchinfo.get('info', [])
+            if isinstance(info_list, dict):
+                info_list = [info_list]
+            elif not isinstance(info_list, list):
+                info_list = []
+            for item in info_list:
+                if not isinstance(item, dict):
+                    continue
+                item_name = str(item.get('name', '')).strip().lower()
+                item_val = str(item.get('value', '')).strip()
+                if item_val:
+                    if item_name in ('venue', 'stadium') and not v_name:
+                        v_name = item_val
+                    elif item_name in ('city', 'location') and not v_city:
+                        v_city = item_val
+                    elif item_name in ('country', 'nation') and not v_country:
+                        v_country = item_val
+
+        # Soccer / other match_info
+        match_info = meta.get('match_info', {})
+        if isinstance(match_info, dict):
+            stadium_obj = match_info.get('stadium', {})
+            if isinstance(stadium_obj, dict):
+                stad_name = stadium_obj.get('name', '').strip()
+                if stad_name and not v_name:
+                    v_name = stad_name
+
+        # Generic top-level metadata keys
+        if not v_name:
+            v_name = meta.get('venue') or meta.get('stadium') or meta.get('venue_name') or ''
+        if not v_city:
+            v_city = meta.get('city') or meta.get('location') or meta.get('venue_city') or ''
+        if not v_country:
+            v_country = meta.get('country') or meta.get('venue_country') or ''
+
+    # 2. Fallback: Fast home team venue resolution from DB / TheSportsDB
+    if not v_name or not v_city or not v_country:
+        try:
+            from apps.entity.utils.matcher import resolve_team_venue_fast
+            home_name = instance.home_entity.name if instance.home_entity else ''
+            if home_name:
+                auto_name, auto_city, auto_country = resolve_team_venue_fast(home_name)
+                if not v_name and auto_name:
+                    v_name = auto_name
+                if not v_city and auto_city:
+                    v_city = auto_city
+                if not v_country and auto_country:
+                    v_country = auto_country
+        except Exception:
+            pass
+
+    # 3. If v_name contains "Stadium, City" and city is empty, parse it cleanly
+    if v_name and ',' in v_name and not v_city:
+        parts = [p.strip() for p in v_name.split(',') if p.strip()]
+        if len(parts) >= 2:
+            v_city = parts[-1]
+
+    data['venue_name'] = str(v_name).strip()
+    data['venue_city'] = str(v_city).strip()
+    data['venue_country'] = str(v_country).strip()
+    return data
+
+
 # ── Lean serializer for list views (feed, calendar, ticker) ──────────────────
 
 class EventSerializer(serializers.ModelSerializer):
@@ -87,7 +167,7 @@ class EventSerializer(serializers.ModelSerializer):
             'id', 'sport', 'status', 'status_detail',
             'home_entity', 'away_entity', 'league',
             'home_score', 'away_score',
-            'start_time', 'venue_name', 'venue_city',
+            'start_time', 'venue_name', 'venue_city', 'venue_country',
             'broadcaster', 'stream_url',
         ]
 
@@ -138,22 +218,8 @@ class EventSerializer(serializers.ModelSerializer):
 
         data['primary_logo_url'] = data.get('nest_entity_logo') or (instance.home_entity.logo_url if instance.home_entity else '')
 
-        # Auto-fill missing venue name/city/country from home team lookup (non-blocking)
-        if not data.get('venue_name') or not data.get('venue_city') or not data.get('venue_country'):
-            try:
-                from apps.entity.utils.matcher import resolve_team_venue_fast
-                home_name = instance.home_entity.name if instance.home_entity else ''
-                if home_name:
-                    v_name, v_city, v_country = resolve_team_venue_fast(home_name)
-                    if not data.get('venue_name') and v_name:
-                        data['venue_name'] = v_name
-                    if not data.get('venue_city') and v_city:
-                        data['venue_city'] = v_city
-                    if not data.get('venue_country') and v_country:
-                        data['venue_country'] = v_country
-            except Exception:
-                pass
-
+        # Auto-fill missing venue name/city/country from metadata / home team lookup
+        data = _extract_event_venue_info(instance, data)
         return data
 
 
@@ -200,21 +266,8 @@ class EventDetailSerializer(serializers.ModelSerializer):
             if status_det in ('Not Started', '') or ':' in status_det:
                 data['status_detail'] = 'FT'
 
-        # Auto-fill missing venue name/city/country from home team lookup (non-blocking)
-        if not data.get('venue_name') or not data.get('venue_city') or not data.get('venue_country'):
-            try:
-                from apps.entity.utils.matcher import resolve_team_venue_fast
-                home_name = instance.home_entity.name if instance.home_entity else ''
-                if home_name:
-                    v_name, v_city, v_country = resolve_team_venue_fast(home_name)
-                    if not data.get('venue_name') and v_name:
-                        data['venue_name'] = v_name
-                    if not data.get('venue_city') and v_city:
-                        data['venue_city'] = v_city
-                    if not data.get('venue_country') and v_country:
-                        data['venue_country'] = v_country
-            except Exception:
-                pass
+        # Auto-fill missing venue name/city/country from metadata / home team lookup
+        data = _extract_event_venue_info(instance, data)
 
         # Exclude empty stats objects (e.g. when API has no stats for a minor league match)
         if data.get('statistics'):

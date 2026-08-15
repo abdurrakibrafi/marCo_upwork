@@ -1273,22 +1273,42 @@ def _save_event(row: dict, api_source: str = "statpal") -> Event | None:
             merged_meta.update(row["raw"])
         metadata_val = merged_meta
 
+    # Extract venue fields from row or metadata
+    venue_val = row.get("venue") or (existing_event.venue_name if existing_event else "")
+    venue_city_val = row.get("venue_city") or (existing_event.venue_city if existing_event else "")
+    venue_country_val = row.get("venue_country") or (existing_event.venue_country if existing_event else "")
+
+    if isinstance(metadata_val, dict):
+        matchinfo = metadata_val.get('matchinfo', {})
+        if isinstance(matchinfo, dict):
+            for itm in matchinfo.get('info', []):
+                if isinstance(itm, dict):
+                    i_name = str(itm.get('name', '')).strip().lower()
+                    i_val = str(itm.get('value', '')).strip()
+                    if i_name in ('venue', 'stadium') and not venue_val:
+                        venue_val = i_val
+                    elif i_name in ('city', 'location') and not venue_city_val:
+                        venue_city_val = i_val
+                    elif i_name in ('country', 'nation') and not venue_country_val:
+                        venue_country_val = i_val
+
     event, _ = Event.objects.update_or_create(
         api_source=api_source,
         external_id=row["external_id"],
         defaults={
-            "sport":        sport,
-            "home_entity":  home,
-            "away_entity":  away,
-            "league":       league,
-            "status":       status,
+            "sport":         sport,
+            "home_entity":   home,
+            "away_entity":   away,
+            "league":        league,
+            "status":        status,
             "status_detail": row["status_raw"],
-            "home_score":   home_score_val,
-            "away_score":   away_score_val,
-            # StatPal always returns venue="" — preserve existing venue if new one is empty
-            "venue_name":   row["venue"] or (existing_event.venue_name if existing_event else ""),
-            "start_time":   start_time,
-            "metadata":     metadata_val,
+            "home_score":    home_score_val,
+            "away_score":    away_score_val,
+            "venue_name":    venue_val,
+            "venue_city":    venue_city_val,
+            "venue_country": venue_country_val,
+            "start_time":    start_time,
+            "metadata":      metadata_val,
         },
     )
     if status == "completed":
