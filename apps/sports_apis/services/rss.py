@@ -8,18 +8,19 @@ from bs4 import BeautifulSoup
 logger = logging.getLogger(__name__)
 
 
-def _safe_parse(url: str, timeout: int = 15) -> feedparser.FeedParserDict:
+def _safe_parse(url: str, timeout: int = 6) -> feedparser.FeedParserDict:
     headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
         "Accept": "application/rss+xml, application/rdf+xml, application/atom+xml, application/xml, text/xml, */*"
     }
     try:
         resp = requests.get(url, headers=headers, timeout=timeout)
-        resp.raise_for_status()
-        return feedparser.parse(resp.content)
+        if resp.status_code == 200:
+            return feedparser.parse(resp.content)
+        return feedparser.FeedParserDict(bozo=1, entries=[])
     except Exception as e:
-        logger.debug(f"Requests fetch failed for {url}, falling back to direct parse: {e}")
-        return feedparser.parse(url)
+        logger.debug(f"RSS fetch failed for {url}: {e}")
+        return feedparser.FeedParserDict(bozo=1, entries=[])
 
 
 class RSSDiscoveryService:

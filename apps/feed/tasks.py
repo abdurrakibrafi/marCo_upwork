@@ -171,15 +171,15 @@ def poll_all_active_sources():
         if elapsed >= source.poll_interval_minutes * 60:
             to_poll.append(source.id)
 
-    # BUG FIX: stagger tasks 2 seconds apart instead of all at once
-    # 100 sources = dispatched over 200 seconds instead of all in 1 second
-    for i, source_id in enumerate(to_poll):
+    # Process maximum 20 sources per run, staggered 3s apart to avoid worker CPU spikes
+    batch = to_poll[:20]
+    for i, source_id in enumerate(batch):
         poll_single_source.apply_async(
             args=[source_id],
-            countdown=i * 2,  # source 0 fires now, source 1 in 2s, source 2 in 4s...
+            countdown=i * 3,
         )
 
-    return f"Queued {len(to_poll)} sources for polling (staggered over {len(to_poll) * 2}s)"
+    return f"Queued {len(batch)} of {len(to_poll)} due sources for polling (staggered over {len(batch) * 3}s)"
 
 
 def _entity_matches_text(entity: Entity, text: str) -> bool:
@@ -307,13 +307,14 @@ def poll_single_source(self, source_id: int):
     result = rss_polling_service.poll_feed(source)
     if not result.get('success'):
         source.poll_failures += 1
-        if source.poll_failures >= 5:
+        source.last_polled_at = timezone.now()
+        if source.poll_failures >= 3:
             source.is_active = False
-            source.save(update_fields=['poll_failures', 'is_active'])
-            logger.warning(f"Source {source.id} ({source.name}) deactivated after 5 consecutive failures: {result.get('error')}")
+            source.save(update_fields=['poll_failures', 'is_active', 'last_polled_at'])
+            logger.warning(f"Source {source.id} ({source.name}) deactivated after 3 consecutive failures: {result.get('error')}")
         else:
-            source.save(update_fields=['poll_failures'])
-            logger.warning(f"Polling failed for source {source.id} (attempt {source.poll_failures}/5): {result.get('error')}")
+            source.save(update_fields=['poll_failures', 'last_polled_at'])
+            logger.warning(f"Polling failed for source {source.id} (attempt {source.poll_failures}/3): {result.get('error')}")
         return f"Polling failed for source {source.id}: {result.get('error')}"
 
     candidate_entities = list(source.entities.all())
