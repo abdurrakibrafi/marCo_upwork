@@ -781,7 +781,7 @@ def check_completed_events():
     Guaranteed to run strictly ONCE per event to avoid server load.
     """
     cutoff_recent = timezone.now() - timedelta(days=1)
-    completed_missing_data = (
+    candidates = (
         Event.objects
         .filter(
             status='completed',
@@ -789,14 +789,16 @@ def check_completed_events():
             api_source='statpal',
             start_time__gte=cutoff_recent,
         )
-        .exclude(
-            metadata__backup_checked=True
-        )
         .order_by('-start_time')
     )
 
+    to_process = [
+        e for e in candidates[:100]
+        if not (isinstance(e.metadata, dict) and e.metadata.get('backup_checked'))
+    ][:20]
+
     count = 0
-    for event in completed_missing_data[:20]:
+    for event in to_process:
         if not isinstance(event.metadata, dict):
             event.metadata = {}
         event.metadata['backup_checked'] = True
