@@ -758,6 +758,13 @@ def fetch_event_details(self, event_id: int):
 
     # ── StatPal / default events: parse metadata for timeline/scores ──
     _populate_statpal_event_details(event)
+
+    # Mark as checked in metadata so background tasks do not poll it repeatedly
+    if not isinstance(event.metadata, dict):
+        event.metadata = {}
+    event.metadata['details_checked'] = True
+    event.save(update_fields=['metadata'])
+
     try:
         from apps.sports_apis.tasks import fetch_highlight_for_event
         fetch_highlight_for_event.apply_async(args=[event_id], countdown=900)
@@ -768,26 +775,40 @@ def fetch_event_details(self, event_id: int):
  
 @shared_task
 def check_completed_events():
-    completed_without_stats = (
+    """
+    Backup sync: Runs once per completed event to ensure timeline and match statistics 
+    are populated if they were missed during live streaming.
+    Guaranteed to run strictly ONCE per event to avoid server load.
+    """
+    cutoff_recent = timezone.now() - timedelta(days=1)
+    completed_missing_data = (
         Event.objects
         .filter(
             status='completed',
             sport='soccer',
             api_source='statpal',
+            start_time__gte=cutoff_recent,
         )
         .exclude(
-            id__in=EventStatistics.objects.values_list('event_id', flat=True)
+            metadata__backup_checked=True
         )
         .order_by('-start_time')
     )
 
     count = 0
-    for event in completed_without_stats[:50]:
+    for event in completed_missing_data[:20]:
+        if not isinstance(event.metadata, dict):
+            event.metadata = {}
+        event.metadata['backup_checked'] = True
+        event.metadata['details_checked'] = True
+        event.save(update_fields=['metadata'])
+
         fetch_event_details.delay(event.id)
         count += 1
 
-    logger.info(f"check_completed_events: triggered {count} detail fetches")
-    return f"Triggered {count} event detail fetches"
+    if count > 0:
+        logger.info(f"check_completed_events (backup): triggered {count} detail fetches")
+    return f"Triggered {count} backup event detail fetches"
 
 
 @shared_task

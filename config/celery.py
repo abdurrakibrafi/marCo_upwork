@@ -33,10 +33,10 @@ app.conf.beat_schedule = {
         'schedule': crontab(hour=6, minute=0),
     },
 
-    # ── Event detail population ──────────────────────────────────────────
-    'check-completed-events': {
+    # ── Backup check for completed events (runs hourly, checks each match strictly ONCE) ──
+    'check-completed-events-backup': {
         'task': 'apps.event.tasks.check_completed_events',
-        'schedule': 300.0,
+        'schedule': 3600.0,  # once every hour
     },
 
     # ── RSS / news ────────────────────────────────────────────────────────

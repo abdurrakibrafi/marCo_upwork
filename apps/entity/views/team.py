@@ -1,447 +1,27 @@
 import logging
-from django.shortcuts import render
-from django.db.models import Q
-from rest_framework.decorators import api_view, permission_classes
-from rest_framework.permissions import IsAuthenticated, AllowAny
-from rest_framework.response import Response
-from rest_framework import status
-from rest_framework.pagination import PageNumberPagination
+import requests
 from django.shortcuts import get_object_or_404
 from django.core.cache import cache
-from datetime import datetime
 from django.utils import timezone
-import requests as req
-from django.conf import settings
+from django.db.models import Q
+from rest_framework.decorators import api_view, permission_classes
+from rest_framework.permissions import AllowAny
+from rest_framework.response import Response
 
-from apps.entity.models import Entity, Team, Athlete, League, EntityStats
-from apps.entity.serializers import (
-    EntitySerializer, TeamDetailSerializer,
-    AthleteDetailSerializer, LeagueDetailSerializer
-)
-from apps.entity.services import EntitySearchService
-from apps.core.utils.mixins import BaseResponseMixin
+from apps.entity.models import Entity, Athlete, EntityStats, Team
+from apps.entity.serializers import EntitySerializer
+from .common import _current_season, HEADERS_SPORTS, HEADERS_BDL, resolve_team_venue
 
 logger = logging.getLogger(__name__)
- 
- 
-def _current_season(sport='soccer'):
-    """Always return the current calendar year (e.g. 2026)."""
-    return datetime.now().year
- 
- 
-# ─────────────────────────────────────────────────────────────────────────────
-# Search / list / detail  (unchanged)
-# ─────────────────────────────────────────────────────────────────────────────
- 
-@api_view(['GET'])
-@permission_classes([AllowAny])
-def search_entities(request):
-    mixin = BaseResponseMixin()
-    try:
-        query = request.GET.get('q', '')
-        entity_type = request.GET.get('type')
-        sport = request.GET.get('sport')
-        country = request.GET.get('country')
-
-        if not query:
-            return mixin.error_response(
-                message='Query parameter "q" is required',
-                status_code=status.HTTP_400_BAD_REQUEST
-            )
-
-        results = EntitySearchService.search(query, entity_type, sport, country)
-        serializer = EntitySerializer(results, many=True, context={'request': request})
-        data = {'query': query, 'count': len(results), 'results': serializer.data}
-        return mixin.success_response(data=data)
-    except Exception as exc:
-        return mixin.handle_exception(exc)
- 
- 
-@api_view(['GET'])
-@permission_classes([AllowAny])
-def get_trending(request):
-    query   = request.GET.get('q', '').strip()
-    country = request.GET.get('country')
-    sport   = request.GET.get('sport')
-    entity_type = request.GET.get('type')  # optional: filter by type
-
-    base_qs = Entity.objects.filter(is_active=True)
-
-    if country:
-        base_qs = base_qs.filter(country__icontains=country)
-
-    if query:
-        # Search mode — filter by name, group by type
-        filter_kwargs = {}
-        if sport:
-            filter_kwargs['sport'] = sport
-        if entity_type:
-            filter_kwargs['type'] = entity_type
-
-        teams    = base_qs.filter(type='team', name__icontains=query, **filter_kwargs)[:10]
-        athletes = base_qs.filter(type='athlete', name__icontains=query, **filter_kwargs)[:10]
-        leagues  = base_qs.filter(type='league', name__icontains=query, **filter_kwargs)[:10]
-
-        # Fallback 1: Typo handling (e.g. Casemero -> Casemiro)
-        if not (teams.exists() or athletes.exists() or leagues.exists()):
-            alt_query = query.replace('e', 'i') if 'e' in query.lower() else query.replace('i', 'e')
-            teams    = base_qs.filter(type='team', name__icontains=alt_query, **filter_kwargs)[:10]
-            athletes = base_qs.filter(type='athlete', name__icontains=alt_query, **filter_kwargs)[:10]
-            leagues  = base_qs.filter(type='league', name__icontains=alt_query, **filter_kwargs)[:10]
-
-        # Fallback 2: Auto-import from TheSportsDB if entity not in local DB
-        if not (teams.exists() or athletes.exists() or leagues.exists()):
-            try:
-                from apps.sports_apis.services.thesportsdb import thesportsdb_service
-                p_info = thesportsdb_service.get_player_details(query)
-                if p_info:
-                    p_name = p_info.get('name') or query
-                    entity, _ = Entity.objects.get_or_create(
-                        name=p_name,
-                        type='athlete',
-                        defaults={
-                            'sport': p_info.get('sport') or 'soccer',
-                            'logo_url': p_info.get('headshot_url') or '',
-                            'country': p_info.get('nationality') or '',
-                            'has_api_data': True,
-                        }
-                    )
-                    from apps.entity.models import Athlete
-                    Athlete.objects.get_or_create(
-                        entity=entity,
-                        defaults={
-                            'first_name': p_name.split()[0] if p_name.split() else '',
-                            'last_name': ' '.join(p_name.split()[1:]) if len(p_name.split()) > 1 else '',
-                            'position': p_info.get('position', ''),
-                            'nationality': p_info.get('nationality', ''),
-                        }
-                    )
-                    athletes = Entity.objects.filter(id=entity.id)
-            except Exception:
-                pass
-    else:
-        # Trending mode — order by follower_count
-        teams    = base_qs.filter(type='team').order_by('-follower_count')[:10]
-        athletes = base_qs.filter(type='athlete').order_by('-follower_count')[:10]
-        leagues  = base_qs.filter(type='league').order_by('-follower_count')[:10]
-
-    return Response({
-        'teams':    EntitySerializer(teams,    many=True, context={'request': request}).data,
-        'athletes': EntitySerializer(athletes, many=True, context={'request': request}).data,
-        'leagues':  EntitySerializer(leagues,  many=True, context={'request': request}).data,
-    })
- 
-@api_view(['GET'])
-@permission_classes([AllowAny])
-def get_entity_detail(request, entity_id):
-    entity = get_object_or_404(Entity, id=entity_id)
-    entity = entity.canonical_entity or entity
-    if entity.type == 'team':
-        try:
-            serializer = TeamDetailSerializer(entity.team_details, context={'request': request})
-        except Team.DoesNotExist:
-            mock_team = Team(entity=entity)
-            serializer = TeamDetailSerializer(mock_team, context={'request': request})
-    elif entity.type == 'athlete':
-        try:
-            serializer = AthleteDetailSerializer(entity.athlete_details, context={'request': request})
-        except Athlete.DoesNotExist:
-            mock_athlete = Athlete(entity=entity)
-            serializer = AthleteDetailSerializer(mock_athlete, context={'request': request})
-    elif entity.type == 'league':
-        try:
-            serializer = LeagueDetailSerializer(entity.league_details, context={'request': request})
-        except League.DoesNotExist:
-            mock_league = League(entity=entity)
-            serializer = LeagueDetailSerializer(mock_league, context={'request': request})
-    else:
-        serializer = EntitySerializer(entity, context={'request': request})
-    return Response(serializer.data)
- 
- 
-@api_view(['GET'])
-@permission_classes([AllowAny])
-def get_entity_by_slug(request, slug):
-    entity = get_object_or_404(Entity, slug=slug)
-    entity = entity.canonical_entity or entity
-    if entity.type == 'team':
-        try:
-            serializer = TeamDetailSerializer(entity.team_details, context={'request': request})
-        except Team.DoesNotExist:
-            mock_team = Team(entity=entity)
-            serializer = TeamDetailSerializer(mock_team, context={'request': request})
-    elif entity.type == 'athlete':
-        try:
-            serializer = AthleteDetailSerializer(entity.athlete_details, context={'request': request})
-        except Athlete.DoesNotExist:
-            mock_athlete = Athlete(entity=entity)
-            serializer = AthleteDetailSerializer(mock_athlete, context={'request': request})
-    elif entity.type == 'league':
-        try:
-            serializer = LeagueDetailSerializer(entity.league_details, context={'request': request})
-        except League.DoesNotExist:
-            mock_league = League(entity=entity)
-            serializer = LeagueDetailSerializer(mock_league, context={'request': request})
-    else:
-        serializer = EntitySerializer(entity, context={'request': request})
-    return Response(serializer.data)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# UNIVERSAL ENDPOINTS — frontend uses these for any entity type
+# TEAM STATS HELPERS & FALLBACKS
 # ─────────────────────────────────────────────────────────────────────────────
 
-@api_view(['GET'])
-@permission_classes([AllowAny])
-def get_entity_stats(request, entity_id):
-    """
-    Universal stats — works for team, league, athlete.
-    GET /api/entities/{entity_id}/stats/
-
-    - team    → single team stats card (wins/losses/form/points)
-    - league  → list of all teams stats in that league
-    - athlete → player stats (goals/assists/appearances)
-    """
-    entity = get_object_or_404(Entity, id=entity_id)
-    entity = entity.canonical_entity or entity
-
-    if entity.type == 'team':
-        return get_team_stats(request._request, entity.id)
-
-    elif entity.type == 'league':
-        season = request.GET.get('season') or str(_current_season('soccer'))
-        return _get_standings_for_league(request, entity, season)
-
-    elif entity.type == 'athlete':
-        return get_athlete_stats(request._request, entity.id)
-
-    return Response({
-        'entity': EntitySerializer(entity, context={'request': request}).data,
-        'stats': {},
-        'message': 'No stats available for this entity type',
-    })
-
-
-@api_view(['GET'])
-@permission_classes([AllowAny])
-def get_entity_fixtures(request, entity_id):
-    """
-    Universal fixtures — works for team and league.
-    GET /api/entities/{entity_id}/fixtures/
-
-    - team   → all matches where this team is home or away
-    - league → all matches in this league
-    """
-    from apps.event.models import Event
-    from apps.event.serializers import EventSerializer as EvSerializer
-
-    entity = get_object_or_404(Entity, id=entity_id)
-    entity = entity.canonical_entity or entity
-
-    if entity.type == 'team':
-        team_ids = set(
-            Entity.objects.filter(
-                Q(id=entity.id) |
-                Q(canonical_entity=entity) |
-                Q(name__iexact=entity.name)
-            ).values_list('id', flat=True)
-        )
-        events = Event.objects.filter(
-            Q(home_entity_id__in=team_ids) | Q(away_entity_id__in=team_ids)
-        ).select_related(
-            'home_entity', 'away_entity', 'league'
-        ).order_by('-start_time')[:50]
-
-    elif entity.type == 'league':
-        league_ids = set(
-            Entity.objects.filter(
-                Q(id=entity.id) |
-                Q(canonical_entity=entity) |
-                Q(name__iexact=entity.name)
-            ).values_list('id', flat=True)
-        )
-        events = Event.objects.filter(
-            Q(league_id__in=league_ids) |
-            (Q(league__api_source=entity.api_source) & Q(league__external_id=entity.external_id))
-        ).select_related(
-            'home_entity', 'away_entity', 'league'
-        ).order_by('-start_time')[:50]
-
-    else:
-        events = Event.objects.none()
-
-    if not events.exists() and entity.type == 'team':
-        live_fixtures = _fetch_team_fixtures_live(entity)
-        if live_fixtures:
-            return Response({
-                'entity':          EntitySerializer(entity, context={'request': request}).data,
-                'fixtures_count':  len(live_fixtures),
-                'fixtures':        live_fixtures,
-                'source':          'live_api',
-            })
-
-    serialized_fixtures = EvSerializer(events, many=True).data
-    from apps.entity.utils.matcher import find_team_logo_by_name, resolve_team_venue
-
-    for f in serialized_fixtures:
-        if f.get('home_entity') and not f['home_entity'].get('logo_url'):
-            h_name = f['home_entity'].get('name', '')
-            l_url = find_team_logo_by_name(h_name)
-            if l_url:
-                f['home_entity']['logo_url'] = l_url
-                f['home_logo'] = l_url
-                if f.get('is_nest_entity_home'):
-                    f['nest_entity_logo'] = l_url
-                    f['primary_logo_url'] = l_url
-                else:
-                    f['opponent_entity_logo'] = l_url
-
-        if f.get('away_entity') and not f['away_entity'].get('logo_url'):
-            a_name = f['away_entity'].get('name', '')
-            l_url = find_team_logo_by_name(a_name)
-            if l_url:
-                f['away_entity']['logo_url'] = l_url
-                f['away_logo'] = l_url
-                if not f.get('is_nest_entity_home'):
-                    f['nest_entity_logo'] = l_url
-                    f['primary_logo_url'] = l_url
-                else:
-                    f['opponent_entity_logo'] = l_url
-
-        # Auto-fill missing venue name, city, and country
-        if not f.get('venue_name') or not f.get('venue_city') or not f.get('venue_country'):
-            home_team_name = f.get('home_entity', {}).get('name') or f.get('home_team', '')
-            v_name, v_city, v_country = resolve_team_venue(home_team_name)
-            if not f.get('venue_name') and v_name:
-                f['venue_name'] = v_name
-            if not f.get('venue_city') and v_city:
-                f['venue_city'] = v_city
-            if not f.get('venue_country') and v_country:
-                f['venue_country'] = v_country
-
-    return Response({
-        'entity':          EntitySerializer(entity, context={'request': request}).data,
-        'fixtures_count':  len(serialized_fixtures),
-        'fixtures':        serialized_fixtures,
-        'source':          'db',
-    })
-
-
-@api_view(['GET'])
-@permission_classes([AllowAny])
-def get_entity_roster(request, entity_id):
-    """
-    Universal roster — works for team and athlete.
-    GET /api/entities/{entity_id}/roster/
-
-    - team    → list of players in the team
-    - athlete → just that athlete's bio/details
-    """
-    entity = get_object_or_404(Entity, id=entity_id)
-    entity = entity.canonical_entity or entity
-
-    if entity.type == 'team':
-        return get_team_roster(request._request, entity.id)
-
-    elif entity.type == 'athlete':
-        return get_athlete_bio(request._request, entity.id)
-
-    return Response({
-        'entity':  EntitySerializer(entity, context={'request': request}).data,
-        'roster':  [],
-        'message': 'Roster only available for teams',
-    })
-
-
-@api_view(['GET'])
-@permission_classes([AllowAny])
-def get_team_standings(request, team_id):
-    """
-    GET /api/entities/team/{team_id}/standings/?season=2024
-    """
-    team_entity = get_object_or_404(Entity, id=team_id)
-    team_entity = team_entity.canonical_entity or team_entity
-    
-    # Handle both Django HttpRequest and DRF Request
-    get_params = getattr(request, 'GET', {}) or getattr(getattr(request, '_request', None), 'GET', {})
-    season = get_params.get('season') or str(_current_season(team_entity.sport or 'soccer'))
-    
-    league_entity = None
-    try:
-        td = getattr(team_entity, 'team_details', None)
-        if td and td.league:
-            league_entity = td.league
-    except Exception:
-        pass
-        
-    if not league_entity:
-        league_entity = Entity.objects.filter(type='league', sport=team_entity.sport).first()
-        
-    if not league_entity:
-        try:
-            from apps.sports_apis.services.thesportsdb import TheSportsDBService
-            tsdb = TheSportsDBService()
-            info = tsdb.search_team(team_entity.name)
-            if info and info.get('strLeague'):
-                l_name = info.get('strLeague')
-                league_entity = Entity.objects.filter(type='league', name__icontains=l_name).first()
-                if not league_entity:
-                    league_entity, _ = Entity.objects.get_or_create(
-                        name=l_name,
-                        type='league',
-                        sport=team_entity.sport or 'soccer',
-                        defaults={'has_api_data': True}
-                    )
-        except Exception:
-            pass
-
-    if league_entity:
-        return _get_standings_for_league(request, league_entity, season, highlight_team_id=team_entity.id, highlight_team_name=team_entity.name)
-
-    return Response({
-        'entity': EntitySerializer(team_entity, context={'request': request}).data,
-        'standings': [],
-        'source': 'empty',
-        'message': 'No league standings found for this team'
-    })
-
-
-@api_view(['GET'])
-@permission_classes([AllowAny])
-def get_entity_standings(request, entity_id):
-    """
-    Universal standings — works for team and league.
-    GET /api/entities/{entity_id}/standings/
-
-    - team   → full league table with this team highlighted
-    - league → full league table
-    """
-    entity = get_object_or_404(Entity, id=entity_id)
-    entity = entity.canonical_entity or entity
-    get_params = getattr(request, 'GET', {}) or getattr(getattr(request, '_request', None), 'GET', {})
-    season = get_params.get('season') or str(_current_season(entity.sport or 'soccer'))
-
-    if entity.type == 'team':
-        django_req = getattr(request, '_request', request)
-        return get_team_standings(django_req, entity.id)
-
-    elif entity.type == 'league':
-        return _get_standings_for_league(request, entity, season)
-
-    return Response({
-        'entity':    EntitySerializer(entity, context={'request': request}).data,
-        'standings': [],
-        'message':   'Standings only available for teams and leagues',
-    })
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# TEAM STATS  — DB first, live API fallback
-# ─────────────────────────────────────────────────────────────────────────────
 def _fetch_soccer_team_stats_thesportsdb(team_entity):
     """Fallback: Search team on TheSportsDB API, calculate stats, and update logo_url from TheSportsDB."""
     try:
-        import requests
         from urllib.parse import quote
         from django.conf import settings
 
@@ -552,7 +132,6 @@ def _fetch_soccer_team_stats_thesportsdb(team_entity):
 def _fetch_stats_from_db_events(team_entity):
     """Fallback: Calculate team stats from completed Event records in local DB or return clean default structure."""
     from apps.event.models import Event
-    from django.db.models import Q
 
     events = Event.objects.filter(
         Q(home_entity=team_entity) | Q(away_entity=team_entity),
@@ -613,6 +192,7 @@ CRICKET_TEAM_ALIAS_MAP = {
     'ned': 'netherlands',
 }
 
+
 def _normalize_cricket_team_key(name):
     if not name:
         return ''
@@ -629,7 +209,6 @@ def fetch_live_icc_rankings():
     """
     cache_key = 'scraped_icc_team_rankings_v8'
     try:
-        from django.core.cache import cache
         cached_data = cache.get(cache_key)
         if cached_data:
             return cached_data
@@ -645,7 +224,7 @@ def fetch_live_icc_rankings():
     ]
 
     try:
-        import requests, re
+        import re
 
         headers = {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
@@ -693,13 +272,14 @@ def fetch_live_icc_rankings():
                                     'matches': matches_val,
                                     'points': points_val,
                                     'rating': rating_val,
+                                    'rating': rating_val,
                                 })
             except Exception:
                 pass
     except Exception:
         pass
 
-    # Build seed fallback if scraping yielded no data (e.g. VPS network block or HTTP error)
+    # Build seed fallback if scraping yielded no data
     if not rankings_by_team or not any(tables_by_format.values()):
         seed_tables = {
             'test': [
@@ -784,7 +364,6 @@ def fetch_live_icc_rankings():
     }
 
     try:
-        from django.core.cache import cache
         cache.set(cache_key, result, 86400)
     except Exception:
         pass
@@ -799,14 +378,13 @@ def fetch_live_fifa_rankings():
     """
     cache_key = 'scraped_fifa_team_rankings_live_v3'
     try:
-        from django.core.cache import cache
         cached_data = cache.get(cache_key)
         if cached_data:
             return cached_data
     except Exception:
         pass
 
-    import requests, re
+    import re
     from bs4 import BeautifulSoup
 
     headers = {
@@ -895,7 +473,6 @@ def fetch_live_fifa_rankings():
     }
 
     try:
-        from django.core.cache import cache
         cache.set(cache_key, result, timeout=86400)
     except Exception:
         pass
@@ -906,14 +483,7 @@ def fetch_live_fifa_rankings():
 def _normalize_team_stats(stats_data, team_entity=None):
     """
     Ensure all team stats responses contain standard fields across all sports:
-    - matches_played
-    - win_percentage
-    - draws
-    - goals_for
-    - goals_against
-    - points
-    - goal_diff
-    - rank
+    - matches_played, win_percentage, draws, goals_for, goals_against, points, goal_diff, rank
     """
     if not isinstance(stats_data, dict) or not stats_data:
         return stats_data
@@ -945,7 +515,7 @@ def _normalize_team_stats(stats_data, team_entity=None):
     goals_for = int(stats_data.get('goals_for') or stats_data.get('points_for') or 0)
     goals_against = int(stats_data.get('goals_against') or stats_data.get('points_against') or 0)
 
-    # 1. points
+    # points
     pts = stats_data.get('points')
     if pts is None:
         pts = (wins * 3) + (draws * 1)
@@ -955,7 +525,7 @@ def _normalize_team_stats(stats_data, team_entity=None):
         except (ValueError, TypeError):
             pts = (wins * 3) + (draws * 1)
 
-    # 2. goal_diff
+    # goal_diff
     g_diff = stats_data.get('goal_diff')
     if g_diff is None:
         g_diff = stats_data.get('difference')
@@ -967,8 +537,7 @@ def _normalize_team_stats(stats_data, team_entity=None):
         except (ValueError, TypeError):
             g_diff = goals_for - goals_against
 
-# ─────────────────────────────────────────────────────────────────────────────
-    # 3. rank
+    # rank
     rnk = stats_data.get('rank')
     if rnk is None:
         rnk = stats_data.get('position')
@@ -980,7 +549,6 @@ def _normalize_team_stats(stats_data, team_entity=None):
     else:
         rnk = 0
 
-    # Standardized keys across all sports
     stats_data['matches_played'] = matches_played
     stats_data['played'] = matches_played
     stats_data['win_percentage'] = win_perc
@@ -991,7 +559,7 @@ def _normalize_team_stats(stats_data, team_entity=None):
     stats_data['goal_diff'] = g_diff
     stats_data['rank'] = rnk
 
-    # Add cricket-specific readable aliases & clear irrelevant soccer fields
+    # Cricket readable aliases
     team_name = ''
     if team_entity and hasattr(team_entity, 'name'):
         team_name = team_entity.name.lower()
@@ -1016,9 +584,8 @@ def _normalize_team_stats(stats_data, team_entity=None):
         if icc_info:
             stats_data['icc_rankings'] = icc_info
 
-        stats_data['rank'] = 0  # Format-agnostic top level rank is 0 for cricket (rankings belong inside icc_rankings)
+        stats_data['rank'] = 0
 
-        # Only add runs_scored / runs_conceded if runs > 0
         if goals_for > 0 or goals_against > 0:
             stats_data['runs_scored'] = goals_for
             stats_data['runs_conceded'] = goals_against
@@ -1028,7 +595,6 @@ def _normalize_team_stats(stats_data, team_entity=None):
             stats_data.pop('runs_conceded', None)
             stats_data.pop('run_difference', None)
 
-        # Pop soccer specific goal terms for cricket so response is clean
         stats_data.pop('goals_for', None)
         stats_data.pop('goals_against', None)
         stats_data.pop('goal_diff', None)
@@ -1066,6 +632,7 @@ def _normalize_team_stats(stats_data, team_entity=None):
 
     return stats_data
 
+
 def _get_tennis_rankings_helper(tour: str = "atp"):
     tour_slug = str(tour).lower()
     if tour_slug not in ("atp", "wta"):
@@ -1095,13 +662,19 @@ def _get_golf_leaderboard_helper():
     return leaderboard or []
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# GET TEAM STATS VIEW
+# ─────────────────────────────────────────────────────────────────────────────
+
 @api_view(['GET'])
 @permission_classes([AllowAny])
 def get_team_stats(request, team_id):
-
     """
     GET /api/entities/team/{team_id}/stats/?season=2024
     """
+    from .athlete import get_athlete_stats, _fetch_thesportsdb_player_stats
+    from .league import _get_standings_for_league
+
     team_entity = get_object_or_404(Entity, id=team_id, type='team')
     team_entity = team_entity.canonical_entity or team_entity
 
@@ -1116,25 +689,20 @@ def get_team_stats(request, team_id):
         return res
 
     season = request.GET.get('season') or str(_current_season(team_entity.sport))
-    # NBA standings are stored with the full season label (for example,
-    # ``2025-26``), while StatPal requests use the season's start year.
     stats_season = (
         f"{season}-{str(int(season) + 1)[-2:]}"
         if team_entity.sport == 'basketball' and '-' not in season
         else season
     )
     api_season = int(str(season).split('-', 1)[0])
- 
-    # 1 — try DB first (only return from DB if stats are recent and full)
-    from django.utils import timezone
+
+    # 1 — try DB first
     stats = EntityStats.objects.filter(entity=team_entity, season=stats_season).first()
     has_valid_db_stats = (
         stats and stats.stats_data and 
         (stats.stats_data.get('played', 0) >= 15 or stats.stats_data.get('matches_played', 0) >= 15) and
         stats.updated_at and (timezone.now() - stats.updated_at).total_seconds() < 86400
     )
-
- 
 
     if has_valid_db_stats:
         normalized_stats = _normalize_team_stats(stats.stats_data, team_entity=team_entity)
@@ -1144,12 +712,11 @@ def get_team_stats(request, team_id):
             'stats': normalized_stats,
             'source': 'db',
         })
- 
+
     # 2 — live API fallback
     stats_data = {}
- 
+
     if team_entity.sport == 'soccer':
-        # Primary lookup: fetch team stats row from the official league table
         try:
             league = None
             try:
@@ -1204,20 +771,19 @@ def get_team_stats(request, team_id):
                 stats_data = sp_data
         if not stats_data:
             stats_data = _fetch_soccer_team_stats_thesportsdb(team_entity)
- 
+
     elif team_entity.sport == 'basketball':
-        # Always use StatPal standings (balldontlie is no longer in use)
         stats_data = _fetch_nba_team_stats_statpal(team_entity.external_id, api_season)
- 
+
     elif team_entity.sport == 'football':
         stats_data = _fetch_nfl_team_stats(team_entity.external_id, api_season)
- 
+
     elif team_entity.sport == 'hockey':
         stats_data = _fetch_nhl_team_stats(team_entity.name, api_season)
- 
+
     elif team_entity.sport == 'baseball':
         stats_data = _fetch_mlb_team_stats(team_entity.external_id, api_season)
- 
+
     elif team_entity.sport in ['handball', 'volleyball']:
         try:
             league = team_entity.team_details.league if hasattr(team_entity, 'team_details') else None
@@ -1273,11 +839,9 @@ def get_team_stats(request, team_id):
     if not stats_data:
         stats_data = _fetch_stats_from_db_events(team_entity)
 
-
-    # Standardize output keys across all sports
     stats_data = _normalize_team_stats(stats_data, team_entity=team_entity)
 
-    # 3 — save to DB so next call is instant
+    # 3 — save to DB
     if stats_data:
         EntityStats.objects.update_or_create(
             entity=team_entity,
@@ -1285,25 +849,16 @@ def get_team_stats(request, team_id):
             stat_type='season',
             defaults={'stats_data': stats_data},
         )
- 
+
     return Response({
         'team': EntitySerializer(team_entity, context={'request': request}).data,
         'season': stats_season,
         'stats': stats_data,
         'source': 'live_api' if stats_data else 'empty',
     })
- 
- 
-def _fetch_cricket_team_stats(external_id, season):
-    """
-    Build win/loss/draw stats for a cricket team by scanning all active
-    StatPal tours and filtering completed matches that involve this team.
 
-    Cricket national teams play bilateral series (no single league table),
-    so we aggregate across every tour in the tour-list that overlaps the
-    requested season year.  Draws ("Match drawn") and No-results are
-    counted separately from losses.
-    """
+
+def _fetch_cricket_team_stats(external_id, season):
     cache_key = f'team_stats:cricket:{external_id}:{season}:statpal'
     cached = cache.get(cache_key)
     if cached:
@@ -1312,7 +867,6 @@ def _fetch_cricket_team_stats(external_id, season):
     try:
         from apps.sports_apis.services.statpal import statpal_service
 
-        # 1. Fetch the tour list
         tours_resp = statpal_service.get_cricket_tournaments()
         if not tours_resp.get('success'):
             return {}
@@ -1325,19 +879,17 @@ def _fetch_cricket_team_stats(external_id, season):
 
         for tour in tours_raw:
             tour_id   = tour.get('id')
-            tour_uri  = tour.get('schedule_uri', '')  # e.g. '/tour/1114' or '/intl/5536'
+            tour_uri  = tour.get('schedule_uri', '')
 
             if not tour_id or not tour_uri:
                 continue
 
-            # Derive tournament_type from the URI prefix
             parts = [p for p in tour_uri.strip('/').split('/') if p]
             if len(parts) < 2:
                 continue
-            tournament_type = parts[0]   # 'tour' or 'intl'
+            tournament_type = parts[0]
             tournament_id   = parts[1]
 
-            # 2. Fetch season-schedule for this tour
             try:
                 sched_resp = statpal_service.get_cricket_schedule(tournament_type, tournament_id)
             except Exception:
@@ -1357,7 +909,6 @@ def _fetch_cricket_team_stats(external_id, season):
                     matches = [matches]
 
                 for match in matches:
-                    # Only count completed matches
                     if str(match.get('status', '')).lower() not in ('finished', 'complete', 'completed'):
                         continue
 
@@ -1369,7 +920,6 @@ def _fetch_cricket_team_stats(external_id, season):
                     if str(external_id) not in (home_id, away_id):
                         continue
 
-                    # Determine result
                     comment_post = str(match.get('comment', {}).get('post', '')).lower()
                     home_winner = str(home.get('winner', '')).lower()
                     away_winner = str(away.get('winner', '')).lower()
@@ -1405,12 +955,8 @@ def _fetch_cricket_team_stats(external_id, season):
     except Exception:
         return {}
 
+
 def _fetch_nfl_team_stats(external_id, season):
-    """
-    NFL stats from StatPal /nfl/standings.
-    Standings structure: standings → category[] → league[] → division[] → team[]
-    Fields: won, lost, ties, win_percentage, points_for, points_against, difference.
-    """
     cache_key = f'team_stats:football:{external_id}:{season}:statpal'
     cached = cache.get(cache_key)
     if cached:
@@ -1469,13 +1015,6 @@ def _fetch_nfl_team_stats(external_id, season):
 
 
 def _fetch_nhl_team_stats(team_name, season):
-    """
-    NHL stats from StatPal /nhl/standings.
-    Standings structure: standings → tournament → league[] → division[] → team[]
-    Matches by team name (case-insensitive) because StatPal's team id is a
-    numeric internal id that differs from the abbreviation stored in external_id.
-    Fields: won, lost, ot_losses, points, games_played, goals_for, goals_against.
-    """
     cache_key = f'team_stats:hockey:{team_name}:{season}:statpal'
     cached = cache.get(cache_key)
     if cached:
@@ -1530,11 +1069,6 @@ def _fetch_nhl_team_stats(team_name, season):
 
 
 def _fetch_mlb_team_stats(external_id, season):
-    """
-    MLB stats — StatPal doesn't expose a full MLB standings endpoint.
-    We aggregate wins/losses from the last 7 days of daily schedules
-    (d-7 to d-1) for completed matches involving this team.
-    """
     cache_key = f'team_stats:baseball:{external_id}:{season}:statpal'
     cached = cache.get(cache_key)
     if cached:
@@ -1544,8 +1078,7 @@ def _fetch_mlb_team_stats(external_id, season):
         from apps.sports_apis.services.statpal import statpal_service
         wins = losses = 0
 
-        # Scan recent days for finished MLB matches
-        for offset in range(-7, 0):   # d-7 through d-1
+        for offset in range(-7, 0):
             result = statpal_service.get_mlb_fixtures(offset=offset)
             if not result.get('success'):
                 continue
@@ -1606,34 +1139,29 @@ def _fetch_soccer_team_stats(external_id, season):
     cached = cache.get(cache_key)
     if cached:
         return cached
- 
+
     try:
-        # We need the league id — get the first league linked to this team
-        team_entity = Entity.objects.filter(
-            api_source='api_sports', external_id=str(external_id)
-        ).first()
+        # Get the first league linked to this team
+        team_entity = Entity.objects.filter(external_id=str(external_id)).first()
         league_id = None
         if team_entity:
             try:
                 league_id = team_entity.team_details.league.external_id
             except Exception:
                 pass
- 
-        if not league_id:
-            # Fallback 1: Try to find a league from the team's events in DB
-            from django.db.models import Q
+
+        if not league_id and team_entity:
             from apps.event.models import Event
             event = Event.objects.filter(
                 Q(home_entity=team_entity) | Q(away_entity=team_entity),
                 league__isnull=False
             ).select_related('league').first()
-            if event:
+            if event and event.league:
                 league_id = event.league.external_id
 
         if not league_id:
-            # Fallback 2: Query API-Sports leagues endpoint directly
             try:
-                resp = req.get(
+                resp = requests.get(
                     'https://v3.football.api-sports.io/leagues',
                     headers=HEADERS_SPORTS,
                     params={'team': external_id, 'season': season},
@@ -1648,8 +1176,8 @@ def _fetch_soccer_team_stats(external_id, season):
 
         if not league_id:
             return {}
- 
-        resp = req.get(
+
+        resp = requests.get(
             'https://v3.football.api-sports.io/teams/statistics',
             headers=HEADERS_SPORTS,
             params={'team': external_id, 'season': season, 'league': league_id},
@@ -1657,14 +1185,14 @@ def _fetch_soccer_team_stats(external_id, season):
         )
         if resp.status_code != 200:
             return {}
- 
+
         data = resp.json().get('response', {})
         if not data:
             return {}
- 
+
         fixtures = data.get('fixtures', {})
         goals    = data.get('goals', {})
- 
+
         stats_data = {
             'form':           data.get('form', ''),
             'played':         fixtures.get('played', {}).get('total', 0),
@@ -1678,39 +1206,20 @@ def _fetch_soccer_team_stats(external_id, season):
         }
         cache.set(cache_key, stats_data, timeout=3600)
         return stats_data
- 
+
     except Exception:
         return {}
 
 
-def _fetch_soccer_team_stats_thesportsdb(team_entity):
-    """Fallback team stats lookup via TheSportsDB search_team."""
-    try:
-        from apps.sports_apis.services.thesportsdb import TheSportsDBService
-        tsdb = TheSportsDBService()
-        info = tsdb.search_team(team_entity.name)
-        if not info:
-            return {}
-        return {
-            'form': info.get('strForm', '') or '',
-            'stadium': info.get('strStadium', '') or '',
-            'stadium_location': info.get('strLocation', '') or '',
-            'stadium_capacity': info.get('intStadiumCapacity', 0) or 0,
-            'website': info.get('strWebsite', '') or '',
-        }
-    except Exception:
-        return {}
- 
- 
 def _fetch_nba_team_stats(external_id, season):
     """Hit BallDontLie standings for one NBA team."""
     cache_key = f'team_stats:nba:{external_id}:{season}'
     cached = cache.get(cache_key)
     if cached:
         return cached
- 
+
     try:
-        resp = req.get(
+        resp = requests.get(
             'https://api.balldontlie.io/v1/standings',
             headers=HEADERS_BDL,
             params={'season': season},
@@ -1718,7 +1227,7 @@ def _fetch_nba_team_stats(external_id, season):
         )
         if resp.status_code != 200:
             return {}
- 
+
         standings = resp.json().get('data', [])
         for s in standings:
             if str(s.get('team', {}).get('id', '')) == str(external_id):
@@ -1736,7 +1245,7 @@ def _fetch_nba_team_stats(external_id, season):
                 cache.set(cache_key, stats_data, timeout=3600)
                 return stats_data
         return {}
- 
+
     except Exception:
         return {}
 
@@ -1746,17 +1255,17 @@ def _fetch_soccer_team_stats_statpal(external_id, season):
     cached = cache.get(cache_key)
     if cached:
         return cached
-        
+
     try:
         from apps.sports_apis.services.statpal import statpal_service
         result = statpal_service.get_soccer_team(external_id)
         if not result['success']:
             return {}
-            
+
         leagues = result['data'].get('team', {}).get('league_stats', {}).get('league', [])
         if isinstance(leagues, dict):
             leagues = [leagues]
-            
+
         lstat = None
         for l in leagues:
             if str(l.get('season')) == str(season):
@@ -1764,16 +1273,16 @@ def _fetch_soccer_team_stats_statpal(external_id, season):
                 break
         if not lstat and leagues:
             lstat = leagues[0]
-            
+
         if not lstat:
             return {}
-            
+
         ft = lstat.get('fulltime', {})
         wins = int(ft.get('win', {}).get('total') or 0)
         losses = int(ft.get('lost', {}).get('total') or 0)
         draws = int(ft.get('draw', {}).get('total') or 0)
         played = wins + losses + draws
-        
+
         stats_data = {
             'form':           '',
             'played':         played,
@@ -1796,28 +1305,28 @@ def _fetch_nba_team_stats_statpal(external_id, season):
     cached = cache.get(cache_key)
     if cached:
         return cached
-        
+
     try:
         from apps.sports_apis.services.statpal import statpal_service
         result = statpal_service.get_nba_standings()
         if not result['success']:
             return {}
-            
+
         standings = result['data'].get('standings', {})
         leagues = standings.get('tournament', {}).get('league', [])
         if isinstance(leagues, dict):
             leagues = [leagues]
-            
+
         for lg in leagues:
             conferences = lg.get('division', [])
             if isinstance(conferences, dict):
                 conferences = [conferences]
-                
+
             for conf in conferences:
                 teams_list = conf.get('team', [])
                 if isinstance(teams_list, dict):
                     teams_list = [teams_list]
-                    
+
                 for standing in teams_list:
                     if str(standing.get('id', '')) == str(external_id):
                         wins = int(standing.get('won') or 0)
@@ -1836,24 +1345,23 @@ def _fetch_nba_team_stats_statpal(external_id, season):
         return {}
     except Exception:
         return {}
- 
- 
+
+
 # ─────────────────────────────────────────────────────────────────────────────
-# TEAM ROSTER  (unchanged — reads from Athlete table which is already seeded)
+# TEAM ROSTER
 # ─────────────────────────────────────────────────────────────────────────────
- 
+
 @api_view(['GET'])
 @permission_classes([AllowAny])
 def get_team_roster(request, team_id):
     team_entity = get_object_or_404(Entity, id=team_id, type='team')
     team_entity = team_entity.canonical_entity or team_entity
- 
-    from django.db.models import Q
+
     athletes = Athlete.objects.filter(
         Q(current_team=team_entity)
         | Q(current_team__external_id=team_entity.external_id, current_team__sport=team_entity.sport)
     ).select_related('entity').distinct()
- 
+
     if athletes.count() < 10:
         try:
             from apps.sports_apis.services.thesportsdb import TheSportsDBService
@@ -1967,7 +1475,7 @@ def get_team_roster(request, team_id):
             'roster': [],
             'message': 'Roster is being fetched, try again in 10 seconds'
         })
- 
+
     roster = []
     for a in athletes:
         roster.append({
@@ -1980,17 +1488,18 @@ def get_team_roster(request, team_id):
             'weight_kg':     a.weight_kg,
             'nationality':   a.nationality,
         })
- 
+
     return Response({
         'team':         EntitySerializer(team_entity, context={'request': request}).data,
         'roster_count': len(roster),
         'roster':       roster,
     })
- 
+
+
 # ─────────────────────────────────────────────────────────────────────────────
-# TEAM STANDINGS  — DB first, live API fallback
+# TEAM STANDINGS
 # ─────────────────────────────────────────────────────────────────────────────
- 
+
 @api_view(['GET'])
 @permission_classes([AllowAny])
 def get_team_standings(request, team_id):
@@ -1998,6 +1507,8 @@ def get_team_standings(request, team_id):
     GET /api/entities/team/{team_id}/standings/
     Returns the official primary league standings for clubs or national rankings for national teams.
     """
+    from .league import _get_standings_for_league
+
     entity = get_object_or_404(Entity, id=team_id)
     entity = entity.canonical_entity or entity
 
@@ -2008,7 +1519,7 @@ def get_team_standings(request, team_id):
     team_entity = entity
     season = request.GET.get('season') or str(_current_season(team_entity.sport))
 
-    # 1. Check if Cricket National Team -> ICC World Rankings
+    # 1. Cricket National Team -> ICC World Rankings
     if team_entity.sport == 'cricket':
         clean_name = _normalize_cricket_team_key(team_entity.name)
         icc_res = fetch_live_icc_rankings()
@@ -2046,7 +1557,7 @@ def get_team_standings(request, team_id):
                 'message': 'ICC Rankings provided for Cricket national team.',
             })
 
-    # 2. Check if Soccer National Team -> FIFA World Rankings
+    # 2. Soccer National Team -> FIFA World Rankings
     if team_entity.sport == 'soccer':
         clean_name = team_entity.name.lower().replace(' w', '').strip()
         fifa_res = fetch_live_fifa_rankings()
@@ -2106,8 +1617,7 @@ def get_team_standings(request, team_id):
             'source': 'golf_leaderboards',
         })
 
-
-    # 3. For Club Teams -> Primary Official League Standings Lookup via TheSportsDB
+    # 5. For Club Teams -> Primary Official League Standings Lookup
     league = None
     try:
         if team_entity.team_details.league:
@@ -2144,575 +1654,10 @@ def get_team_standings(request, team_id):
         'message': 'No standings available from provider API for this team.',
     })
 
- 
- 
+
 # ─────────────────────────────────────────────────────────────────────────────
-# ATHLETE STATS  — DB first, live API fallback
+# TEAM FIXTURES
 # ─────────────────────────────────────────────────────────────────────────────
- 
-@api_view(['GET'])
-@permission_classes([AllowAny])
-def get_athlete_stats(request, athlete_id):
-    """
-    GET /api/entities/athlete/{athlete_id}/stats/?season=2024
-    """
-    athlete_entity = get_object_or_404(Entity, id=athlete_id, type='athlete')
-    athlete_entity = athlete_entity.canonical_entity or athlete_entity
-    season = request.GET.get('season') or str(_current_season(athlete_entity.sport))
-    force_refresh = request.GET.get('force_refresh', '').lower() in ('true', '1')
-
-    # 1 — try DB first (unless force_refresh is requested)
-    if not force_refresh:
-        stats = EntityStats.objects.filter(entity=athlete_entity, season=season).first()
-        if stats and stats.stats_data:
-            non_empty_count = sum(1 for v in stats.stats_data.values() if bool(v))
-            if non_empty_count >= 3:
-                return Response({
-                    'athlete': EntitySerializer(athlete_entity, context={'request': request}).data,
-                    'season':  season,
-                    'stats':   stats.stats_data,
-                    'source':  'db',
-                })
-
-    # 2 — live API fallback & multi-source data merging
-    stats_data = {}
-
-    # A) Try TheSportsDB first for profile bio, stats, images, and attributes
-    if athlete_entity.name:
-        tsdb_stats = _fetch_thesportsdb_player_stats(athlete_entity.name, athlete_entity=athlete_entity, force_refresh=force_refresh)
-        if tsdb_stats:
-            stats_data.update(tsdb_stats)
-
-    # B) Try API-Football performance stats if external_id is available and needed
-    if not stats_data and athlete_entity.external_id and athlete_entity.sport == 'soccer':
-        soccer_stats = _fetch_soccer_player_stats(athlete_entity.external_id, season)
-        if soccer_stats:
-            stats_data.update(soccer_stats)
-
-    # C) Enrich remaining empty fields with local Athlete DB details if available
-    ad = getattr(athlete_entity, 'athlete_details', None)
-    if ad:
-        if not stats_data.get('position') and ad.position:
-            stats_data['position'] = ad.position
-        if not stats_data.get('nationality') and ad.nationality:
-            stats_data['nationality'] = ad.nationality
-        if not stats_data.get('height') and ad.height_cm:
-            stats_data['height'] = f"{ad.height_cm} cm"
-        if not stats_data.get('weight') and ad.weight_kg:
-            stats_data['weight'] = f"{ad.weight_kg} kg"
-        if not stats_data.get('date_of_birth') and ad.date_of_birth:
-            stats_data['date_of_birth'] = str(ad.date_of_birth)
-        if not stats_data.get('team') and ad.current_team:
-            stats_data['team'] = ad.current_team.name
-
-    # 3 — save combined stats to DB
-    if stats_data:
-        EntityStats.objects.update_or_create(
-            entity=athlete_entity,
-            season=season,
-            stat_type='season',
-            defaults={'stats_data': stats_data},
-        )
-
-    return Response({
-        'athlete': EntitySerializer(athlete_entity, context={'request': request}).data,
-        'season':  season,
-        'stats':   stats_data,
-        'source':  'live_api' if stats_data else 'empty',
-    })
- 
- 
-def _fetch_soccer_player_stats(external_id, season):
-    cache_key = f'player_stats:soccer:{external_id}:{season}'
-    cached = cache.get(cache_key)
-    if cached:
-        return cached
- 
-    try:
-        resp = req.get(
-            'https://v3.football.api-sports.io/players',
-            headers=HEADERS_SPORTS,
-            params={'id': external_id, 'season': season},
-            timeout=10,
-        )
-        if resp.status_code != 200:
-            return {}
- 
-        response = resp.json().get('response', [])
-        if not response:
-            return {}
- 
-        player   = response[0]
-        p_info   = player.get('player', {})
-        # Use the first statistics entry (primary league/team)
-        s        = player.get('statistics', [{}])[0]
-        games    = s.get('games', {})
-        goals    = s.get('goals', {})
-        passes   = s.get('passes', {})
-        cards    = s.get('cards', {})
-        shots    = s.get('shots', {})
-        dribbles = s.get('dribbles', {})
- 
-        stats_data = {
-            'appearances':  games.get('appearences', 0),
-            'minutes':      games.get('minutes', 0),
-            'rating':       games.get('rating'),
-            'goals':        goals.get('total', 0),
-            'assists':      goals.get('assists', 0),
-            'shots_total':  shots.get('total', 0),
-            'shots_on':     shots.get('on', 0),
-            'passes_total': passes.get('total', 0),
-            'passes_key':   passes.get('key', 0),
-            'pass_accuracy':passes.get('accuracy', 0),
-            'dribbles_success': dribbles.get('success', 0),
-            'yellow_cards': cards.get('yellow', 0),
-            'red_cards':    cards.get('red', 0),
-            # Bio enrichment while we're here
-            'nationality':  p_info.get('nationality', ''),
-            'height':       p_info.get('height', ''),
-            'weight':       p_info.get('weight', ''),
-            'age':          p_info.get('age', 0),
-        }
-        cache.set(cache_key, stats_data, timeout=3600)
-        return stats_data
- 
-    except Exception:
-        return {}
-
-
-def _fetch_thesportsdb_player_stats(player_name, athlete_entity=None, force_refresh=False):
-    cache_key = f'player_stats:thesportsdb:{player_name.lower().strip()}'
-    if force_refresh:
-        cache.delete(cache_key)
-
-    cached = cache.get(cache_key)
-    if cached and not force_refresh:
-        if athlete_entity:
-            try:
-                ad = getattr(athlete_entity, 'athlete_details', None)
-                if ad:
-                    if not cached.get('position') and ad.position:
-                        cached['position'] = ad.position
-                    if not cached.get('nationality') and ad.nationality:
-                        cached['nationality'] = ad.nationality
-                    if not cached.get('height') and ad.height_cm:
-                        cached['height'] = f"{ad.height_cm} cm"
-                    if not cached.get('weight') and ad.weight_kg:
-                        cached['weight'] = f"{ad.weight_kg} kg"
-                    if not cached.get('date_of_birth') and ad.date_of_birth:
-                        cached['date_of_birth'] = str(ad.date_of_birth)
-                    if not cached.get('team') and ad.current_team:
-                        cached['team'] = ad.current_team.name
-                if not cached.get('description') and athlete_entity.description:
-                    cached['description'] = athlete_entity.description
-                if not cached.get('headshot_url') and athlete_entity.logo_url:
-                    cached['headshot_url'] = athlete_entity.logo_url
-            except Exception:
-                pass
-        return cached
-
-    try:
-        from apps.sports_apis.services.thesportsdb import thesportsdb_service
-        player_info = thesportsdb_service.get_player_details(player_name) or {}
-
-        raw = player_info.get('raw_data', {})
-        pos = player_info.get('position', '')
-        nat = player_info.get('nationality', '')
-        h = player_info.get('height', '')
-        w = player_info.get('weight', '')
-        team = player_info.get('team_name', '')
-        dob = player_info.get('date_of_birth', '')
-        desc = player_info.get('description', '')
-        headshot = player_info.get('headshot_url', '')
-
-        # Enrich empty fields with local Athlete DB details if available
-        if athlete_entity:
-            try:
-                ad = getattr(athlete_entity, 'athlete_details', None)
-                if ad:
-                    if not pos and ad.position:
-                        pos = ad.position
-                    if not nat and ad.nationality:
-                        nat = ad.nationality
-                    if not h and ad.height_cm:
-                        h = f"{ad.height_cm} cm"
-                    if not w and ad.weight_kg:
-                        w = f"{ad.weight_kg} kg"
-                    if not dob and ad.date_of_birth:
-                        dob = str(ad.date_of_birth)
-                    if not team and ad.current_team:
-                        team = ad.current_team.name
-                if not desc and athlete_entity.description:
-                    desc = athlete_entity.description
-                if not headshot and athlete_entity.logo_url:
-                    headshot = athlete_entity.logo_url
-
-                # Permanently persist fetched static fields into DB models (Entity & Athlete)
-                entity_fields_to_save = []
-                if desc and not athlete_entity.description:
-                    athlete_entity.description = desc
-                    entity_fields_to_save.append('description')
-                if headshot and not athlete_entity.logo_url:
-                    athlete_entity.logo_url = headshot
-                    entity_fields_to_save.append('logo_url')
-                if entity_fields_to_save:
-                    athlete_entity.save(update_fields=entity_fields_to_save)
-
-                from apps.entity.models import Athlete
-                athlete_detail_obj, _ = Athlete.objects.get_or_create(
-                    entity=athlete_entity,
-                    defaults={'first_name': athlete_entity.name.split(' ')[0], 'last_name': ' '.join(athlete_entity.name.split(' ')[1:])}
-                )
-                ad_updated = False
-                if pos and not athlete_detail_obj.position:
-                    athlete_detail_obj.position = pos
-                    ad_updated = True
-                if nat and not athlete_detail_obj.nationality:
-                    athlete_detail_obj.nationality = nat
-                    ad_updated = True
-                if dob and not athlete_detail_obj.date_of_birth:
-                    try:
-                        from datetime import datetime
-                        athlete_detail_obj.date_of_birth = datetime.strptime(dob, '%Y-%m-%d').date()
-                        ad_updated = True
-                    except Exception:
-                        pass
-                if h and not athlete_detail_obj.height_cm:
-                    try:
-                        import re
-                        m = re.search(r'\d+', str(h))
-                        if m:
-                            athlete_detail_obj.height_cm = int(m.group(0))
-                            ad_updated = True
-                    except Exception:
-                        pass
-                if w and not athlete_detail_obj.weight_kg:
-                    try:
-                        import re
-                        m = re.search(r'\d+', str(w))
-                        if m:
-                            athlete_detail_obj.weight_kg = int(m.group(0))
-                            ad_updated = True
-                    except Exception:
-                        pass
-                if ad_updated:
-                    athlete_detail_obj.save()
-            except Exception as err:
-                logger.debug(f"Failed to persist athlete_details for {athlete_entity.name}: {err}")
-
-        stats_data = {
-            'position': pos,
-            'nationality': nat,
-            'height': h,
-            'weight': w,
-            'team': team,
-            'date_of_birth': dob,
-            'birth_location': raw.get('strBirthLocation', '') or '',
-            'number': raw.get('strNumber', '') or '',
-            'side': raw.get('strSide', '') or '',
-            'status': raw.get('strStatus', '') or '',
-            'outfitter': raw.get('strOutfitter', '') or '',
-            'agent': raw.get('strAgent', '') or '',
-            'date_signed': raw.get('dateSigned', '') or '',
-            'description': desc,
-            'headshot_url': headshot,
-            'signing_fee': raw.get('strSigning', '') or '',
-            'wage': raw.get('strWage', '') or '',
-            'kit': raw.get('strKit', '') or raw.get('strNumber', '') or '',
-        }
-        if any(stats_data.values()):
-            cache.set(cache_key, stats_data, timeout=86400)
-        return stats_data
-    except Exception as e:
-        logger.warning(f"TheSportsDB player stats lookup failed for '{player_name}': {e}")
-        return {}
- 
- 
-# ─────────────────────────────────────────────────────────────────────────────
-# ATHLETE BIO  (unchanged)
-# ─────────────────────────────────────────────────────────────────────────────
- 
-@api_view(['GET'])
-@permission_classes([AllowAny])
-def get_athlete_bio(request, athlete_id):
-    athlete_entity = get_object_or_404(Entity, id=athlete_id, type='athlete')
-    athlete_entity = athlete_entity.canonical_entity or athlete_entity
-    try:
-        athlete = athlete_entity.athlete_details
-    except Athlete.DoesNotExist:
-        return Response({'error': 'Athlete details not found'}, status=404)
- 
-    nationality = athlete.nationality or athlete_entity.country or ''
-    bio = athlete_entity.description or ''
-    photo = athlete_entity.logo_url or ''
-
-    # Enrich missing fields from TheSportsDB if needed
-    if not (athlete.nationality and bio and photo):
-        try:
-            from apps.sports_apis.services.thesportsdb import thesportsdb_service
-            tsdb_info = thesportsdb_service.get_player_details(athlete_entity.name) or {}
-            if tsdb_info:
-                if tsdb_info.get('nationality'):
-                    nationality = tsdb_info.get('nationality')
-                    athlete.nationality = nationality
-                    athlete.save(update_fields=['nationality'])
-                if not bio and tsdb_info.get('description'):
-                    bio = tsdb_info.get('description')
-                    athlete_entity.description = bio
-                    athlete_entity.save(update_fields=['description'])
-                if not photo and tsdb_info.get('headshot_url'):
-                    photo = tsdb_info.get('headshot_url')
-                    athlete_entity.logo_url = photo
-                    athlete_entity.save(update_fields=['logo_url'])
-        except Exception:
-            pass
-
-    return Response({
-        'id':                     athlete_entity.id,
-        'name':                   f"{athlete.first_name} {athlete.last_name}".strip() or athlete_entity.name,
-        'photo':                  athlete_entity.logo_url or '',
-        'date_of_birth':          str(athlete.date_of_birth) if athlete.date_of_birth else '',
-        'age':                    athlete.age,
-        'nationality':            nationality,
-        'height_cm':              athlete.height_cm,
-        'weight_kg':              athlete.weight_kg,
-        'current_team':           EntitySerializer(athlete.current_team, context={'request': request}).data if athlete.current_team else None,
-        'position':               athlete.position,
-        'jersey_number':          athlete.jersey_number,
-        'twitter':                athlete.twitter_handle or '',
-        'instagram':              athlete.instagram_handle or '',
-        'bio':                    bio,
-    })
- 
- 
-# ─────────────────────────────────────────────────────────────────────────────
-# LEAGUE STANDINGS  — DB first, live API fallback
-# ─────────────────────────────────────────────────────────────────────────────
- 
-@api_view(['GET'])
-@permission_classes([AllowAny])
-def get_league_standings(request, league_id):
-    """
-    GET /api/entities/league/{league_id}/standings/?season=2024
-    """
-    league_entity = get_object_or_404(Entity, id=league_id, type='league')
-    league_entity = league_entity.canonical_entity or league_entity
-    season = request.GET.get('season') or str(_current_season('soccer'))
-    return _get_standings_for_league(request, league_entity, season)
-
-
-def _get_standings_for_league(request, league_entity, season, highlight_team_id=None, highlight_team_name=None):
-    """
-    Shared logic used by both get_league_standings and get_team_standings.
-    DB first → live API fallback → write back to DB.
-    """
-    # Resolve canonical league safely
-    try:
-        canonical = Entity.objects.filter(
-            type='league',
-            api_source=league_entity.api_source,
-            external_id=league_entity.external_id,
-        ).first() or league_entity
-        teams_in_league = list(Team.objects.filter(
-            league__api_source=canonical.api_source,
-            league__external_id=canonical.external_id,
-            entity__type='team',
-        ).select_related('entity'))
-    except Exception:
-        canonical = league_entity
-        teams_in_league = []
-
-    standings = []
-    has_db_data = False
-
-    def _safe_league_data(ent, req):
-        """Return league data safe for serialization — handles pk-less in-memory Entity objects."""
-        if ent and getattr(ent, 'pk', None):
-            return EntitySerializer(ent, context={'request': req}).data
-        return {
-            'id': None,
-            'name': getattr(ent, 'name', ''),
-            'external_id': getattr(ent, 'external_id', ''),
-            'sport': getattr(ent, 'sport', ''),
-            'type': 'league',
-            'logo_url': getattr(ent, 'logo_url', '') if hasattr(ent, 'logo_url') else '',
-        }
-
-    valid_db_teams_count = 0
-    for team in teams_in_league:
-        stats = EntityStats.objects.filter(
-            entity=team.entity, season=str(season), stat_type='season'
-        ).first()
-        if stats and stats.stats_data and stats.stats_data.get('rank'):
-            p_val = stats.stats_data.get('played') or stats.stats_data.get('points') or 0
-            if p_val > 0 and stats.updated_at and (timezone.now() - stats.updated_at).total_seconds() < 86400:
-                valid_db_teams_count += 1
-        standings.append({
-            'rank':       stats.stats_data.get('rank', 0) if stats else 0,
-            'team_id':    team.entity.id,
-            'team_name':  team.entity.name,
-            'logo':       team.entity.logo_url,
-            'country':    team.entity.country,
-            'points':     stats.stats_data.get('points', 0) if stats else 0,
-            'played':     stats.stats_data.get('played', 0) if stats else 0,
-            'wins':       stats.stats_data.get('wins') or stats.stats_data.get('win', team.total_wins) if stats else team.total_wins,
-            'draws':      stats.stats_data.get('draws') or stats.stats_data.get('draw', 0) if stats else 0,
-            'losses':     stats.stats_data.get('losses') or stats.stats_data.get('lose', team.total_losses) if stats else team.total_losses,
-            'goals_for':  stats.stats_data.get('goals_for', 0) if stats else 0,
-            'goals_against': stats.stats_data.get('goals_against', 0) if stats else 0,
-            'goal_diff':  stats.stats_data.get('goal_diff', 0) if stats else 0,
-            'form':       stats.stats_data.get('form', '') if stats else '',
-            'is_highlighted': str(team.entity.external_id) == str(highlight_team_id) or str(team.entity.id) == str(highlight_team_id),
-        })
-
-    # Only consider DB standings valid if AT LEAST 10 teams have real non-zero data, or if ALL teams in a small DB league have data
-    total_teams_in_league = len(teams_in_league)
-    if valid_db_teams_count >= 10 or (total_teams_in_league > 0 and valid_db_teams_count == total_teams_in_league):
-        standings.sort(key=lambda x: (
-            -x['points'],
-            -x['goal_diff'],
-            -x['goals_for'],
-            x['team_name'].lower(),
-        ))
-        for i, item in enumerate(standings, 1):
-            item['rank'] = i
-        return Response({
-            'league':    _safe_league_data(league_entity, request),
-            'season':    season,
-            'standings': standings,
-            'source':    'db',
-        })
-
-    # Live API fallback — try TheSportsDB first, then API-Sports
-    live_standings = _fetch_league_standings_thesportsdb(canonical, season)
-
-    if not live_standings and getattr(canonical, 'api_source', '') == 'statpal':
-        try:
-            season_year = int(str(season).split('-', 1)[0].split('/', 1)[0])
-        except Exception:
-            season_year = 2026
-        live_standings = _fetch_soccer_standings(canonical.external_id, season_year)
-
-    if live_standings:
-        # Write each team's standing back to DB if matching Entity exists
-        for row in live_standings:
-            try:
-                team_entity = Entity.objects.filter(
-                    name__iexact=row.get('team_name')
-                ).first() or (
-                    Entity.objects.filter(api_source='api_sports', external_id=str(row.get('team_external_id'))).first()
-                    if row.get('team_external_id') else None
-                )
-                if team_entity:
-                    EntityStats.objects.update_or_create(
-                        entity=team_entity,
-                        season=str(season),
-                        stat_type='season',
-                        defaults={'stats_data': row},
-                    )
-            except Exception:
-                pass
-
-        live_response = []
-        for row in live_standings:
-            try:
-                team_ent = Entity.objects.filter(name__iexact=row.get('team_name')).first()
-            except Exception:
-                team_ent = None
-            live_response.append({
-                'rank':      row.get('rank', 0),
-                'team_id':   team_ent.id if team_ent else None,
-                'team_name': row.get('team_name', ''),
-                'logo':      row.get('team_logo', ''),
-                'points':    row.get('points', 0),
-                'played':    row.get('played', 0),
-                'wins':      row.get('win', 0),
-                'draws':     row.get('draw', 0),
-                'losses':    row.get('lose', 0),
-                'goals_for': row.get('goals_for', 0),
-                'goals_against': row.get('goals_against', 0),
-                'goal_diff': row.get('goal_diff', 0),
-                'form':      row.get('form', ''),
-                'is_highlighted': (
-                    str(row.get('team_external_id')) == str(highlight_team_id) or
-                    (team_ent and str(team_ent.id) == str(highlight_team_id)) or
-                    (bool(highlight_team_name) and (
-                        highlight_team_name.lower().replace(' fc', '').replace(' utd', ' united').strip() in row.get('team_name', '').lower().replace(' fc', '').replace(' utd', ' united').strip() or
-                        row.get('team_name', '').lower().replace(' fc', '').replace(' utd', ' united').strip() in highlight_team_name.lower().replace(' fc', '').replace(' utd', ' united').strip()
-                    ))
-                ),
-            })
-        live_response.sort(key=lambda x: (
-            -x['points'],
-            -x['goal_diff'],
-            -x['goals_for'],
-            x['team_name'].lower(),
-        ))
-        for i, item in enumerate(live_response, 1):
-            item['rank'] = i
-        return Response({
-            'league':    _safe_league_data(league_entity, request),
-            'season':    season,
-            'standings': live_response,
-            'source':    'live_api',
-        })
-
-    # Nothing available
-    return Response({
-        'league':    _safe_league_data(league_entity, request),
-        'season':    season,
-        'standings': standings,
-        'source':    'empty',
-    })
-
-
-def _fetch_league_standings_thesportsdb(league_entity, season):
-    """Fallback: Search league on TheSportsDB API and fetch lookup table standings."""
-    try:
-        from apps.sports_apis.services.thesportsdb import TheSportsDBService
-        tsdb = TheSportsDBService()
-        league_name = league_entity.name if hasattr(league_entity, 'name') else str(league_entity)
-        league_id = None
-
-        if getattr(league_entity, 'api_source', '') == 'thesportsdb':
-            league_id = league_entity.external_id
-
-        if not league_id:
-            all_l_data = tsdb._get('all_leagues.php')
-            leagues = (all_l_data.get('leagues') if isinstance(all_l_data, dict) else []) or []
-            clean_lname = league_name.lower().replace(' league', '').replace(' division', '').strip()
-            for l in leagues:
-                str_lg = str(l.get('strLeague', '')).lower()
-                if clean_lname in str_lg or str_lg in clean_lname or league_name.lower() in str_lg:
-                    league_id = l.get('idLeague')
-                    break
-
-        if league_id:
-            try:
-                s_year = int(str(season).split('-', 1)[0].split('/', 1)[0])
-            except Exception:
-                s_year = 2026
-
-            # Try current year, then walk back up to 2 seasons to find a full table
-            table = []
-            for try_year in [s_year, s_year - 1, s_year - 2]:
-                for s_fmt in [f"{try_year}-{try_year+1}", str(try_year), f"{try_year-1}-{try_year}"]:
-                    candidate = tsdb.get_league_table(str(league_id), s_fmt)
-                    if len(candidate) > len(table):
-                        table = candidate
-                    if len(table) >= 10:
-                        break
-                if len(table) >= 10:
-                    break
-
-            return table
-    except Exception as e:
-        logger.warning(f"Error fetching TSDB standings for {league_entity}: {e}")
-
-    return []
-
-    return []
-
 
 def _fetch_team_fixtures_live(team_entity):
     """Fallback to live provider API (TheSportsDB) for team fixtures when DB has 0 events."""
@@ -2854,250 +1799,6 @@ def _fetch_team_fixtures_live(team_entity):
         return []
 
 
-def _fetch_soccer_standings(external_id, season):
-    cache_key = f'standings:soccer:{external_id}:{season}'
-    cached = cache.get(cache_key)
-    if cached:
-        return cached
- 
-    try:
-        resp = req.get(
-            'https://v3.football.api-sports.io/standings',
-            headers=HEADERS_SPORTS,
-            params={'league': external_id, 'season': season},
-            timeout=10,
-        )
-        if resp.status_code != 200:
-            return []
- 
-        response = resp.json().get('response', [])
-        if not response:
-            return []
- 
-        standings_list = response[0].get('league', {}).get('standings', [[]])[0]
-        result = []
-        for s in standings_list:
-            all_s = s.get('all', {})
-            goals = all_s.get('goals', {})
-            result.append({
-                'rank':            s.get('rank', 0),
-                'team_external_id': str(s.get('team', {}).get('id', '')),
-                'team_name':       s.get('team', {}).get('name', ''),
-                'team_logo':       s.get('team', {}).get('logo', ''),
-                'points':          s.get('points', 0),
-                'played':          all_s.get('played', 0),
-                'win':             all_s.get('win', 0),
-                'draw':            all_s.get('draw', 0),
-                'lose':            all_s.get('lose', 0),
-                'goals_for':       goals.get('for', 0),
-                'goals_against':   goals.get('against', 0),
-                'goal_diff':       s.get('goalsDiff', 0),
-                'form':            s.get('form', ''),
-            })
- 
-        cache.set(cache_key, result, timeout=3600)
-        return result
- 
-    except Exception:
-        return []
- 
- 
-# ─────────────────────────────────────────────────────────────────────────────
-# LEAGUE LEADERS  — DB first, live API fallback
-# ─────────────────────────────────────────────────────────────────────────────
- 
-@api_view(['GET'])
-@permission_classes([AllowAny])
-def get_league_leaders(request, league_id):
-    """
-    GET /api/entities/league/{league_id}/leaders/?season=2024&stat=goals
-    """
-    league_entity = get_object_or_404(Entity, id=league_id, type='league')
-    league_entity = league_entity.canonical_entity or league_entity
-    season    = request.GET.get('season') or str(_current_season('soccer'))
-    stat_type = request.GET.get('stat', 'goals')
- 
-    # DB path
-    canonical = Entity.objects.filter(
-        type='league',
-        api_source=league_entity.api_source,
-        external_id=league_entity.external_id,
-    ).first() or league_entity
- 
-    teams_in_league = Team.objects.filter(
-        league__api_source=canonical.api_source,
-        league__external_id=canonical.external_id,
-    )
-    team_ext_ids = [t.entity.external_id for t in teams_in_league]
- 
-    athletes = Athlete.objects.filter(
-        current_team__api_source=canonical.api_source,
-        current_team__external_id__in=team_ext_ids,
-    ).select_related('entity', 'current_team')
- 
-    leaders_data = []
-    for a in athletes:
-        stats = EntityStats.objects.filter(
-            entity=a.entity, season=season, stat_type='season'
-        ).first()
-        if stats and stat_type in stats.stats_data:
-            leaders_data.append({
-                'athlete_id': a.entity.id,
-                'name':       f"{a.first_name} {a.last_name}",
-                'photo':      a.entity.logo_url,
-                'country':    a.entity.country,
-                'team':       a.current_team.name if a.current_team else '',
-                'team_logo':  a.current_team.logo_url if a.current_team else '',
-                stat_type:    stats.stats_data.get(stat_type, 0),
-            })
- 
-    if leaders_data:
-        leaders_data.sort(key=lambda x: x.get(stat_type, 0), reverse=True)
-        return Response({
-            'league':    EntitySerializer(league_entity, context={'request': request}).data,
-            'season':    season,
-            'stat_type': stat_type,
-            'leaders':   leaders_data[:20],
-            'source':    'db',
-        })
- 
-    # Live API fallback — top scorers / assists from API-Sports
-    if canonical.api_source == 'statpal':
-        live_leaders = _fetch_soccer_leaders(canonical.external_id, int(season), stat_type)
-        return Response({
-            'league':    EntitySerializer(league_entity, context={'request': request}).data,
-            'season':    season,
-            'stat_type': stat_type,
-            'leaders':   live_leaders,
-            'source':    'live_api' if live_leaders else 'empty',
-        })
- 
-    return Response({
-        'league':    EntitySerializer(league_entity, context={'request': request}).data,
-        'season':    season,
-        'stat_type': stat_type,
-        'leaders':   [],
-        'source':    'empty',
-    })
- 
- 
-def _fetch_soccer_leaders(external_id, season, stat_type):
-    cache_key = f'leaders:soccer:{external_id}:{season}:{stat_type}'
-    cached = cache.get(cache_key)
-    if cached:
-        return cached
- 
-    # Map our stat_type to the right API endpoint
-    endpoint_map = {
-        'goals':   'topscorers',
-        'assists': 'topassists',
-        'yellow_cards': 'topyellowcards',
-        'red_cards':    'topredcards',
-    }
-    endpoint = endpoint_map.get(stat_type, 'topscorers')
- 
-    try:
-        resp = req.get(
-            f'https://v3.football.api-sports.io/players/{endpoint}',
-            headers=HEADERS_SPORTS,
-            params={'league': external_id, 'season': season},
-            timeout=10,
-        )
-        if resp.status_code != 200:
-            return []
- 
-        response = resp.json().get('response', [])
-        result = []
-        for item in response[:20]:
-            p    = item.get('player', {})
-            s    = item.get('statistics', [{}])[0]
-            goals_data  = s.get('goals', {})
-            cards_data  = s.get('cards', {})
-            team_data   = s.get('team', {})
- 
-            stat_value = {
-                'goals':        goals_data.get('total', 0),
-                'assists':      goals_data.get('assists', 0),
-                'yellow_cards': cards_data.get('yellow', 0),
-                'red_cards':    cards_data.get('red', 0),
-            }.get(stat_type, 0)
- 
-            result.append({
-                'athlete_id':  None,
-                'name':        p.get('name', ''),
-                'photo':       p.get('photo', ''),
-                'nationality': p.get('nationality', ''),
-                'age':         p.get('age', 0),
-                'team':        team_data.get('name', ''),
-                'team_logo':   team_data.get('logo', ''),
-                stat_type:     stat_value,
-            })
- 
-        cache.set(cache_key, result, timeout=3600)
-        return result
- 
-    except Exception:
-        return []
- 
- 
-# ─────────────────────────────────────────────────────────────────────────────
-# LEAGUE FIXTURES  (unchanged)
-# ─────────────────────────────────────────────────────────────────────────────
- 
-@api_view(['GET'])
-@permission_classes([AllowAny])
-def get_league_fixtures(request, league_id):
-    from apps.event.models import Event
-    from apps.event.serializers import EventSerializer as EvSerializer
- 
-    league_entity = get_object_or_404(Entity, id=league_id, type='league')
-    league_entity = league_entity.canonical_entity or league_entity
-    canonical = Entity.objects.filter(
-        type='league',
-        api_source=league_entity.api_source,
-        external_id=league_entity.external_id,
-    ).first() or league_entity
- 
-    events = Event.objects.filter(
-        league__api_source=canonical.api_source,
-        league__external_id=canonical.external_id,
-    ).select_related('home_entity', 'away_entity').order_by('-start_time')[:50]
- 
-    return Response({
-        'league':   EntitySerializer(league_entity, context={'request': request}).data,
-        'fixtures': EvSerializer(events, many=True).data,
-    })
- 
- 
-# ─────────────────────────────────────────────────────────────────────────────
-# LIST ENTITIES  (unchanged)
-# ─────────────────────────────────────────────────────────────────────────────
- 
-@api_view(['GET'])
-@permission_classes([AllowAny])
-def list_entities(request):
-    queryset = Entity.objects.filter(is_active=True).order_by('-follower_count', 'name')
- 
-    entity_type = request.GET.get('type')
-    sport       = request.GET.get('sport')
-    country     = request.GET.get('country')
- 
-    if entity_type:
-        queryset = queryset.filter(type=entity_type)
-    if sport:
-        queryset = queryset.filter(sport=sport)
-    if country:
-        queryset = queryset.filter(country__icontains=country)
- 
-    paginator = PageNumberPagination()
-    paginator.page_size     = int(request.GET.get('limit', 20))
-    paginator.max_page_size = 100
-    paginated = paginator.paginate_queryset(queryset, request)
- 
-    serializer = EntitySerializer(paginated, many=True, context={'request': request})
-    return paginator.get_paginated_response(serializer.data)
- 
-
 @api_view(['GET'])
 @permission_classes([AllowAny])
 def get_team_fixtures(request, team_id):
@@ -3110,7 +1811,6 @@ def get_team_fixtures(request, team_id):
     team_entity = get_object_or_404(Entity, id=team_id, type='team')
     team_entity = team_entity.canonical_entity or team_entity
 
-    from django.db.models import Q
     events = Event.objects.filter(
         Q(home_entity=team_entity)
         | Q(away_entity=team_entity)
