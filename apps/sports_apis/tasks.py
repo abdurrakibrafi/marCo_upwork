@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 
 
 def _publish(live_score_obj):
-    """Push live score updates to WebSocket consumers"""
+    """Push live score updates to WebSocket consumers (both list and detail)"""
     try:
         channel_layer = get_channel_layer()
         data = dict(LiveScoreSerializer(live_score_obj).data)
@@ -28,6 +28,37 @@ def _publish(live_score_obj):
         async_to_sync(channel_layer.group_send)(
             f"live_scores_{live_score_obj.sport}", payload
         )
+
+        # push to match detail group
+        try:
+            from apps.score.services import get_live_score_detail_data
+            detail_data = get_live_score_detail_data(live_score_obj.id)
+            if detail_data:
+                detail_payload = {
+                    'type': 'score_detail_update',
+                    'success': True,
+                    'message': 'Success',
+                    'timestamp': timezone.now().isoformat(),
+                    'status_code': 200,
+                    'data': detail_data
+                }
+                async_to_sync(channel_layer.group_send)(
+                    f"live_score_detail_{live_score_obj.id}", detail_payload
+                )
+
+                # If there are linked Event IDs, also broadcast to their detail groups
+                from apps.event.models import Event
+                linked_event_ids = Event.objects.filter(
+                    sport=live_score_obj.sport,
+                    external_id=live_score_obj.external_id
+                ).values_list('id', flat=True)
+                for ev_id in linked_event_ids:
+                    if ev_id != live_score_obj.id:
+                        async_to_sync(channel_layer.group_send)(
+                            f"live_score_detail_{ev_id}", detail_payload
+                        )
+        except Exception as e:
+            logger.error(f"WebSocket detail publish failed: {e}")
     except Exception as e:
         logger.error(f"WebSocket publish failed: {e}")
 

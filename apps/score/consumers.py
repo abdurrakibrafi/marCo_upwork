@@ -1,8 +1,16 @@
 import json
+import logging
+from urllib.parse import parse_qs
 from channels.generic.websocket import AsyncWebsocketConsumer
 from channels.db import database_sync_to_async
+from django.core.serializers.json import DjangoJSONEncoder
+from django.utils import timezone
 from .models import LiveScore
 from .serializers import LiveScoreSerializer
+from .services import get_live_score_detail_data
+
+logger = logging.getLogger(__name__)
+
 
 class LiveScoreConsumer(AsyncWebsocketConsumer):
     GROUP_ALL = 'live_scores'
@@ -10,7 +18,6 @@ class LiveScoreConsumer(AsyncWebsocketConsumer):
     async def connect(self):
         # optional ?sport=soccer filter via query param
         query_string = self.scope.get('query_string', b'').decode()
-        from urllib.parse import parse_qs
         params = parse_qs(query_string)
         raw_sport = params.get('sport', [None])[0]
         if raw_sport:
@@ -45,19 +52,148 @@ class LiveScoreConsumer(AsyncWebsocketConsumer):
             'type': 'snapshot',
             'count': len(games),
             'games': games
-        }))
+        }, cls=DjangoJSONEncoder))
 
     async def score_update(self, event):
-        await self.send(text_data=json.dumps(event))
+        await self.send(text_data=json.dumps(event, cls=DjangoJSONEncoder))
 
     @database_sync_to_async
     def get_live_games(self):
-        from django.db import close_old_connections
-        close_old_connections()
         qs = LiveScore.objects.filter(status='live').order_by('-updated_at')
         if self.sport_filter:
             qs = qs.filter(sport=self.sport_filter)
         serializer = LiveScoreSerializer(qs, many=True, context={'request': None})
         return serializer.data
-    
-    
+
+
+class LiveScoreDetailConsumer(AsyncWebsocketConsumer):
+    """
+    WebSocket consumer for live match details.
+    Clients can connect to:
+      - /ws/scores/live/detail/<score_id>/
+      - /ws/scores/live/<score_id>/detail/
+      - /ws/scores/live/<score_id>/
+      - /ws/scores/live/detail/?score_id=<score_id>
+    """
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.score_id = None
+        self.group_name = None
+
+    async def connect(self):
+        # 1. Extract score_id from URL route kwargs if present
+        score_id_param = self.scope.get('url_route', {}).get('kwargs', {}).get('score_id')
+
+        # 2. If not in URL route, check query parameters
+        if not score_id_param:
+            query_string = self.scope.get('query_string', b'').decode()
+            params = parse_qs(query_string)
+            score_id_param = params.get('score_id', [None])[0] or params.get('id', [None])[0]
+
+        if score_id_param:
+            try:
+                self.score_id = int(score_id_param)
+            except (ValueError, TypeError):
+                self.score_id = score_id_param
+
+        # 3. Add to channel layer group for real-time match detail updates
+        if self.score_id:
+            self.group_name = f'live_score_detail_{self.score_id}'
+            await self.channel_layer.group_add(self.group_name, self.channel_name)
+
+        await self.accept()
+
+        # 4. Immediately send the current live match detail snapshot
+        if self.score_id:
+            await self.send_detail()
+
+    async def disconnect(self, close_code):
+        if self.group_name:
+            await self.channel_layer.group_discard(self.group_name, self.channel_name)
+
+    async def receive(self, text_data=None, bytes_data=None):
+        if not text_data:
+            return
+        try:
+            payload = json.loads(text_data)
+        except Exception:
+            return
+
+        msg_type = payload.get('type')
+        action = payload.get('action')
+
+        if msg_type == 'ping':
+            await self.send(text_data=json.dumps({'type': 'pong'}))
+            return
+
+        # Handle subscribing to a specific score_id via WebSocket message
+        if action in ('subscribe', 'set_score_id') or ('score_id' in payload and action != 'get_detail'):
+            new_score_id = payload.get('score_id') or payload.get('id')
+            if new_score_id:
+                if self.group_name:
+                    await self.channel_layer.group_discard(self.group_name, self.channel_name)
+
+                try:
+                    self.score_id = int(new_score_id)
+                except (ValueError, TypeError):
+                    self.score_id = new_score_id
+
+                self.group_name = f'live_score_detail_{self.score_id}'
+                await self.channel_layer.group_add(self.group_name, self.channel_name)
+                await self.send_detail()
+
+        elif action in ('get_detail', 'refresh', 'snapshot'):
+            await self.send_detail()
+
+    async def send_detail(self):
+        """Fetch match details and send to the connected client"""
+        if not self.score_id:
+            await self.send(text_data=json.dumps({
+                'type': 'live_score_detail',
+                'success': False,
+                'message': 'No score_id specified',
+                'timestamp': timezone.now().isoformat(),
+                'status_code': 400,
+                'data': None
+            }, cls=DjangoJSONEncoder))
+            return
+
+        detail_data = await self.fetch_detail(self.score_id)
+        if detail_data is not None:
+            response = {
+                'type': 'live_score_detail',
+                'success': True,
+                'message': 'Success',
+                'timestamp': timezone.now().isoformat(),
+                'status_code': 200,
+                'data': detail_data
+            }
+        else:
+            response = {
+                'type': 'live_score_detail',
+                'success': False,
+                'message': 'Game not found',
+                'timestamp': timezone.now().isoformat(),
+                'status_code': 404,
+                'data': None
+            }
+
+        await self.send(text_data=json.dumps(response, cls=DjangoJSONEncoder))
+
+    async def score_detail_update(self, event):
+        """Called when a score detail update is broadcasted via channel layer"""
+        # If event already contains formatted response dict
+        if 'data' in event and 'success' in event:
+            await self.send(text_data=json.dumps(event, cls=DjangoJSONEncoder))
+        else:
+            # Refresh and send latest detail
+            await self.send_detail()
+
+    async def score_update(self, event):
+        """Handle general score_update event broadcasted to match group"""
+        await self.send_detail()
+
+    @database_sync_to_async
+    def fetch_detail(self, score_id):
+        return get_live_score_detail_data(score_id)
