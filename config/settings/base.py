@@ -231,8 +231,27 @@ CELERY_ENABLE_UTC = True
 CELERY_TASK_DEFAULT_RETRY_DELAY = 60
 CELERY_TASK_MAX_RETRIES = 3
 CELERY_WORKER_PREFETCH_MULTIPLIER = 1
-CELERY_TASK_ACKS_LATE = True
 CELERY_WORKER_MAX_TASKS_PER_CHILD = 1000
+
+# ── Celery Task Priority Routing ─────────────────────────────────────────────
+CELERY_TASK_DEFAULT_QUEUE = 'default'
+CELERY_TASK_ROUTES = {
+    # ── High Priority (Real-time live scores) ──
+    'apps.event.tasks.sync_statpal_data': {'queue': 'live_scores'},
+    'apps.sports_apis.tasks.update_nfl_live_scores': {'queue': 'live_scores'},
+
+    # ── News Feed & RSS ──
+    'apps.feed.tasks.*': {'queue': 'news_feed'},
+
+    # ── Heavy Background (Logos, Venues, Fixtures & Stats) ──
+    'apps.sports_apis.tasks.*': {'queue': 'heavy_background'},
+    'apps.entity.tasks.*': {'queue': 'heavy_background'},
+    'apps.event.tasks.sync_statpal_fixtures_data': {'queue': 'heavy_background'},
+    'apps.event.tasks.sync_thesportsdb_upcoming_fixtures': {'queue': 'heavy_background'},
+    'apps.event.tasks.update_all_fixtures': {'queue': 'heavy_background'},
+    'apps.event.tasks.check_completed_events': {'queue': 'heavy_background'},
+    'apps.event.tasks.cleanup_stale_live_events': {'queue': 'heavy_background'},
+}
 
 
 DOCS_USERNAME = env("DOCS_USERNAME")
