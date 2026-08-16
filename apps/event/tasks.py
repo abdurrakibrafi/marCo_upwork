@@ -1535,7 +1535,7 @@ def sync_statpal_data(self):
     Recommended beat schedule: every 60 seconds.
     """
     lock_id = "sync_statpal_data_lock"
-    if not cache.add(lock_id, "true", timeout=300):
+    if not cache.add(lock_id, "true", timeout=90):
         logger.info("sync_statpal_data already running, skipping this cycle")
         return "skipped — already running"
 
@@ -1594,7 +1594,7 @@ def sync_statpal_data(self):
                             continue
                         live_obj = _save_livescore(row, event_obj)
                         if live_obj:
-                            live_objects_to_publish.append(live_obj)
+                            _publish(live_obj)
                         saved += 1
                 except Exception as exc:
                     errors += 1
@@ -1602,9 +1602,6 @@ def sync_statpal_data(self):
                         "[StatPal] Save failed — external_id=%r sport=%s: %s",
                         row.get("external_id"), sport, exc,
                     )
-
-        for live_obj in live_objects_to_publish:
-            _publish(live_obj)
 
         msg = f"sync_statpal_data — saved={saved}, skipped={skipped}, errors={errors}"
         logger.info(msg)
