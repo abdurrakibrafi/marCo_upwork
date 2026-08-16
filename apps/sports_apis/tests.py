@@ -322,3 +322,78 @@ class NonSportsNewsFetchingTestCase(TestCase):
         self.assertEqual(articles[0]['url'], 'https://news.com/article1')
 
 
+class EventHighlightTasksTestCase(TestCase):
+    def setUp(self):
+        from apps.entity.models import Entity
+        from apps.event.models import Event
+        from django.utils import timezone
+        from datetime import timedelta
+
+        self.home_team = Entity.objects.create(
+            type='team',
+            name='Team Alpha',
+            sport='soccer',
+            api_source='thesportsdb',
+            external_id='1001',
+            has_api_data=True
+        )
+        self.away_team = Entity.objects.create(
+            type='team',
+            name='Team Beta',
+            sport='soccer',
+            api_source='thesportsdb',
+            external_id='1002',
+            has_api_data=True
+        )
+        self.event_recent = Event.objects.create(
+            sport='soccer',
+            home_entity=self.home_team,
+            away_entity=self.away_team,
+            start_time=timezone.now() - timedelta(hours=2),
+            status='completed',
+            api_source='thesportsdb',
+            external_id='e1001',
+            metadata={}
+        )
+        self.event_exhausted = Event.objects.create(
+            sport='soccer',
+            home_entity=self.home_team,
+            away_entity=self.away_team,
+            start_time=timezone.now() - timedelta(hours=3),
+            status='completed',
+            api_source='thesportsdb',
+            external_id='e1002',
+            metadata={'highlight_search_exhausted': True}
+        )
+
+    @patch('apps.sports_apis.services.thesportsdb.thesportsdb_service.get_event_highlights')
+    @patch('requests.get')
+    def test_fetch_highlight_for_event_exhausted_sets_metadata(self, mock_get, mock_tsdb):
+        from apps.sports_apis.tasks import fetch_highlight_for_event
+        mock_tsdb.return_value = []
+        mock_get.return_value.status_code = 404
+
+        class DummyRequest:
+            retries = 3
+
+        task = fetch_highlight_for_event
+        task.request = DummyRequest()
+        task.max_retries = 3
+
+        result = task(self.event_recent.id)
+        self.assertIn("No highlight found", result)
+
+        self.event_recent.refresh_from_db()
+        self.assertTrue(self.event_recent.metadata.get('highlight_search_exhausted'))
+
+    @patch('apps.sports_apis.tasks.fetch_highlight_for_event.apply_async')
+    def test_fetch_highlights_for_recently_completed_events_excludes_exhausted(self, mock_apply_async):
+        from apps.sports_apis.tasks import fetch_highlights_for_recently_completed_events
+        fetch_highlights_for_recently_completed_events()
+
+        # Should only trigger for self.event_recent, not self.event_exhausted
+        self.assertEqual(mock_apply_async.call_count, 1)
+        mock_apply_async.assert_called_with(args=[self.event_recent.id], countdown=0)
+
+
+

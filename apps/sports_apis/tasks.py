@@ -405,6 +405,10 @@ def fetch_highlight_for_event(self, event_id: int):
                 f"Highlight not found yet for Event {event_id}. Retrying in 15 minutes (Retry {self.request.retries + 1}/{self.max_retries})...")
             raise self.retry()
         else:
+            meta = event.metadata or {}
+            meta['highlight_search_exhausted'] = True
+            event.metadata = meta
+            event.save(update_fields=['metadata'])
             return f"Highlight search completed. No highlight found for Event {event_id}"
 
 
@@ -425,6 +429,8 @@ def fetch_highlights_for_recently_completed_events():
         start_time__gte=cutoff,
     ).exclude(
         id__in=EventHighlight.objects.values_list('event_id', flat=True)
+    ).exclude(
+        metadata__highlight_search_exhausted=True
     )
 
     count = 0
