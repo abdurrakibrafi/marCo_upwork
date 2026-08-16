@@ -440,8 +440,12 @@ def get_live_score_detail_data(score_id, request=None):
         league_name = raw.get('league_name', '')
         home_rr = raw.get('event_home_rr')
         away_rr = raw.get('event_away_rr')
-        scorecard = raw.get('scorecard', {})
-        commentary_list = raw.get('commentaries', {}).get('commentary', [])
+        scorecard = raw.get('scorecard') if isinstance(raw.get('scorecard'), dict) else {}
+        commentaries = raw.get('commentaries')
+        if isinstance(commentaries, dict):
+            commentary_list = commentaries.get('commentary', [])
+        else:
+            commentary_list = []
         if isinstance(commentary_list, dict):
             commentary_list = [commentary_list]
         elif not isinstance(commentary_list, list):
@@ -575,7 +579,11 @@ def get_live_score_detail_data(score_id, request=None):
                     })
 
             # Extract ball_by_ball
-            commentary_list = raw.get('commentaries', {}).get('commentary', [])
+            commentaries = raw.get('commentaries')
+            if isinstance(commentaries, dict):
+                commentary_list = commentaries.get('commentary', [])
+            else:
+                commentary_list = []
             if isinstance(commentary_list, dict):
                 commentary_list = [commentary_list]
             elif not isinstance(commentary_list, list):
