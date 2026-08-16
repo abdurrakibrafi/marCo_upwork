@@ -420,6 +420,7 @@ def fetch_highlights_for_recently_completed_events():
     """
     from apps.event.models import Event, EventHighlight
     from django.utils import timezone
+    from django.db.models import Q
     from datetime import timedelta
 
     cutoff = timezone.now() - timedelta(hours=24)
@@ -429,8 +430,8 @@ def fetch_highlights_for_recently_completed_events():
         start_time__gte=cutoff,
     ).exclude(
         id__in=EventHighlight.objects.values_list('event_id', flat=True)
-    ).exclude(
-        metadata__highlight_search_exhausted=True
+    ).filter(
+        Q(metadata__highlight_search_exhausted=False) | Q(metadata__highlight_search_exhausted__isnull=True)
     )
 
     count = 0

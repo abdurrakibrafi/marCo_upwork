@@ -373,14 +373,13 @@ class EventHighlightTasksTestCase(TestCase):
         mock_tsdb.return_value = []
         mock_get.return_value.status_code = 404
 
-        class DummyRequest:
-            retries = 3
-
         task = fetch_highlight_for_event
-        task.request = DummyRequest()
-        task.max_retries = 3
+        task.push_request(retries=task.max_retries)
+        try:
+            result = task(self.event_recent.id)
+        finally:
+            task.pop_request()
 
-        result = task(self.event_recent.id)
         self.assertIn("No highlight found", result)
 
         self.event_recent.refresh_from_db()
@@ -389,11 +388,18 @@ class EventHighlightTasksTestCase(TestCase):
     @patch('apps.sports_apis.tasks.fetch_highlight_for_event.apply_async')
     def test_fetch_highlights_for_recently_completed_events_excludes_exhausted(self, mock_apply_async):
         from apps.sports_apis.tasks import fetch_highlights_for_recently_completed_events
-        fetch_highlights_for_recently_completed_events()
 
-        # Should only trigger for self.event_recent, not self.event_exhausted
+        # Explicitly verify test event has empty metadata {}
+        self.assertEqual(self.event_recent.metadata, {})
+
+        result = fetch_highlights_for_recently_completed_events()
+
+        # Should trigger for self.event_recent (empty metadata), but NOT for self.event_exhausted
         self.assertEqual(mock_apply_async.call_count, 1)
-        mock_apply_async.assert_called_with(args=[self.event_recent.id], countdown=0)
+        mock_apply_async.assert_called_once_with(args=[self.event_recent.id], countdown=0)
+        self.assertEqual(result, "Triggered highlight checks for 1 completed events")
+
+
 
 
 
