@@ -230,8 +230,16 @@ CELERY_TIMEZONE = 'UTC'
 CELERY_ENABLE_UTC = True
 CELERY_TASK_DEFAULT_RETRY_DELAY = 60
 CELERY_TASK_MAX_RETRIES = 3
-CELERY_WORKER_PREFETCH_MULTIPLIER = 1
 CELERY_WORKER_MAX_TASKS_PER_CHILD = 1000
+
+CELERY_IMPORTS = (
+    'apps.event.tasks',
+    'apps.sports_apis.tasks',
+    'apps.feed.tasks',
+    'apps.entity.tasks',
+    'apps.score.tasks',
+    'apps.source.tasks',
+)
 
 # ── Celery Task Priority Routing ─────────────────────────────────────────────
 CELERY_TASK_DEFAULT_QUEUE = 'default'
