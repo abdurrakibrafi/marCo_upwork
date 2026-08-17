@@ -1590,57 +1590,47 @@ def get_team_roster(request, team_id):
 # TEAM STANDINGS
 # ─────────────────────────────────────────────────────────────────────────────
 
-def _filter_and_rank_by_team_conference(standings_list, team_entity):
+def _filter_by_team_division(standings_list, team_entity):
     """
-    Given a list of standings rows from hierarchical sports (MLB, NBA, NFL, NHL),
-    identify the team's conference (e.g. American League, Eastern Conference, AFC),
-    filter to that conference, sort by win_pct/points/wins, and rank sequentially 1..N.
-    Also returns by_conference dictionary.
+    Given hierarchical standings rows (MLB, NBA, NFL, NHL),
+    find the team's exact division (and conference), and return ONLY
+    the teams belonging to that division, ordered by their official rank (1..N).
     """
     if not standings_list:
-        return [], {}, None
+        return [], None, None
 
     clean_team = team_entity.name.lower().replace(' fc', '').replace(' utd', ' united').strip()
     target_conf = None
+    target_div = None
 
-    # Group by conference and find team's conference
-    by_conf = {}
+    # Find the team's conference and division
     for row in standings_list:
-        conf_name = str(row.get('conference') or 'League').strip()
-        if conf_name not in by_conf:
-            by_conf[conf_name] = []
-        by_conf[conf_name].append(dict(row))
-
         t_name = str(row.get('team_name', '')).lower().replace(' fc', '').replace(' utd', ' united').strip()
         is_match = (clean_team in t_name) or (t_name in clean_team) or (team_entity.external_id and str(row.get('team_external_id')) == str(team_entity.external_id))
-        if is_match and not target_conf:
-            target_conf = conf_name
+        if is_match:
+            target_conf = str(row.get('conference') or '').strip()
+            target_div = str(row.get('division') or '').strip()
+            break
 
-    by_conf_ranked = {}
-    for conf_name, teams in by_conf.items():
-        sorted_teams = sorted(
-            teams,
-            key=lambda x: (
-                x.get('points', 0),
-                x.get('win_pct', 0),
-                x.get('wins', 0),
-                x.get('goal_diff', 0),
-                x.get('goals_for', 0)
-            ),
-            reverse=True
-        )
-        for idx, t in enumerate(sorted_teams, 1):
-            t['rank'] = idx
-            t_name = str(t.get('team_name', '')).lower().replace(' fc', '').replace(' utd', ' united').strip()
-            t['is_highlighted'] = bool((clean_team in t_name) or (t_name in clean_team) or (team_entity.external_id and str(t.get('team_external_id')) == str(team_entity.external_id)))
-        by_conf_ranked[conf_name] = sorted_teams
+    # If team's division is found, filter to that exact division (and conference)
+    division_teams = []
+    if target_div:
+        for row in standings_list:
+            row_conf = str(row.get('conference') or '').strip()
+            row_div = str(row.get('division') or '').strip()
+            if row_div == target_div and (not target_conf or row_conf == target_conf):
+                row_copy = dict(row)
+                t_name = str(row_copy.get('team_name', '')).lower().replace(' fc', '').replace(' utd', ' united').strip()
+                row_copy['is_highlighted'] = bool((clean_team in t_name) or (t_name in clean_team) or (team_entity.external_id and str(row_copy.get('team_external_id')) == str(team_entity.external_id)))
+                division_teams.append(row_copy)
 
-    if target_conf and target_conf in by_conf_ranked:
-        selected_standings = by_conf_ranked[target_conf]
-    else:
-        selected_standings = list(by_conf_ranked.values())[0] if by_conf_ranked else standings_list
+    # Sort division teams by official rank (1, 2, 3...)
+    if division_teams:
+        division_teams.sort(key=lambda x: int(x.get('rank') or 999))
+        return division_teams, target_conf, target_div
 
-    return selected_standings, by_conf_ranked, target_conf
+    # Fallback to original standings if division match wasn't found
+    return standings_list, target_conf, target_div
 
 
 @api_view(['GET'])
@@ -1763,7 +1753,7 @@ def get_team_standings(request, team_id):
     if team_entity.sport in ('baseball', 'mlb'):
         mlb_standings = _fetch_statpal_hierarchical_standings('baseball', f'standings:baseball:mlb:{season}')
         if mlb_standings:
-            selected, by_conf, conf_name = _filter_and_rank_by_team_conference(mlb_standings, team_entity)
+            selected, conf_name, div_name = _filter_by_team_division(mlb_standings, team_entity)
             return Response({
                 'team': EntitySerializer(team_entity, context={'request': request}).data,
                 'season': season,
@@ -1775,7 +1765,7 @@ def get_team_standings(request, team_id):
     if team_entity.sport in ('basketball', 'nba'):
         nba_standings = _fetch_statpal_hierarchical_standings('basketball', f'standings:nba:{season}')
         if nba_standings:
-            selected, by_conf, conf_name = _filter_and_rank_by_team_conference(nba_standings, team_entity)
+            selected, conf_name, div_name = _filter_by_team_division(nba_standings, team_entity)
             return Response({
                 'team': EntitySerializer(team_entity, context={'request': request}).data,
                 'season': season,
@@ -1787,7 +1777,7 @@ def get_team_standings(request, team_id):
     if team_entity.sport in ('hockey', 'ice_hockey', 'nhl'):
         nhl_standings = _fetch_statpal_hierarchical_standings('hockey', f'standings:nhl:{season}')
         if nhl_standings:
-            selected, by_conf, conf_name = _filter_and_rank_by_team_conference(nhl_standings, team_entity)
+            selected, conf_name, div_name = _filter_by_team_division(nhl_standings, team_entity)
             return Response({
                 'team': EntitySerializer(team_entity, context={'request': request}).data,
                 'season': season,
@@ -1799,7 +1789,7 @@ def get_team_standings(request, team_id):
     if team_entity.sport in ('american_football', 'football', 'nfl'):
         nfl_standings = _fetch_statpal_hierarchical_standings('american_football', f'standings:nfl:{season}')
         if nfl_standings:
-            selected, by_conf, conf_name = _filter_and_rank_by_team_conference(nfl_standings, team_entity)
+            selected, conf_name, div_name = _filter_by_team_division(nfl_standings, team_entity)
             return Response({
                 'team': EntitySerializer(team_entity, context={'request': request}).data,
                 'season': season,
