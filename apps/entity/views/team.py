@@ -802,7 +802,7 @@ def get_team_stats(request, team_id):
         if not tour:
             tour = 'wta' if ('wta' in team_entity.name.lower() or 'women' in team_entity.name.lower()) else 'atp'
         rankings = _get_tennis_rankings_helper(tour)
-        player_stats = _fetch_thesportsdb_player_stats(team_entity.name, team_entity=team_entity) or {}
+        player_stats = _fetch_thesportsdb_player_stats(team_entity.name, athlete_entity=team_entity) or {}
 
         clean_name = team_entity.name.lower().strip()
         matched_rank = None

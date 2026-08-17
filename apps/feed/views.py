@@ -259,7 +259,19 @@ def get_entity_feed(request, entity_id):
         publisher_name__in=hidden_publishers
     ).select_related('source').prefetch_related('entities').order_by('-published_at').distinct()
 
-    
+    # If entity has no feed items yet, auto-trigger targeted RSS source discovery
+    if not feed.exists():
+        lock_key = f"feed_auto_init:{entity.id}"
+        try:
+            if cache.add(lock_key, True, timeout=60):
+                from .tasks import ensure_entity_has_rss_source
+                try:
+                    ensure_entity_has_rss_source.delay(entity.id)
+                except Exception:
+                    pass
+        except Exception:
+            pass
+
     # Paginate
     paginator = FeedPagination()
     paginated_feed = paginator.paginate_queryset(feed, request)
@@ -443,7 +455,8 @@ def trigger_feed_update(request, entity_id):
     """
     entity = get_object_or_404(Entity, id=entity_id)
     
-    from .tasks import update_all_entity_feeds
+    from .tasks import update_all_entity_feeds, ensure_entity_has_rss_source
+    ensure_entity_has_rss_source.delay(entity_id)
     update_all_entity_feeds.delay(entity_id)
     
     return Response({

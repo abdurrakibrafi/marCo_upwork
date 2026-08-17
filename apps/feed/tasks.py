@@ -487,14 +487,18 @@ def ensure_entity_has_rss_source(entity_id: int):
         return f"Entity {entity_id} not found"
 
     from apps.entity.utils.matcher import is_national_team
-    sport_term = (entity.sport or '').strip()
-    if is_national_team(entity.name) and sport_term and sport_term.lower() != 'none':
+    sport_term = (entity.sport or '').strip().lower()
+    if is_national_team(entity.name) and sport_term and sport_term != 'none':
         if sport_term == 'soccer':
             sport_term = 'soccer OR football'
-        elif sport_term == 'football':
+        elif sport_term in ('football', 'american_football', 'nfl'):
             sport_term = 'nfl OR "american football"'
-        elif sport_term == 'basketball':
+        elif sport_term in ('basketball', 'nba'):
             sport_term = 'nba OR basketball'
+        elif sport_term in ('baseball', 'mlb'):
+            sport_term = 'mlb OR baseball'
+        elif sport_term in ('hockey', 'ice_hockey', 'nhl'):
+            sport_term = 'nhl OR hockey'
         query_str = f'"{entity.name}" AND ({sport_term})'
     else:
         query_str = f'"{entity.name}"'

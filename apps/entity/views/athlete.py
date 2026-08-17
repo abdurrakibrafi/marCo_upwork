@@ -145,7 +145,9 @@ def _fetch_soccer_player_stats(external_id, season):
         return {}
 
 
-def _fetch_thesportsdb_player_stats(player_name, athlete_entity=None, force_refresh=False):
+def _fetch_thesportsdb_player_stats(player_name, athlete_entity=None, force_refresh=False, team_entity=None, **kwargs):
+    if not athlete_entity and team_entity:
+        athlete_entity = team_entity
     cache_key = f'player_stats:thesportsdb:{player_name.lower().strip()}'
     if force_refresh:
         cache.delete(cache_key)
