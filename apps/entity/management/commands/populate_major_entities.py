@@ -117,7 +117,77 @@ class Command(BaseCommand):
 
             self.stdout.write(self.style.SUCCESS(f"Successfully populated NBA with {total_nba_teams} teams"))
 
-        # 4. Cricket Leagues
+        # 4. NFL (American Football)
+        self.stdout.write("Populating american football league: NFL...")
+        nfl_league = get_or_create_precise_entity('nfl', 'NFL', 'american_football', 'league')
+        League.objects.get_or_create(entity=nfl_league)
+
+        r_nfl = statpal_service.get_nfl_standings()
+        if not r_nfl.get('success'):
+            self.stdout.write(self.style.WARNING(f"Failed to fetch NFL standings: {r_nfl.get('error')}"))
+        else:
+            cats = r_nfl.get('data', {}).get('standings', {}).get('category', [])
+            if isinstance(cats, dict):
+                cats = [cats]
+            total_nfl_teams = 0
+            for cat in cats:
+                for lg in cat.get('league', []):
+                    for div in lg.get('division', []):
+                        for t in div.get('team', []):
+                            tid = t.get('id')
+                            tname = t.get('name')
+                            if tid and tname:
+                                team_entity = get_or_create_precise_entity(tid, tname, 'american_football', 'team')
+                                team_obj, _ = Team.objects.get_or_create(entity=team_entity)
+                                team_obj.league = nfl_league
+                                try:
+                                    team_obj.total_wins = int(t.get('won', 0))
+                                    team_obj.total_losses = int(t.get('lost', 0))
+                                    total = team_obj.total_wins + team_obj.total_losses
+                                    if total > 0:
+                                        team_obj.win_percentage = round((team_obj.total_wins / total) * 100, 2)
+                                except Exception:
+                                    pass
+                                team_obj.save()
+                                total_nfl_teams += 1
+            self.stdout.write(self.style.SUCCESS(f"Successfully populated NFL with {total_nfl_teams} teams"))
+
+        # 5. MLB (Baseball)
+        self.stdout.write("Populating baseball league: MLB...")
+        mlb_league = get_or_create_precise_entity('mlb', 'MLB', 'baseball', 'league')
+        League.objects.get_or_create(entity=mlb_league)
+
+        r_mlb = statpal_service.get_mlb_standings()
+        if not r_mlb.get('success'):
+            self.stdout.write(self.style.WARNING(f"Failed to fetch MLB standings: {r_mlb.get('error')}"))
+        else:
+            cats = r_mlb.get('data', {}).get('standings', {}).get('category', [])
+            if isinstance(cats, dict):
+                cats = [cats]
+            total_mlb_teams = 0
+            for cat in cats:
+                for lg in cat.get('league', []):
+                    for div in lg.get('division', []):
+                        for t in div.get('team', []):
+                            tid = t.get('id')
+                            tname = t.get('name')
+                            if tid and tname:
+                                team_entity = get_or_create_precise_entity(tid, tname, 'baseball', 'team')
+                                team_obj, _ = Team.objects.get_or_create(entity=team_entity)
+                                team_obj.league = mlb_league
+                                try:
+                                    team_obj.total_wins = int(t.get('won', 0))
+                                    team_obj.total_losses = int(t.get('lost', 0))
+                                    total = team_obj.total_wins + team_obj.total_losses
+                                    if total > 0:
+                                        team_obj.win_percentage = round((team_obj.total_wins / total) * 100, 2)
+                                except Exception:
+                                    pass
+                                team_obj.save()
+                                total_mlb_teams += 1
+            self.stdout.write(self.style.SUCCESS(f"Successfully populated MLB with {total_mlb_teams} teams"))
+
+        # 6. Cricket Leagues
         cricket_leagues = [
             {'id': '1077', 'name': 'County Championship Division One', 'sport': 'cricket'},
             {'id': '1078', 'name': 'County Championship Division Two', 'sport': 'cricket'},

@@ -44,6 +44,11 @@ def search_entities(request):
     if not sport:
         q_lower = query.lower()
         SPORT_KEYWORDS = {
+            'american football': 'american_football',
+            'nfl': 'american_football',
+            'mlb': 'baseball',
+            'nba': 'basketball',
+            'nhl': 'hockey',
             'field hockey': 'hockey',
             'ice hockey': 'hockey',
             'hockey': 'hockey',
