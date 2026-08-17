@@ -511,6 +511,10 @@ def ensure_entity_has_rss_source(entity_id: int):
             'discovery_source': 'known',
         }
     )
+    if not created:
+        source.is_active = True
+        source.poll_failures = 0
+        source.save(update_fields=['is_active', 'poll_failures'])
     source.entities.add(entity)
 
     # Deactivate old unscoped sources for national team entities to avoid duplicates
