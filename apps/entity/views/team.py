@@ -772,17 +772,17 @@ def get_team_stats(request, team_id):
         if not stats_data:
             stats_data = _fetch_soccer_team_stats_thesportsdb(team_entity)
 
-    elif team_entity.sport == 'basketball':
-        stats_data = _fetch_nba_team_stats_statpal(team_entity.external_id, api_season)
+    elif team_entity.sport in ('basketball', 'nba'):
+        stats_data = _fetch_nba_team_stats_statpal(team_entity.external_id, api_season, team_name=team_entity.name)
 
-    elif team_entity.sport == 'football':
-        stats_data = _fetch_nfl_team_stats(team_entity.external_id, api_season)
+    elif team_entity.sport in ('football', 'american_football', 'nfl'):
+        stats_data = _fetch_nfl_team_stats(team_entity.external_id, api_season, team_name=team_entity.name)
 
-    elif team_entity.sport == 'hockey':
+    elif team_entity.sport in ('hockey', 'ice_hockey', 'nhl'):
         stats_data = _fetch_nhl_team_stats(team_entity.name, api_season)
 
-    elif team_entity.sport == 'baseball':
-        stats_data = _fetch_mlb_team_stats(team_entity.external_id, api_season)
+    elif team_entity.sport in ('baseball', 'mlb'):
+        stats_data = _fetch_mlb_team_stats(team_entity.external_id, api_season, team_name=team_entity.name)
 
     elif team_entity.sport in ['handball', 'volleyball']:
         try:
@@ -956,11 +956,15 @@ def _fetch_cricket_team_stats(external_id, season):
         return {}
 
 
-def _fetch_nfl_team_stats(external_id, season):
-    cache_key = f'team_stats:football:{external_id}:{season}:statpal'
-    cached = cache.get(cache_key)
-    if cached:
-        return cached
+def _fetch_nfl_team_stats(external_id, season, team_name=None):
+    clean_name = str(team_name or '').lower().strip()
+    cache_key = f'team_stats:football:{external_id}:{clean_name}:{season}:statpal'
+    try:
+        cached = cache.get(cache_key)
+        if cached:
+            return cached
+    except Exception:
+        pass
 
     try:
         from apps.sports_apis.services.statpal import statpal_service
@@ -985,29 +989,47 @@ def _fetch_nfl_team_stats(external_id, season):
                     if isinstance(teams, dict):
                         teams = [teams]
                     for t in teams:
-                        if str(t.get('id', '')) == str(external_id):
+                        t_id = str(t.get('id', ''))
+                        t_name = str(t.get('name', '')).lower().strip()
+                        is_match = (external_id and str(external_id) == t_id) or (
+                            clean_name and (clean_name in t_name or t_name in clean_name)
+                        )
+                        if is_match:
                             wins   = int(t.get('won') or 0)
                             losses = int(t.get('lost') or 0)
                             ties   = int(t.get('ties') or 0)
                             played = wins + losses + ties
+                            win_pct_raw = str(t.get('win_percentage') or '0')
+                            if win_pct_raw.startswith('.'):
+                                win_pct_raw = '0' + win_pct_raw
+                            try:
+                                win_pct = float(win_pct_raw)
+                            except ValueError:
+                                win_pct = 0.0
+
                             stats_data = {
                                 'wins':           wins,
                                 'losses':         losses,
                                 'ties':           ties,
                                 'matches_played': played,
-                                'win_percentage': float(t.get('win_percentage', '0').replace('.', '0.', 1)
-                                                        if t.get('win_percentage', '').startswith('.') else
-                                                        t.get('win_percentage') or 0),
+                                'win_percentage': round(win_pct * 100, 1) if win_pct <= 1 else win_pct,
                                 'points_for':     int(t.get('points_for') or 0),
                                 'points_against': int(t.get('points_against') or 0),
+                                'runs_diff':      int(t.get('difference') or 0),
+                                'goal_diff':      int(t.get('difference') or 0),
                                 'conference':     lg.get('name', ''),
                                 'division':       div.get('name', ''),
                                 'rank':           int(t.get('position') or 0),
                                 'streak':         t.get('streak', ''),
                                 'home_record':    t.get('home_record', ''),
                                 'road_record':    t.get('road_record', ''),
+                                'conference_record': t.get('conference_record', ''),
+                                'division_record': t.get('division_record', ''),
                             }
-                            cache.set(cache_key, stats_data, timeout=3600)
+                            try:
+                                cache.set(cache_key, stats_data, timeout=3600)
+                            except Exception:
+                                pass
                             return stats_data
         return {}
     except Exception:
@@ -1068,11 +1090,15 @@ def _fetch_nhl_team_stats(team_name, season):
         return {}
 
 
-def _fetch_mlb_team_stats(external_id, season):
-    cache_key = f'team_stats:baseball:{external_id}:{season}:statpal'
-    cached = cache.get(cache_key)
-    if cached:
-        return cached
+def _fetch_mlb_team_stats(external_id, season, team_name=None):
+    clean_name = str(team_name or '').lower().strip()
+    cache_key = f'team_stats:baseball:{external_id}:{clean_name}:{season}:statpal'
+    try:
+        cached = cache.get(cache_key)
+        if cached:
+            return cached
+    except Exception:
+        pass
 
     try:
         from apps.sports_apis.services.statpal import statpal_service
@@ -1093,7 +1119,12 @@ def _fetch_mlb_team_stats(external_id, season):
                     if isinstance(teams, dict):
                         teams = [teams]
                     for t in teams:
-                        if str(t.get('id', '')) == str(external_id):
+                        t_id = str(t.get('id', ''))
+                        t_name = str(t.get('name', '')).lower().strip()
+                        is_match = (external_id and str(external_id) == t_id) or (
+                            clean_name and (clean_name in t_name or t_name in clean_name)
+                        )
+                        if is_match:
                             wins = int(t.get('won') or t.get('wins') or 0)
                             losses = int(t.get('lost') or t.get('losses') or 0)
                             played = int(t.get('games_played') or (wins + losses))
@@ -1111,7 +1142,10 @@ def _fetch_mlb_team_stats(external_id, season):
                                 'division': div.get('name', ''),
                                 'rank': int(t.get('position') or t.get('rank') or 0),
                             }
-                            cache.set(cache_key, stats_data, timeout=3600)
+                            try:
+                                cache.set(cache_key, stats_data, timeout=3600)
+                            except Exception:
+                                pass
                             return stats_data
     except Exception:
         pass
@@ -1342,11 +1376,15 @@ def _fetch_soccer_team_stats_statpal(external_id, season):
         return {}
 
 
-def _fetch_nba_team_stats_statpal(external_id, season):
-    cache_key = f'team_stats:nba:{external_id}:{season}:statpal'
-    cached = cache.get(cache_key)
-    if cached:
-        return cached
+def _fetch_nba_team_stats_statpal(external_id, season, team_name=None):
+    clean_name = str(team_name or '').lower().strip()
+    cache_key = f'team_stats:nba:{external_id}:{clean_name}:{season}:statpal'
+    try:
+        cached = cache.get(cache_key)
+        if cached:
+            return cached
+    except Exception:
+        pass
 
     try:
         from apps.sports_apis.services.statpal import statpal_service
@@ -1370,19 +1408,29 @@ def _fetch_nba_team_stats_statpal(external_id, season):
                     teams_list = [teams_list]
 
                 for standing in teams_list:
-                    if str(standing.get('id', '')) == str(external_id):
+                    s_id = str(standing.get('id', ''))
+                    s_name = str(standing.get('name', '')).lower().strip()
+                    is_match = (external_id and str(external_id) == s_id) or (
+                        clean_name and (clean_name in s_name or s_name in clean_name)
+                    )
+                    if is_match:
                         wins = int(standing.get('won') or 0)
                         losses = int(standing.get('lost') or 0)
                         total = wins + losses
                         stats_data = {
                             'wins':       wins,
                             'losses':     losses,
+                            'matches_played': total,
                             'win_pct':    round(wins / total * 100, 1) if total else 0,
+                            'win_percentage': round(wins / total * 100, 1) if total else 0,
                             'conference': conf.get('name', ''),
                             'division':   lg.get('name', ''),
                             'rank':       int(standing.get('position') or 0),
                         }
-                        cache.set(cache_key, stats_data, timeout=3600)
+                        try:
+                            cache.set(cache_key, stats_data, timeout=3600)
+                        except Exception:
+                            pass
                         return stats_data
         return {}
     except Exception:
