@@ -99,12 +99,23 @@ def _get_standings_for_league(request, league_entity, season, highlight_team_id=
     # Live API fallback — try TheSportsDB first, then StatPal/API-Sports
     live_standings = _fetch_league_standings_thesportsdb(canonical, season)
 
-    if not live_standings and getattr(canonical, 'api_source', '') == 'statpal':
-        try:
-            season_year = int(str(season).split('-', 1)[0].split('/', 1)[0])
-        except Exception:
-            season_year = 2026
-        live_standings = _fetch_soccer_standings(canonical.external_id, season_year)
+    sport_clean = str(getattr(canonical, 'sport', '') or getattr(league_entity, 'sport', '') or '').lower()
+
+    if not live_standings:
+        if sport_clean == 'baseball':
+            live_standings = _fetch_statpal_hierarchical_standings('baseball', f'standings:baseball:mlb:{season}')
+        elif sport_clean in ('basketball', 'nba'):
+            live_standings = _fetch_statpal_hierarchical_standings('basketball', f'standings:nba:{season}')
+        elif sport_clean in ('hockey', 'ice_hockey', 'nhl'):
+            live_standings = _fetch_statpal_hierarchical_standings('hockey', f'standings:nhl:{season}')
+        elif sport_clean in ('american_football', 'football', 'nfl'):
+            live_standings = _fetch_statpal_hierarchical_standings('american_football', f'standings:nfl:{season}')
+        elif getattr(canonical, 'api_source', '') == 'statpal' or sport_clean == 'soccer':
+            try:
+                season_year = int(str(season).split('-', 1)[0].split('/', 1)[0])
+            except Exception:
+                season_year = 2026
+            live_standings = _fetch_soccer_standings(canonical.external_id, season_year)
 
     if live_standings:
         # Write each team's standing back to DB if matching Entity exists
@@ -136,16 +147,19 @@ def _get_standings_for_league(request, league_entity, season, highlight_team_id=
                 'rank':      row.get('rank', 0),
                 'team_id':   team_ent.id if team_ent else None,
                 'team_name': row.get('team_name', ''),
-                'logo':      row.get('team_logo', ''),
+                'logo':      (team_ent.logo_url if team_ent and team_ent.logo_url else '') or row.get('team_logo', ''),
                 'points':    row.get('points', 0),
                 'played':    row.get('played', 0),
-                'wins':      row.get('win', 0),
-                'draws':     row.get('draw', 0),
-                'losses':    row.get('lose', 0),
+                'wins':      row.get('wins') if row.get('wins') is not None else row.get('win', 0),
+                'draws':     row.get('draws') if row.get('draws') is not None else row.get('draw', 0),
+                'losses':    row.get('losses') if row.get('losses') is not None else row.get('lose', 0),
                 'goals_for': row.get('goals_for', 0),
                 'goals_against': row.get('goals_against', 0),
                 'goal_diff': row.get('goal_diff', 0),
                 'form':      row.get('form', ''),
+                'conference': row.get('conference', ''),
+                'division':  row.get('division', ''),
+                'win_pct':   row.get('win_pct', 0),
                 'is_highlighted': (
                     str(row.get('team_external_id')) == str(highlight_team_id) or
                     (team_ent and str(team_ent.id) == str(highlight_team_id)) or
@@ -155,14 +169,17 @@ def _get_standings_for_league(request, league_entity, season, highlight_team_id=
                     ))
                 ),
             })
-        live_response.sort(key=lambda x: (
-            -x['points'],
-            -x['goal_diff'],
-            -x['goals_for'],
-            x['team_name'].lower(),
-        ))
-        for i, item in enumerate(live_response, 1):
-            item['rank'] = i
+        if sport_clean in ('baseball', 'basketball', 'nba', 'american_football', 'football', 'nfl'):
+            live_response.sort(key=lambda x: (x.get('rank') or 999, -x.get('wins', 0)))
+        else:
+            live_response.sort(key=lambda x: (
+                -x['points'],
+                -x['goal_diff'],
+                -x['goals_for'],
+                x['team_name'].lower(),
+            ))
+            for i, item in enumerate(live_response, 1):
+                item['rank'] = i
         return Response({
             'league':    _safe_league_data(league_entity, request),
             'season':    season,
@@ -221,6 +238,98 @@ def _fetch_league_standings_thesportsdb(league_entity, season):
         logger.warning(f"Error fetching TSDB standings for {league_entity}: {e}")
 
     return []
+
+
+def _fetch_statpal_hierarchical_standings(sport: str, cache_key: str):
+    try:
+        cached = cache.get(cache_key)
+        if cached:
+            return cached
+    except Exception:
+        pass
+
+    try:
+        from apps.sports_apis.services.statpal import statpal_service
+        sport_lower = str(sport).lower()
+        if sport_lower == 'baseball':
+            result = statpal_service.get_mlb_standings()
+        elif sport_lower in ('basketball', 'nba'):
+            result = statpal_service.get_nba_standings()
+        elif sport_lower in ('american_football', 'football', 'nfl'):
+            result = statpal_service.get_nfl_standings()
+        elif sport_lower in ('hockey', 'ice_hockey', 'nhl'):
+            result = statpal_service.get_nhl_standings()
+        else:
+            return []
+
+        if not result or not result.get('success'):
+            return []
+
+        standings_data = result.get('data', {}).get('standings', {})
+        container = standings_data.get('category') or standings_data.get('tournament') or {}
+        leagues = container.get('league', [])
+        if isinstance(leagues, dict):
+            leagues = [leagues]
+
+        rows = []
+        for lg in leagues:
+            lg_name = lg.get('name', '')
+            divs = lg.get('division', [])
+            if isinstance(divs, dict):
+                divs = [divs]
+            for div in divs:
+                div_name = div.get('name', '')
+                teams = div.get('team', [])
+                if isinstance(teams, dict):
+                    teams = [teams]
+                for t in teams:
+                    t_name = str(t.get('name', '')).strip()
+                    if not t_name:
+                        continue
+                    wins = int(t.get('won') or t.get('wins') or t.get('win') or 0)
+                    losses = int(t.get('lost') or t.get('losses') or t.get('lose') or 0)
+                    ot_losses = int(t.get('ot_losses') or t.get('ot') or 0)
+                    draws = int(t.get('draw') or t.get('draws') or t.get('ties') or 0)
+                    played = int(t.get('games_played') or t.get('played') or (wins + losses + ot_losses + draws))
+                    points = int(t.get('points') or 0)
+                    goals_for = int(t.get('goals_for') or t.get('runs_scored') or t.get('runs_for') or t.get('points_for') or 0)
+                    goals_against = int(t.get('goals_against') or t.get('runs_allowed') or t.get('runs_against') or t.get('points_against') or 0)
+                    goal_diff = int(t.get('runs_diff') or t.get('difference') or t.get('net_points') or (goals_for - goals_against))
+                    streak = str(t.get('current_streak') or t.get('streak') or '')
+                    pct = float(t.get('pct') or t.get('win_percentage') or (round(wins / played, 3) if played else 0.0))
+
+                    rows.append({
+                        'rank': int(t.get('position') or t.get('rank') or 0),
+                        'team_external_id': str(t.get('id', '')),
+                        'team_name': t_name,
+                        'team_logo': t.get('logo', ''),
+                        'points': points,
+                        'played': played,
+                        'win': wins,
+                        'wins': wins,
+                        'draw': draws,
+                        'draws': draws,
+                        'lose': losses,
+                        'losses': losses,
+                        'ot_losses': ot_losses,
+                        'goals_for': goals_for,
+                        'goals_against': goals_against,
+                        'goal_diff': goal_diff,
+                        'form': streak,
+                        'conference': lg_name,
+                        'division': div_name,
+                        'win_pct': pct,
+                    })
+
+        if rows:
+            try:
+                cache.set(cache_key, rows, timeout=3600)
+            except Exception:
+                pass
+        return rows
+    except Exception as e:
+        logger.warning(f"Error fetching StatPal standings for {sport}: {e}")
+        return []
 
 
 def _fetch_soccer_standings(external_id, season):

@@ -271,3 +271,110 @@ class GlobalEntitySearchTestCase(TestCase):
         results = response.data.get("results", [])
         self.assertTrue(any(e["name"] == "Manchester United" for e in results))
 
+
+class BaseballStandingsTestCase(TestCase):
+    def setUp(self):
+        self.client = APIClient()
+        self.baseball_team = Entity.objects.create(
+            name="New York Yankees",
+            sport="baseball",
+            type="team",
+            api_source="statpal",
+            external_id="15235"
+        )
+        Team.objects.create(entity=self.baseball_team)
+
+        self.baseball_league = Entity.objects.create(
+            name="Major League Baseball",
+            sport="baseball",
+            type="league",
+            api_source="statpal",
+            external_id="mlb_1"
+        )
+
+    def test_baseball_team_standings_with_statpal(self):
+        from unittest.mock import patch
+        with patch('apps.sports_apis.services.statpal.StatPalService.get_mlb_standings') as mock_standings:
+            mock_standings.return_value = {
+                'success': True,
+                'data': {
+                    'standings': {
+                        'tournament': {
+                            'league': [
+                                {
+                                    'name': 'American League',
+                                    'division': [
+                                        {
+                                            'name': 'AL East',
+                                            'team': [
+                                                {
+                                                    'id': '15235',
+                                                    'name': 'New York Yankees',
+                                                    'won': 50,
+                                                    'lost': 30,
+                                                    'runs_scored': 400,
+                                                    'runs_allowed': 320,
+                                                    'position': 1,
+                                                    'streak': 'W3'
+                                                }
+                                            ]
+                                        }
+                                    ]
+                                }
+                            ]
+                        }
+                    }
+                }
+            }
+            url = f"/api/entities/{self.baseball_team.id}/standings/"
+            response = self.client.get(url)
+            self.assertEqual(response.status_code, 200)
+            self.assertIn('standings', response.data)
+            self.assertTrue(len(response.data['standings']) > 0)
+            self.assertTrue(response.data['standings'][0]['is_highlighted'])
+            self.assertEqual(response.data['standings'][0]['team_name'], 'New York Yankees')
+            self.assertEqual(response.data['standings'][0]['wins'], 50)
+            self.assertEqual(response.data['standings'][0]['losses'], 30)
+
+    def test_baseball_league_standings_with_statpal(self):
+        from unittest.mock import patch
+        with patch('apps.sports_apis.services.statpal.StatPalService.get_mlb_standings') as mock_standings:
+            mock_standings.return_value = {
+                'success': True,
+                'data': {
+                    'standings': {
+                        'tournament': {
+                            'league': [
+                                {
+                                    'name': 'American League',
+                                    'division': [
+                                        {
+                                            'name': 'AL East',
+                                            'team': [
+                                                {
+                                                    'id': '15235',
+                                                    'name': 'New York Yankees',
+                                                    'won': 50,
+                                                    'lost': 30,
+                                                    'runs_scored': 400,
+                                                    'runs_allowed': 320,
+                                                    'position': 1,
+                                                    'streak': 'W3'
+                                                }
+                                            ]
+                                        }
+                                    ]
+                                }
+                            ]
+                        }
+                    }
+                }
+            }
+            url = f"/api/entities/{self.baseball_league.id}/standings/"
+            response = self.client.get(url)
+            self.assertEqual(response.status_code, 200)
+            self.assertIn('standings', response.data)
+            self.assertTrue(len(response.data['standings']) > 0)
+            self.assertEqual(response.data['standings'][0]['team_name'], 'New York Yankees')
+
+

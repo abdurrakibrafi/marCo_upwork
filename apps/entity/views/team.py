@@ -1076,6 +1076,48 @@ def _fetch_mlb_team_stats(external_id, season):
 
     try:
         from apps.sports_apis.services.statpal import statpal_service
+        result = statpal_service.get_mlb_standings()
+        if result.get('success'):
+            standings_data = result.get('data', {}).get('standings', {})
+            container = standings_data.get('category') or standings_data.get('tournament') or {}
+            leagues = container.get('league', [])
+            if isinstance(leagues, dict):
+                leagues = [leagues]
+
+            for lg in leagues:
+                divs = lg.get('division', [])
+                if isinstance(divs, dict):
+                    divs = [divs]
+                for div in divs:
+                    teams = div.get('team', [])
+                    if isinstance(teams, dict):
+                        teams = [teams]
+                    for t in teams:
+                        if str(t.get('id', '')) == str(external_id):
+                            wins = int(t.get('won') or t.get('wins') or 0)
+                            losses = int(t.get('lost') or t.get('losses') or 0)
+                            played = int(t.get('games_played') or (wins + losses))
+                            pct = float(t.get('pct') or t.get('win_percentage') or (round(wins / played, 3) if played else 0.0))
+                            stats_data = {
+                                'wins': wins,
+                                'losses': losses,
+                                'matches_played': played,
+                                'win_percentage': round(pct * 100, 1) if pct <= 1 else pct,
+                                'runs_for': int(t.get('runs_scored') or t.get('runs_for') or 0),
+                                'runs_against': int(t.get('runs_allowed') or t.get('runs_against') or 0),
+                                'runs_diff': int(t.get('runs_diff') or 0),
+                                'streak': str(t.get('current_streak') or t.get('streak') or ''),
+                                'conference': lg.get('name', ''),
+                                'division': div.get('name', ''),
+                                'rank': int(t.get('position') or t.get('rank') or 0),
+                            }
+                            cache.set(cache_key, stats_data, timeout=3600)
+                            return stats_data
+    except Exception:
+        pass
+
+    try:
+        from apps.sports_apis.services.statpal import statpal_service
         wins = losses = 0
 
         for offset in range(-7, 0):
@@ -1124,7 +1166,7 @@ def _fetch_mlb_team_stats(external_id, season):
             'losses':         losses,
             'matches_played': played,
             'win_percentage': round(wins / played * 100, 1),
-            'note':           'Last 7 days only (StatPal MLB has no standings endpoint)',
+            'note':           'Last 7 days only (StatPal MLB fixtures fallback)',
         }
         cache.set(cache_key, stats_data, timeout=3600)
         return stats_data
@@ -1507,7 +1549,7 @@ def get_team_standings(request, team_id):
     GET /api/entities/team/{team_id}/standings/
     Returns the official primary league standings for clubs or national rankings for national teams.
     """
-    from .league import _get_standings_for_league
+    from .league import _get_standings_for_league, _fetch_statpal_hierarchical_standings
 
     entity = get_object_or_404(Entity, id=team_id)
     entity = entity.canonical_entity or entity
@@ -1617,7 +1659,75 @@ def get_team_standings(request, team_id):
             'source': 'golf_leaderboards',
         })
 
-    # 5. For Club Teams -> Primary Official League Standings Lookup
+    # 5. Baseball (MLB) Standings
+    if team_entity.sport == 'baseball':
+        mlb_standings = _fetch_statpal_hierarchical_standings('baseball', f'standings:baseball:mlb:{season}')
+        if mlb_standings:
+            clean_team = team_entity.name.lower().replace(' fc', '').replace(' utd', ' united').strip()
+            for row in mlb_standings:
+                t_name = str(row.get('team_name', '')).lower().replace(' fc', '').replace(' utd', ' united').strip()
+                is_hl = (clean_team in t_name) or (t_name in clean_team) or (str(row.get('team_external_id')) == str(team_entity.external_id))
+                row['is_highlighted'] = is_hl
+            return Response({
+                'team': EntitySerializer(team_entity, context={'request': request}).data,
+                'season': season,
+                'league_name': 'Major League Baseball (MLB)',
+                'standings': mlb_standings,
+                'source': 'statpal_mlb',
+            })
+
+    # 6. Basketball (NBA) Standings
+    if team_entity.sport in ('basketball', 'nba'):
+        nba_standings = _fetch_statpal_hierarchical_standings('basketball', f'standings:nba:{season}')
+        if nba_standings:
+            clean_team = team_entity.name.lower().replace(' fc', '').replace(' utd', ' united').strip()
+            for row in nba_standings:
+                t_name = str(row.get('team_name', '')).lower().replace(' fc', '').replace(' utd', ' united').strip()
+                is_hl = (clean_team in t_name) or (t_name in clean_team) or (str(row.get('team_external_id')) == str(team_entity.external_id))
+                row['is_highlighted'] = is_hl
+            return Response({
+                'team': EntitySerializer(team_entity, context={'request': request}).data,
+                'season': season,
+                'league_name': 'National Basketball Association (NBA)',
+                'standings': nba_standings,
+                'source': 'statpal_nba',
+            })
+
+    # 7. Hockey (NHL) Standings
+    if team_entity.sport in ('hockey', 'ice_hockey', 'nhl'):
+        nhl_standings = _fetch_statpal_hierarchical_standings('hockey', f'standings:nhl:{season}')
+        if nhl_standings:
+            clean_team = team_entity.name.lower().replace(' fc', '').replace(' utd', ' united').strip()
+            for row in nhl_standings:
+                t_name = str(row.get('team_name', '')).lower().replace(' fc', '').replace(' utd', ' united').strip()
+                is_hl = (clean_team in t_name) or (t_name in clean_team) or (str(row.get('team_external_id')) == str(team_entity.external_id))
+                row['is_highlighted'] = is_hl
+            return Response({
+                'team': EntitySerializer(team_entity, context={'request': request}).data,
+                'season': season,
+                'league_name': 'National Hockey League (NHL)',
+                'standings': nhl_standings,
+                'source': 'statpal_nhl',
+            })
+
+    # 8. American Football (NFL) Standings
+    if team_entity.sport in ('american_football', 'football', 'nfl'):
+        nfl_standings = _fetch_statpal_hierarchical_standings('american_football', f'standings:nfl:{season}')
+        if nfl_standings:
+            clean_team = team_entity.name.lower().replace(' fc', '').replace(' utd', ' united').strip()
+            for row in nfl_standings:
+                t_name = str(row.get('team_name', '')).lower().replace(' fc', '').replace(' utd', ' united').strip()
+                is_hl = (clean_team in t_name) or (t_name in clean_team) or (str(row.get('team_external_id')) == str(team_entity.external_id))
+                row['is_highlighted'] = is_hl
+            return Response({
+                'team': EntitySerializer(team_entity, context={'request': request}).data,
+                'season': season,
+                'league_name': 'National Football League (NFL)',
+                'standings': nfl_standings,
+                'source': 'statpal_nfl',
+            })
+
+    # 9. For Club Teams -> Primary Official League Standings Lookup
     league = None
     try:
         if team_entity.team_details.league:
