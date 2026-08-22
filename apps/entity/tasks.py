@@ -137,9 +137,50 @@ def seed_players_for_team(team_external_id: str, season: int = None):
                 )
                 if was_created:
                     created_total += 1
-            return f"Seeded {created_total} players for team {team_external_id} from TheSportsDB"
+
+            if created_total < 8:
+                try:
+                    from apps.sports_apis.services.wikipedia import wikipedia_service
+                    wiki_players = wikipedia_service.get_team_roster(team_name=team_entity.name, sport=team_entity.sport)
+                    for p in wiki_players:
+                        p_name = p.get('name', '').strip()
+                        if not p_name:
+                            continue
+                        p_ext_id = f"wiki_{p_name.replace(' ', '_').lower()}_{team_entity.id}"
+                        player_entity, _ = Entity.objects.get_or_create(
+                            name=p_name,
+                            type='athlete',
+                            sport=team_entity.sport,
+                            defaults={
+                                'api_source': 'wikipedia',
+                                'external_id': p_ext_id,
+                                'country': p.get('nationality', '') or team_entity.country or '',
+                                'has_api_data': True,
+                            }
+                        )
+                        name_parts = p_name.split(' ', 1)
+                        first_name = name_parts[0] if name_parts else ''
+                        last_name = name_parts[1] if len(name_parts) > 1 else ''
+
+                        _, a_created = Athlete.objects.get_or_create(
+                            entity=player_entity,
+                            defaults={
+                                'first_name': first_name,
+                                'last_name': last_name,
+                                'current_team': team_entity,
+                                'position': p.get('position', ''),
+                                'jersey_number': p.get('jersey_number'),
+                                'nationality': p.get('nationality', '') or team_entity.country or '',
+                            }
+                        )
+                        if a_created:
+                            created_total += 1
+                except Exception as wiki_err:
+                    logger.warning(f"Wikipedia fallback in Celery task failed for {team_entity.name}: {wiki_err}")
+
+            return f"Seeded {created_total} players for team {team_external_id}"
         except Exception as e:
-            logger.warning(f"TheSportsDB player seeding failed for {team_entity.name}: {e}")
+            logger.warning(f"Player seeding failed for {team_entity.name}: {e}")
 
     if team_entity.api_source == 'api_sports':
         headers = {'x-apisports-key': settings.API_SPORTS_KEY}

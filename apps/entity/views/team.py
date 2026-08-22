@@ -327,6 +327,52 @@ def get_team_roster(request, team_id):
         except Exception as err:
             logger.warning(f"TheSportsDB roster fetch error for {team_entity.name}: {err}")
 
+    # Fallback to Wikipedia if TheSportsDB had no or insufficient players (< 8)
+    if athletes.count() < 8:
+        try:
+            from apps.sports_apis.services.wikipedia import wikipedia_service
+            wiki_players = wikipedia_service.get_team_roster(team_name=team_entity.name, sport=team_entity.sport)
+            if wiki_players:
+                for p in wiki_players:
+                    p_name = str(p.get('name') or '').strip()
+                    if not p_name:
+                        continue
+                    p_ext_id = f"wiki_{p_name.replace(' ', '_').lower()}_{team_entity.id}"
+                    player_entity, _ = Entity.objects.get_or_create(
+                        name=p_name,
+                        type='athlete',
+                        sport=team_entity.sport,
+                        defaults={
+                            'api_source': 'wikipedia',
+                            'external_id': p_ext_id,
+                            'country': p.get('nationality', '') or team_entity.country or '',
+                            'has_api_data': True,
+                        }
+                    )
+                    name_parts = p_name.split(' ', 1)
+                    first_name = name_parts[0] if name_parts else ''
+                    last_name = name_parts[1] if len(name_parts) > 1 else ''
+
+                    Athlete.objects.get_or_create(
+                        entity=player_entity,
+                        defaults={
+                            'first_name': first_name,
+                            'last_name': last_name,
+                            'current_team': team_entity,
+                            'position': p.get('position', '') or '',
+                            'jersey_number': p.get('jersey_number'),
+                            'nationality': p.get('nationality', '') or team_entity.country or '',
+                        }
+                    )
+
+                athletes = Athlete.objects.filter(
+                    Q(current_team=team_entity)
+                    | Q(current_team__external_id=team_entity.external_id, current_team__sport=team_entity.sport)
+                    | Q(current_team__name__iexact=team_entity.name, current_team__sport=team_entity.sport)
+                ).select_related('entity').distinct()
+        except Exception as wiki_err:
+            logger.warning(f"Wikipedia roster fallback error for {team_entity.name}: {wiki_err}")
+
     if not athletes.exists():
         INDIVIDUAL_SPORTS = ['tennis', 'golf', 'mma', 'boxing', 'combat_sports', 'motorsport', 'formula1', 'f1']
         if team_entity.sport in INDIVIDUAL_SPORTS:

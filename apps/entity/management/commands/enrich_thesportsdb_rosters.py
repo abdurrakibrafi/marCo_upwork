@@ -60,8 +60,23 @@ class Command(BaseCommand):
                 self.stdout.write(self.style.ERROR(f"Error calling TheSportsDB for {team_entity.name}: {e}"))
                 continue
 
+            if not roster or len(roster) < 8:
+                if not roster:
+                    self.stdout.write(self.style.NOTICE(f"✗ No roster found on TheSportsDB for {team_entity.name}. Trying Wikipedia fallback..."))
+                else:
+                    self.stdout.write(self.style.NOTICE(f"⚠ TheSportsDB only found {len(roster)} players for {team_entity.name}. Trying Wikipedia fallback for full squad..."))
+                
+                try:
+                    from apps.sports_apis.services.wikipedia import wikipedia_service
+                    wiki_roster = wikipedia_service.get_team_roster(team_name=team_entity.name, sport=team_entity.sport)
+                    if wiki_roster and len(wiki_roster) > len(roster):
+                        self.stdout.write(self.style.SUCCESS(f"✓ Wikipedia fallback found {len(wiki_roster)} players!"))
+                        roster = wiki_roster
+                except Exception as wiki_err:
+                    self.stdout.write(self.style.WARNING(f"Wikipedia fallback error: {wiki_err}"))
+
             if not roster:
-                self.stdout.write(self.style.NOTICE(f"✗ No roster found on TheSportsDB for {team_entity.name}"))
+                self.stdout.write(self.style.NOTICE(f"✗ No roster found on any source for {team_entity.name}"))
                 time.sleep(1.0)
                 continue
 

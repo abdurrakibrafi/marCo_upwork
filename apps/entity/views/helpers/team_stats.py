@@ -20,7 +20,9 @@ def _fetch_soccer_team_stats_thesportsdb(team_entity):
         from urllib.parse import quote
         from django.conf import settings
 
-        api_key = getattr(settings, 'THESPORTSDB_KEY', None) or '092552'
+        api_key = getattr(settings, 'THESPORTSDB_KEY', None)
+        if not api_key:
+            return {}
         team_name = team_entity.name if hasattr(team_entity, 'name') else str(team_entity)
         safe_name = quote(team_name)
         url = f"https://www.thesportsdb.com/api/v1/json/{api_key}/searchteams.php?t={safe_name}"

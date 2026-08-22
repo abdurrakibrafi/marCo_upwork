@@ -77,10 +77,9 @@ class Command(BaseCommand):
             League.objects.get_or_create(entity=league_entity)
 
             # Query TSDB for teams in league
-            url = f"https://www.thesportsdb.com/api/v1/json/3/lookup_all_teams.php?id={league_id}"
             try:
-                resp = requests.get(url, timeout=10)
-                teams_data = resp.json().get('teams', []) or []
+                data = TheSportsDBService()._get('lookup_all_teams.php', {'id': league_id})
+                teams_data = data.get('teams', []) or []
             except Exception as e:
                 self.stdout.write(self.style.WARNING(f"Error fetching TSDB teams for {league_name}: {e}"))
                 teams_data = []
