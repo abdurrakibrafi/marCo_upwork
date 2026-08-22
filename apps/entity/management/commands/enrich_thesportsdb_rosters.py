@@ -50,10 +50,7 @@ class Command(BaseCommand):
         self.stdout.write("Finding team entities to enrich rosters...")
         
         # 1. Base Query
-        teams = Entity.objects.filter(type='team')
-        
-        # Exclude empty or whitespace-only names
-        teams = teams.exclude(name__isnull=True).exclude(name__exact='').exclude(name__regex=r'^\s*$')
+        teams = Entity.objects.filter(type='team').exclude(name='').exclude(name__isnull=True)
 
         # Exclude individual sports by default (e.g. tennis, golf) unless requested
         if not include_individual and not sport:
@@ -64,14 +61,9 @@ class Command(BaseCommand):
         if team_name_filter:
             teams = teams.filter(name__icontains=team_name_filter)
 
-        # Exclude already checked teams unless --force
-        if not force and not team_name_filter:
-            # Exclude teams where metadata has roster_checked=True
-            teams = teams.exclude(metadata__roster_checked=True)
-
         teams = teams.order_by('name')
         total_count = teams.count()
-        self.stdout.write(f"Found {total_count} teams to process (excluding already checked/invalid).")
+        self.stdout.write(f"Found {total_count} teams in database.")
 
         if limit:
             teams = teams[:limit]
@@ -87,7 +79,12 @@ class Command(BaseCommand):
             if not team_clean_name:
                 continue
 
-            # Check if team already has sufficient roster in DB (>= 10 athletes)
+            # 1. Skip if already checked in previous runs
+            if not force and not team_name_filter and team_entity.metadata.get('roster_checked') is True:
+                teams_skipped_count += 1
+                continue
+
+            # 2. Check if team already has sufficient roster in DB (>= 10 athletes)
             existing_count = Athlete.objects.filter(current_team=team_entity).count()
             if not force and existing_count >= 10:
                 self.stdout.write(f"[{idx}/{limit or total_count}] {team_entity.name} already has {existing_count} players. Skipping.")

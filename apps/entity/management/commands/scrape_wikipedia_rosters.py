@@ -43,10 +43,8 @@ class Command(BaseCommand):
         team_name = options['team_name']
         force = options['force']
 
-        teams = Entity.objects.filter(type='team')
-        
-        # Exclude empty / whitespace names
-        teams = teams.exclude(name__isnull=True).exclude(name__exact='').exclude(name__regex=r'^\s*$')
+        # 1. Base Query
+        teams = Entity.objects.filter(type='team').exclude(name='').exclude(name__isnull=True)
         
         # Exclude individual sports
         if not sport:
@@ -56,13 +54,6 @@ class Command(BaseCommand):
 
         if team_name:
             teams = teams.filter(name__icontains=team_name)
-
-        # Exclude already checked teams unless --force
-        if not force and not team_name:
-            teams = teams.exclude(metadata__roster_checked=True)
-            # Only pick teams that currently have 0 athletes
-            teams = teams.annotate(num_athletes=Count('current_athletes')).filter(num_athletes=0)
-            self.stdout.write(self.style.NOTICE("Targeting un-checked teams with 0 existing athletes..."))
 
         teams = teams.order_by('name')
         total_count = teams.count()
@@ -78,6 +69,10 @@ class Command(BaseCommand):
         for idx, team in enumerate(teams, start=1):
             team_clean_name = team.name.strip()
             if not team_clean_name:
+                continue
+
+            # Skip if already checked in previous runs
+            if not force and not team_name and team.metadata.get('roster_checked') is True:
                 continue
 
             self.stdout.write(f"\n[{idx}/{limit or total_count}] Scraping Wikipedia for [{team.sport.upper()}] {team_clean_name}...")
