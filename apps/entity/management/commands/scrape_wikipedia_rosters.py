@@ -184,17 +184,25 @@ class Command(BaseCommand):
                 ext_id = f"wiki_{name.replace(' ', '_').lower()}_{team.id}"
                 
                 # 1. Create / Update Entity
-                athlete_entity, _ = Entity.objects.get_or_create(
+                athlete_entity = Entity.objects.filter(
                     name=name,
                     type='athlete',
-                    sport=player_sport,
-                    defaults={
-                        'api_source': 'wikipedia',
-                        'external_id': ext_id,
-                        'country': pdata.get('nationality', '') or team.country or '',
-                        'has_api_data': True,
-                    }
-                )
+                    sport=player_sport
+                ).first()
+
+                if not athlete_entity:
+                    athlete_entity = Entity.objects.create(
+                        name=name,
+                        type='athlete',
+                        sport=player_sport,
+                        api_source='wikipedia',
+                        external_id=ext_id,
+                        country=pdata.get('nationality', '') or team.country or '',
+                        has_api_data=True,
+                    )
+                    was_created_entity = True
+                else:
+                    was_created_entity = False
 
                 # 2. Split names
                 name_parts = name.split(' ', 1)
@@ -202,25 +210,25 @@ class Command(BaseCommand):
                 last_name = name_parts[1] if len(name_parts) > 1 else ''
 
                 # 3. Create / Update Athlete Model
-                athlete_obj, was_created = Athlete.objects.get_or_create(
-                    entity=athlete_entity,
-                    defaults={
-                        'first_name': first_name,
-                        'last_name': last_name,
-                        'current_team': team,
-                        'position': pdata.get('position', ''),
-                        'jersey_number': pdata.get('jersey_number'),
-                        'nationality': pdata.get('nationality', '') or team.country or '',
-                    }
-                )
-
-                if not was_created and (athlete_obj.current_team != team or not athlete_obj.position):
-                    athlete_obj.current_team = team
-                    if pdata.get('position'):
-                        athlete_obj.position = pdata.get('position')
-                    if pdata.get('jersey_number'):
-                        athlete_obj.jersey_number = pdata.get('jersey_number')
-                    athlete_obj.save()
+                athlete_obj = Athlete.objects.filter(entity=athlete_entity).first()
+                if not athlete_obj:
+                    athlete_obj = Athlete.objects.create(
+                        entity=athlete_entity,
+                        first_name=first_name,
+                        last_name=last_name,
+                        current_team=team,
+                        position=pdata.get('position', ''),
+                        jersey_number=pdata.get('jersey_number'),
+                        nationality=pdata.get('nationality', '') or team.country or '',
+                    )
+                else:
+                    if athlete_obj.current_team != team or not athlete_obj.position:
+                        athlete_obj.current_team = team
+                        if pdata.get('position'):
+                            athlete_obj.position = pdata.get('position')
+                        if pdata.get('jersey_number'):
+                            athlete_obj.jersey_number = pdata.get('jersey_number')
+                        athlete_obj.save()
 
                 total_players_created += 1
 

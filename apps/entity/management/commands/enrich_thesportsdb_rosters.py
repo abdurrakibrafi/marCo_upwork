@@ -92,28 +92,35 @@ class Command(BaseCommand):
                 ext_id = str(pdata.get('id_player') or '')
 
                 # 1. Create or Update Entity
-                athlete_entity, created = Entity.objects.get_or_create(
+                source = pdata.get('source') or 'thesportsdb'
+                athlete_entity = Entity.objects.filter(
                     name=name,
                     type='athlete',
-                    sport=player_sport,
-                    defaults={
-                        'api_source': 'thesportsdb',
-                        'external_id': ext_id,
-                        'logo_url': headshot_url,
-                        'description': pdata.get('description', '')[:500],
-                        'country': pdata.get('nationality', ''),
-                        'has_api_data': True,
-                    }
-                )
+                    sport=player_sport
+                ).first()
 
-                if not created:
+                created = False
+                if not athlete_entity:
+                    athlete_entity = Entity.objects.create(
+                        name=name,
+                        type='athlete',
+                        sport=player_sport,
+                        api_source=source,
+                        external_id=ext_id,
+                        logo_url=headshot_url,
+                        description=pdata.get('description', '')[:500],
+                        country=pdata.get('nationality', ''),
+                        has_api_data=True,
+                    )
+                    created = True
+                else:
                     updated_fields = []
                     if headshot_url and not athlete_entity.logo_url:
                         athlete_entity.logo_url = headshot_url
                         updated_fields.append('logo_url')
                     if ext_id and not athlete_entity.external_id:
                         athlete_entity.external_id = ext_id
-                        athlete_entity.api_source = 'thesportsdb'
+                        athlete_entity.api_source = source
                         updated_fields.extend(['external_id', 'api_source'])
                     if updated_fields:
                         athlete_entity.save(update_fields=updated_fields)
@@ -133,17 +140,18 @@ class Command(BaseCommand):
                         dob = None
 
                 # 2. Create or Update Athlete Detail model
-                athlete_detail, _ = Athlete.objects.get_or_create(
-                    entity=athlete_entity,
-                    defaults={
-                        'first_name': first_name,
-                        'last_name': last_name,
-                        'date_of_birth': dob,
-                        'nationality': pdata.get('nationality', ''),
-                        'position': pdata.get('position', ''),
-                        'current_team': team_entity,
-                    }
-                )
+                athlete_detail = Athlete.objects.filter(entity=athlete_entity).first()
+                if not athlete_detail:
+                    athlete_detail = Athlete.objects.create(
+                        entity=athlete_entity,
+                        first_name=first_name,
+                        last_name=last_name,
+                        date_of_birth=dob,
+                        nationality=pdata.get('nationality', ''),
+                        position=pdata.get('position', ''),
+                        jersey_number=pdata.get('jersey_number'),
+                        current_team=team_entity,
+                    )
                 if athlete_detail.current_team != team_entity or (pdata.get('position') and not athlete_detail.position):
                     athlete_detail.current_team = team_entity
                     if pdata.get('position'):

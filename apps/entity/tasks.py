@@ -147,34 +147,41 @@ def seed_players_for_team(team_external_id: str, season: int = None):
                         if not p_name:
                             continue
                         p_ext_id = f"wiki_{p_name.replace(' ', '_').lower()}_{team_entity.id}"
-                        player_entity, _ = Entity.objects.get_or_create(
+                        player_entity = Entity.objects.filter(
                             name=p_name,
                             type='athlete',
-                            sport=team_entity.sport,
-                            defaults={
-                                'api_source': 'wikipedia',
-                                'external_id': p_ext_id,
-                                'country': p.get('nationality', '') or team_entity.country or '',
-                                'has_api_data': True,
-                            }
-                        )
+                            sport=team_entity.sport
+                        ).first()
+                        if not player_entity:
+                            player_entity = Entity.objects.create(
+                                name=p_name,
+                                type='athlete',
+                                sport=team_entity.sport,
+                                api_source='wikipedia',
+                                external_id=p_ext_id,
+                                country=p.get('nationality', '') or team_entity.country or '',
+                                has_api_data=True,
+                            )
                         name_parts = p_name.split(' ', 1)
                         first_name = name_parts[0] if name_parts else ''
                         last_name = name_parts[1] if len(name_parts) > 1 else ''
 
-                        _, a_created = Athlete.objects.get_or_create(
-                            entity=player_entity,
-                            defaults={
-                                'first_name': first_name,
-                                'last_name': last_name,
-                                'current_team': team_entity,
-                                'position': p.get('position', ''),
-                                'jersey_number': p.get('jersey_number'),
-                                'nationality': p.get('nationality', '') or team_entity.country or '',
-                            }
-                        )
-                        if a_created:
+                        ath_obj = Athlete.objects.filter(entity=player_entity).first()
+                        if not ath_obj:
+                            ath_obj = Athlete.objects.create(
+                                entity=player_entity,
+                                first_name=first_name,
+                                last_name=last_name,
+                                current_team=team_entity,
+                                position=p.get('position', ''),
+                                jersey_number=p.get('jersey_number'),
+                                nationality=p.get('nationality', '') or team_entity.country or '',
+                            )
                             created_total += 1
+                        else:
+                            if ath_obj.current_team != team_entity:
+                                ath_obj.current_team = team_entity
+                                ath_obj.save()
                 except Exception as wiki_err:
                     logger.warning(f"Wikipedia fallback in Celery task failed for {team_entity.name}: {wiki_err}")
 
