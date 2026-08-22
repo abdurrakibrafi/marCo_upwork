@@ -5,109 +5,9 @@ from bs4 import BeautifulSoup
 from django.core.management.base import BaseCommand
 from django.db.models import Count
 from apps.entity.models import Entity, Athlete
+from apps.sports_apis.services.wikipedia import wikipedia_service
 
-HEADERS = {
-    'User-Agent': 'SportsNestBot/1.0 (https://mysportsnest.com; contact@mysportsnest.com)'
-}
-
-POS_MAP = {
-    'GK': 'Goalkeeper', 'DF': 'Defender', 'MF': 'Midfielder', 'FW': 'Forward',
-    'G': 'Guard', 'F': 'Forward', 'C': 'Center', 'PG': 'Point Guard',
-    'SG': 'Shooting Guard', 'SF': 'Small Forward', 'PF': 'Power Forward',
-    'GOALKEEPER': 'Goalkeeper', 'DEFENDER': 'Defender', 'MIDFIELDER': 'Midfielder', 'FORWARD': 'Forward',
-    'GUARD': 'Guard', 'CENTER': 'Center', 'BATSMAN': 'Batsman', 'BOWLER': 'Bowler', 'ALL-ROUNDER': 'All-Rounder',
-    'WICKET-KEEPER': 'Wicket-Keeper'
-}
-
-def clean_player_name(raw_name: str) -> str:
-    """Removes citations like [1], [208] and parenthetical annotations like (captain), (loan)"""
-    cleaned = re.sub(r'\[.*?\]', '', raw_name)
-    cleaned = re.sub(r'\(.*?\)', '', cleaned)
-    cleaned = cleaned.replace('\xa0', ' ').strip()
-    return cleaned
-
-def fetch_wikipedia_squad(team_name: str, sport: str = 'soccer') -> list:
-    """
-    Searches Wikipedia for the team and extracts the current squad/roster.
-    Returns a list of dicts: [{'name': ..., 'jersey_number': ..., 'position': ..., 'nationality': ...}]
-    """
-    search_url = 'https://en.wikipedia.org/w/api.php'
-    query = f"{team_name} football club" if sport == 'soccer' else f"{team_name} {sport}"
-    
-    try:
-        r = requests.get(
-            search_url,
-            params={'action': 'query', 'list': 'search', 'srsearch': query, 'format': 'json', 'utf8': 1},
-            headers=HEADERS,
-            timeout=10
-        )
-        data = r.json()
-        results = data.get('query', {}).get('search', [])
-        
-        if not results:
-            r = requests.get(
-                search_url,
-                params={'action': 'query', 'list': 'search', 'srsearch': team_name, 'format': 'json', 'utf8': 1},
-                headers=HEADERS,
-                timeout=10
-            )
-            results = r.json().get('query', {}).get('search', [])
-            
-        if not results:
-            return []
-            
-        page_title = results[0]['title']
-        
-        # Fetch Page HTML
-        url = f"https://en.wikipedia.org/wiki/{page_title.replace(' ', '_')}"
-        r_page = requests.get(url, headers=HEADERS, timeout=12)
-        if r_page.status_code != 200:
-            return []
-            
-        soup = BeautifulSoup(r_page.text, 'html.parser')
-        players = []
-        seen_names = set()
-
-        for row in soup.find_all('tr'):
-            cells = row.find_all(['td', 'th'])
-            cell_texts = [c.get_text().strip() for c in cells]
-            
-            if len(cell_texts) >= 3:
-                # Pattern 1: [Jersey No, Pos, Nation, Name]
-                pos_candidate = cell_texts[1].upper()
-                if len(cell_texts) >= 4 and pos_candidate in POS_MAP:
-                    jersey = cell_texts[0]
-                    nat = cell_texts[2]
-                    name = clean_player_name(cell_texts[3])
-                    
-                    if name and name not in seen_names and len(name) > 2 and not name.lower().startswith('player'):
-                        seen_names.add(name)
-                        players.append({
-                            'name': name,
-                            'jersey_number': int(jersey) if jersey.isdigit() else None,
-                            'position': POS_MAP.get(pos_candidate, pos_candidate.capitalize()),
-                            'nationality': nat.replace('\xa0', '').strip(),
-                        })
-                        
-                # Pattern 2: [Pos, Nation, Name]
-                elif pos_candidate in POS_MAP:
-                    nat = cell_texts[1] if len(cell_texts) > 2 else ''
-                    name = clean_player_name(cell_texts[2] if len(cell_texts) > 2 else cell_texts[1])
-                    
-                    if name and name not in seen_names and len(name) > 2 and not name.lower().startswith('player'):
-                        seen_names.add(name)
-                        players.append({
-                            'name': name,
-                            'jersey_number': None,
-                            'position': POS_MAP.get(pos_candidate, pos_candidate.capitalize()),
-                            'nationality': nat.replace('\xa0', '').strip(),
-                        })
-
-        return players
-        
-    except Exception as e:
-        return []
-
+INDIVIDUAL_SPORTS = ['tennis', 'golf', 'mma', 'boxing', 'combat_sports', 'motorsport', 'formula1', 'f1']
 
 class Command(BaseCommand):
     help = 'Scrape team rosters from Wikipedia for teams with missing roster data'
@@ -132,28 +32,37 @@ class Command(BaseCommand):
             help='Scrape roster for a specific team by name'
         )
         parser.add_argument(
-            '--all-teams',
+            '--force',
             action='store_true',
-            help='Process all teams (default is only teams without any roster)'
+            help='Re-scrape even if team was already checked or has players'
         )
 
     def handle(self, *args, **options):
         limit = options['limit']
         sport = options['sport']
         team_name = options['team_name']
-        all_teams = options['all_teams']
+        force = options['force']
 
         teams = Entity.objects.filter(type='team')
         
-        if not all_teams and not team_name:
-            # Only pick teams that currently have 0 athletes
-            teams = teams.annotate(num_athletes=Count('current_athletes')).filter(num_athletes=0)
-            self.stdout.write(self.style.NOTICE("Targeting teams with 0 existing athletes..."))
-            
-        if sport:
+        # Exclude empty / whitespace names
+        teams = teams.exclude(name__isnull=True).exclude(name__exact='').exclude(name__regex=r'^\s*$')
+        
+        # Exclude individual sports
+        if not sport:
+            teams = teams.exclude(sport__in=INDIVIDUAL_SPORTS)
+        else:
             teams = teams.filter(sport=sport.lower())
+
         if team_name:
             teams = teams.filter(name__icontains=team_name)
+
+        # Exclude already checked teams unless --force
+        if not force and not team_name:
+            teams = teams.exclude(metadata__roster_checked=True)
+            # Only pick teams that currently have 0 athletes
+            teams = teams.annotate(num_athletes=Count('current_athletes')).filter(num_athletes=0)
+            self.stdout.write(self.style.NOTICE("Targeting un-checked teams with 0 existing athletes..."))
 
         teams = teams.order_by('name')
         total_count = teams.count()
@@ -167,16 +76,23 @@ class Command(BaseCommand):
         total_teams_enriched = 0
 
         for idx, team in enumerate(teams, start=1):
-            self.stdout.write(f"\n[{idx}/{limit or total_count}] Scraping Wikipedia for [{team.sport.upper()}] {team.name}...")
+            team_clean_name = team.name.strip()
+            if not team_clean_name:
+                continue
+
+            self.stdout.write(f"\n[{idx}/{limit or total_count}] Scraping Wikipedia for [{team.sport.upper()}] {team_clean_name}...")
             
-            players = fetch_wikipedia_squad(team.name, team.sport)
+            players = wikipedia_service.get_team_roster(team_clean_name, team.sport)
             
             if not players:
-                self.stdout.write(self.style.WARNING(f"✗ No squad table found on Wikipedia for {team.name}"))
+                self.stdout.write(self.style.WARNING(f"✗ No squad table found on Wikipedia for {team_clean_name} (Marked as checked)"))
+                team.metadata['roster_checked'] = True
+                team.metadata['roster_found'] = False
+                team.save(update_fields=['metadata'])
                 time.sleep(0.5)
                 continue
 
-            self.stdout.write(self.style.SUCCESS(f"✓ Found {len(players)} players for {team.name}! Saving to DB..."))
+            self.stdout.write(self.style.SUCCESS(f"✓ Found {len(players)} players for {team_clean_name}! Saving to DB..."))
             
             for pdata in players:
                 name = pdata['name']
@@ -200,9 +116,6 @@ class Command(BaseCommand):
                         country=pdata.get('nationality', '') or team.country or '',
                         has_api_data=True,
                     )
-                    was_created_entity = True
-                else:
-                    was_created_entity = False
 
                 # 2. Split names
                 name_parts = name.split(' ', 1)
@@ -232,8 +145,11 @@ class Command(BaseCommand):
 
                 total_players_created += 1
 
+            team.metadata['roster_checked'] = True
+            team.metadata['roster_found'] = True
+            team.save(update_fields=['metadata'])
             total_teams_enriched += 1
-            # Polite delay between requests
+
             time.sleep(0.8)
 
         self.stdout.write(self.style.SUCCESS(
