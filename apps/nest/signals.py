@@ -4,8 +4,12 @@ from django.core.cache import cache
 from apps.nest.models import UserNest
 
 
-def _clear_user_nest_feed_cache(user_id):
-    """Invalidate nest feed cache keys for this user."""
+def _clear_user_nest_feed_cache(user_id: int):
+    """Invalidate cached nest news feed querysets for a specific user upon nest membership changes.
+
+    Args:
+        user_id (int): Primary key of the User.
+    """
     try:
         if hasattr(cache, 'delete_pattern'):
             cache.delete_pattern(f"nest_feed:{user_id}:*")
@@ -20,6 +24,14 @@ def _clear_user_nest_feed_cache(user_id):
 
 @receiver(post_save, sender=UserNest)
 def on_entity_added_to_nest(sender, instance, created, **kwargs):
+    """Trigger cache eviction and news feed source discovery tasks when a user adds an entity to their Nest.
+
+    Args:
+        sender: Model class (UserNest).
+        instance: Saved UserNest instance.
+        created (bool): True if record was created.
+        **kwargs: Signal keyword arguments.
+    """
     _clear_user_nest_feed_cache(instance.user_id)
 
     if not created:
@@ -42,4 +54,11 @@ def on_entity_added_to_nest(sender, instance, created, **kwargs):
 
 @receiver(post_delete, sender=UserNest)
 def on_entity_removed_from_nest(sender, instance, **kwargs):
+    """Evict user news feed cache when an entity is removed from their Nest.
+
+    Args:
+        sender: Model class (UserNest).
+        instance: Deleted UserNest instance.
+        **kwargs: Signal keyword arguments.
+    """
     _clear_user_nest_feed_cache(instance.user_id)

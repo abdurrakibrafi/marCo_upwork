@@ -6,14 +6,28 @@ import logging
 logger = logging.getLogger(__name__)
 
 class BaseAPIService:
-    """Base class for all sports API services"""
+    """Base client class providing session management and standardized HTTP request error handling."""
     
     def __init__(self, api_key: str):
+        """Initialize API client with credential token and requests Session.
+
+        Args:
+            api_key (str): Provider authentication token.
+        """
         self.api_key = api_key
         self.session = requests.Session()
     
     def fetch(self, url: str, params: Optional[Dict] = None, headers: Optional[Dict] = None):
-        """Centralized API caller with error handling"""
+        """Execute GET HTTP request with centralized exception handling and JSON parsing.
+
+        Args:
+            url (str): Remote endpoint URI.
+            params (dict, optional): URL query parameters.
+            headers (dict, optional): Request HTTP headers.
+
+        Returns:
+            dict: Standardized result envelope `{'success': bool, 'data': ..., 'error': ...}`.
+        """
         try:
             response = self.session.get(
                 url,

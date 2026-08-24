@@ -13,7 +13,21 @@ logger = logging.getLogger(__name__)
 
 @shared_task(bind=True, max_retries=5, default_retry_delay=60)
 def seed_nba_players_task(self, season=2026, per_page=100, cursor=None, page=1):
-    """Seed NBA players in background using StatPal roster service."""
+    """Celery background task to seed NBA players using the StatPal roster service.
+
+    Iterates through all basketball team entities, fetches current rosters from StatPal,
+    and creates or normalizes athlete entities and positions.
+
+    Args:
+        self (Task): Bound Celery task instance.
+        season (int, optional): Target season year. Defaults to 2026.
+        per_page (int, optional): Roster pagination count. Defaults to 100.
+        cursor (str, optional): Pagination cursor. Defaults to None.
+        page (int, optional): Current page number. Defaults to 1.
+
+    Returns:
+        dict: Summary dictionary with execution status and total created player count.
+    """
     from apps.sports_apis.services.statpal import statpal_service
 
     nba_teams = Entity.objects.filter(

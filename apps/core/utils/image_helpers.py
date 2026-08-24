@@ -2,9 +2,16 @@
 from django.conf import settings
 
 def get_entity_logo(entity):
-    """
-    Returns StatPal logo if exists, else fallback to TheSportsDB, 
-    else returns a generic default image to prevent app crashes.
+    """Retrieve the logo URL for an entity or provide a safe default fallback.
+
+    Returns the logo URL if present on the entity instance, otherwise falls back
+    to a default placeholder image URL to prevent frontend crashes.
+
+    Args:
+        entity (Entity): The entity model instance (team, league, athlete, etc.).
+
+    Returns:
+        str: Absolute URL to the entity's logo or fallback image.
     """
     if entity.logo_url:
         return entity.logo_url

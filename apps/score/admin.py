@@ -4,7 +4,7 @@ from .models import LiveScore
 
 @admin.register(LiveScore)
 class LiveScoreAdmin(admin.ModelAdmin):
-    """Admin configuration for LiveScore model"""
+    """Admin configuration and control panel for live scores and fixtures."""
     
     list_display = [
         'sport', 
@@ -101,13 +101,13 @@ class LiveScoreAdmin(admin.ModelAdmin):
     actions = ['mark_as_live', 'mark_as_completed']
     
     def mark_as_live(self, request, queryset):
-        """Admin action to mark selected games as live"""
+        """Admin action to transition selected fixtures to active 'live' status."""
         updated = queryset.update(status='live')
         self.message_user(request, f'{updated} games marked as live.')
     mark_as_live.short_description = "Mark selected games as Live"
     
     def mark_as_completed(self, request, queryset):
-        """Admin action to mark selected games as completed"""
+        """Admin action to transition selected fixtures to 'completed' status."""
         updated = queryset.update(status='completed')
         self.message_user(request, f'{updated} games marked as completed.')
     mark_as_completed.short_description = "Mark selected games as Completed"

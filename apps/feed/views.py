@@ -19,22 +19,35 @@ import time
 
 
 class DetailedFeedItemUserThrottle(UserRateThrottle):
-    # rate = '15/minute'
+    """Per-user request rate throttle for single feed article detail scraping."""
     pass
 
 
 class DetailedFeedItemAnonThrottle(AnonRateThrottle):
-    # rate = '5/minute'
+    """Anonymous request rate throttle for single feed article detail scraping."""
     pass
 
 
 class FeedPagination(PageNumberPagination):
+    """Pagination configuration for article feed querysets."""
     page_size = 30
     page_size_query_param = 'limit'
     max_page_size = 50
 
 
-def build_feed_serializer_context(request, paginated_feed, selected_entity_types=None):
+def build_feed_serializer_context(request, paginated_feed, selected_entity_types=None) -> dict:
+    """Pre-fetch user interaction state (likes, bookmarks, nests) into serializer context.
+
+    Prevents N+1 database queries during feed serialization.
+
+    Args:
+        request: Active HTTP request instance.
+        paginated_feed: List or page of FeedItem model instances.
+        selected_entity_types (list, optional): Active entity type filters.
+
+    Returns:
+        dict: Serializer context dictionary populated with user state sets.
+    """
     context = {'request': request}
     if selected_entity_types:
         context['selected_entity_types'] = selected_entity_types
@@ -71,20 +84,15 @@ def build_feed_serializer_context(request, paginated_feed, selected_entity_types
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def get_nest_feed(request):
-    """
-    Get aggregated feed for user's nest
-    GET /api/feed/nest?page=1&limit=10&sort=newest&filter=breaking
+    """Retrieve personalized news feed aggregated across the authenticated user's followed Nest entities.
 
-    filter values: breaking, trending
-    sort values: newest, oldest, popular, trending, least, likes, most_liked, least_liked
+    Supports search queries, entity filtering (team, athlete, league), content type exclusions, and multiple sort modes.
 
-    Response:
-    {
-      "count": <total>,
-      "next": <url>,
-      "previous": <url>,
-      "results": [ ... ]
-    }
+    Args:
+        request: HTTP request with query parameters (page, limit, sort, filter, type, q, source_id).
+
+    Returns:
+        Response: Paginated JSON response containing serialized feed articles.
     """
     page = request.GET.get('page', '1')
     limit = request.GET.get('limit', '10')
@@ -237,9 +245,16 @@ def get_nest_feed(request):
 @api_view(['GET'])
 @permission_classes([AllowAny])
 def get_entity_feed(request, entity_id):
-    """
-    Get feed for a specific entity
-    GET /api/feed/entity/{entity_id}?page=1
+    """Retrieve chronologically ordered news articles linked directly to a specific entity.
+
+    Triggers asynchronous RSS source discovery if no articles exist yet for the entity.
+
+    Args:
+        request: HTTP request instance.
+        entity_id (int): Primary key of the Entity.
+
+    Returns:
+        Response: Paginated news articles.
     """
     entity = get_object_or_404(Entity, id=entity_id)
     
@@ -286,9 +301,14 @@ def get_entity_feed(request, entity_id):
 @permission_classes([AllowAny])
 @throttle_classes([DetailedFeedItemUserThrottle, DetailedFeedItemAnonThrottle])
 def get_feed_item(request, item_id):
-    """
-    Get detailed feed item
-    GET /api/feed/item/{item_id}
+    """Retrieve full article detail, triggering on-demand content fetching and OpenAI summary if unread.
+
+    Args:
+        request: HTTP request.
+        item_id (int): Primary key of the FeedItem.
+
+    Returns:
+        Response: Detailed article JSON object including scraped content and AI summaries.
     """
     feed_item = get_object_or_404(
         FeedItem.objects.select_related('source').prefetch_related('entities'),
@@ -335,10 +355,13 @@ def get_feed_item(request, item_id):
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 def hide_source(request):
-    """
-    Hide a source or publisher from user's feeds
-    POST /api/feed/source/hide
-    Body: {"feed_item_id": 123} OR {"publisher_name": "BBC"} OR {"source_id": 123}
+    """Mute a news source or publisher domain for the authenticated user.
+
+    Args:
+        request: Request containing feed_item_id, publisher_name, or source_id.
+
+    Returns:
+        Response: Success status and feedback message.
     """
     feed_item_id = request.data.get('feed_item_id')
     publisher_name = request.data.get('publisher_name', '').strip()
@@ -378,10 +401,13 @@ def hide_source(request):
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 def unhide_source(request):
-    """
-    Unhide a source or publisher
-    POST /api/feed/source/unhide
-    Body: {"feed_item_id": 123} OR {"publisher_name": "BBC"} OR {"source_id": 123}
+    """Unmute a previously hidden news source or publisher domain.
+
+    Args:
+        request: Request containing feed_item_id, publisher_name, or source_id.
+
+    Returns:
+        Response: Success or 404 response.
     """
     feed_item_id = request.data.get('feed_item_id')
     publisher_name = request.data.get('publisher_name', '').strip()
@@ -425,9 +451,13 @@ def unhide_source(request):
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def get_hidden_sources(request):
-    """
-    Get list of user's hidden sources and publishers
-    GET /api/feed/sources/hidden
+    """List all sources and publisher names hidden by the authenticated user.
+
+    Args:
+        request: HTTP request.
+
+    Returns:
+        Response: Lists of hidden sources and publishers.
     """
     hidden = HiddenSource.objects.filter(
         user=request.user
@@ -449,9 +479,14 @@ def get_hidden_sources(request):
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 def trigger_feed_update(request, entity_id):
-    """
-    Manually trigger feed update for an entity
-    POST /api/feed/entity/{entity_id}/update
+    """Trigger background Celery tasks to rediscover and poll news feeds for an entity.
+
+    Args:
+        request: HTTP request.
+        entity_id (int): Primary key of the Entity.
+
+    Returns:
+        Response: Dispatch status confirmation.
     """
     entity = get_object_or_404(Entity, id=entity_id)
     
@@ -468,9 +503,13 @@ def trigger_feed_update(request, entity_id):
 @api_view(['GET'])
 @permission_classes([AllowAny])
 def get_breaking_news(request):
-    """
-    Get breaking news across all sports
-    GET /api/feed/breaking
+    """Retrieve global breaking news articles across all sports entities.
+
+    Args:
+        request: HTTP request.
+
+    Returns:
+        Response: List of top 50 breaking news articles.
     """
     hidden_source_ids = []
     hidden_publishers = []
@@ -499,9 +538,13 @@ def get_breaking_news(request):
 @api_view(['GET'])
 @permission_classes([AllowAny])
 def get_trending_feed(request):
-    """
-    Get trending content
-    GET /api/feed/trending
+    """Retrieve most popular and high-engagement trending articles.
+
+    Args:
+        request: HTTP request.
+
+    Returns:
+        Response: List of top 50 trending news articles.
     """
     hidden_source_ids = []
     hidden_publishers = []
@@ -530,14 +573,13 @@ def get_trending_feed(request):
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 def toggle_bookmark(request):
-    """
-    Bookmark or un-bookmark a feed item (toggle).
-    POST /api/feed/bookmark/
-    Body: {"feed_item_id": 123}
- 
+    """Toggle bookmark status on a feed article for the authenticated user.
+
+    Args:
+        request: HTTP request with body {"feed_item_id": 123}.
+
     Returns:
-      {"bookmarked": true}  — item was just bookmarked
-      {"bookmarked": false} — bookmark was removed
+        Response: JSON object indicating new boolean state {"bookmarked": bool}.
     """
     feed_item_id = request.data.get('feed_item_id')
  
@@ -562,11 +604,13 @@ def toggle_bookmark(request):
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def get_bookmarks(request):
-    """
-    Get all bookmarked feed items for the current user.
-    GET /api/feed/bookmarks/
- 
-    Supports pagination: ?page=1&limit=20
+    """Retrieve all bookmarked articles saved by the authenticated user.
+
+    Args:
+        request: HTTP request with pagination parameters.
+
+    Returns:
+        Response: Paginated list of bookmarks.
     """
     bookmarks = (
         Bookmark.objects
@@ -584,9 +628,14 @@ def get_bookmarks(request):
 @api_view(['DELETE'])
 @permission_classes([IsAuthenticated])
 def remove_bookmark(request, feed_item_id):
-    """
-    Remove a specific bookmark.
-    DELETE /api/feed/bookmarks/{feed_item_id}/
+    """Delete a specific article bookmark by feed item ID.
+
+    Args:
+        request: HTTP request.
+        feed_item_id (int): Primary key of the bookmarked FeedItem.
+
+    Returns:
+        Response: HTTP status 200 or 404.
     """
     deleted, _ = Bookmark.objects.filter(
         user=request.user,
@@ -604,14 +653,13 @@ def remove_bookmark(request, feed_item_id):
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 def toggle_like(request):
-    """
-    Like or unlike a feed item (toggle).
-    POST /api/feed/like/
-    Body: {"feed_item_id": 123}
- 
+    """Toggle like reaction on a feed article and update like counters.
+
+    Args:
+        request: HTTP request with body {"feed_item_id": 123}.
+
     Returns:
-      {"liked": true,  "like_count": 42}
-      {"liked": false, "like_count": 41}
+        Response: JSON object {"liked": bool, "like_count": int}.
     """
     feed_item_id = request.data.get('feed_item_id')
  
@@ -626,7 +674,6 @@ def toggle_like(request):
  
     if like:
         like.delete()
-        # Decrement view count used as like proxy, or track separately
         feed_item.views = max(0, feed_item.views - 1)
         feed_item.save(update_fields=['views'])
         liked = False
@@ -647,9 +694,14 @@ def toggle_like(request):
 @api_view(['DELETE'])
 @permission_classes([IsAuthenticated])
 def remove_like(request, feed_item_id):
-    """
-    Remove a specific like.
-    DELETE /api/feed/likes/{feed_item_id}/
+    """Remove a like reaction for an article.
+
+    Args:
+        request: HTTP request.
+        feed_item_id (int): Primary key of the FeedItem.
+
+    Returns:
+        Response: HTTP status 200 or 404.
     """
     deleted, _ = Like.objects.filter(
         user=request.user,
@@ -667,9 +719,13 @@ def remove_like(request, feed_item_id):
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def get_likes(request):
-    """
-    Get all liked feed items for the current user.
-    GET /api/feed/likes/
+    """Retrieve all articles liked by the authenticated user.
+
+    Args:
+        request: HTTP request with pagination parameters.
+
+    Returns:
+        Response: Paginated list of liked articles.
     """
     likes = (
         Like.objects

@@ -7,12 +7,14 @@ from apps.entity.utils.normalizers import normalize_entity_name
 import re
 
 class Command(BaseCommand):
+    """Management command to strip non-sports feed articles erroneously linked to national team entities."""
     help = (
         "Cleanup non-sports related FeedItems currently incorrectly linked to "
         "national team entities (e.g. country name entities)."
     )
 
     def add_arguments(self, parser):
+        """Register CLI arguments for dry-run verification mode."""
         parser.add_argument(
             '--dry-run',
             action='store_true',
@@ -22,6 +24,7 @@ class Command(BaseCommand):
         )
 
     def handle(self, *args, **options):
+        """Evaluate entity-article links and unlink non-sports articles from country entities."""
         dry_run = options['dry_run']
         
         sports_pattern = re.compile(

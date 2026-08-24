@@ -16,10 +16,7 @@ from apps.entity.models import Entity
 
 
 class Source(models.Model):
-    """
-    An RSS/Atom feed source for a sports entity.
-    Discovered via Brave Search + RSS autodiscovery, then polled forever.
-    """
+    """RSS/Atom news feed source linked to one or multiple sports entities."""
 
     DISCOVERY_SOURCES = [
         ('brave', 'Brave Search Discovery'),
@@ -66,13 +63,12 @@ class Source(models.Model):
 
     @property
     def is_healthy(self):
+        """Check whether the feed is active and has fewer than 5 consecutive poll failures."""
         return self.is_active and self.poll_failures < 5
 
 
 class FeedItem(models.Model):
-    """
-    A single article from an RSS feed, linked to one or more entities.
-    """
+    """Sports news article item fetched from an RSS source and linked to relevant entities."""
 
     source = models.ForeignKey(Source, on_delete=models.CASCADE, related_name='items')
     entities = models.ManyToManyField(Entity, related_name='feed_items', blank=True)
@@ -115,9 +111,8 @@ class FeedItem(models.Model):
         return self.title[:80]
 
 
-
 class UserSource(models.Model):
-    """User has explicitly followed a source"""
+    """Explicit following relationship between a user and a content publication source."""
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='followed_sources')
     source = models.ForeignKey(Source, on_delete=models.CASCADE)
     created_at = models.DateTimeField(auto_now_add=True, null=True)
@@ -127,7 +122,7 @@ class UserSource(models.Model):
 
 
 class HiddenSource(models.Model):
-    """User has hidden a source or publisher from their feed"""
+    """User preferences for muted/hidden sources or publisher domains excluded from their feed."""
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='hidden_sources')
     source = models.ForeignKey(Source, on_delete=models.CASCADE, null=True, blank=True)
     publisher_name = models.CharField(max_length=255, blank=True, default='')
@@ -140,7 +135,7 @@ class HiddenSource(models.Model):
 
 
 class Bookmark(models.Model):
-    """User has saved a feed item to read later"""
+    """User saved news article bookmark for future reference."""
  
     user = models.ForeignKey(
         User,
@@ -163,7 +158,7 @@ class Bookmark(models.Model):
  
 
 class Like(models.Model):
-    """User liked a feed item"""
+    """User upvote/like reaction on a sports news feed item."""
  
     user = models.ForeignKey(
         User,
@@ -186,10 +181,7 @@ class Like(models.Model):
 
 
 class RSSSource(models.Model):
-    """
-    Admin-managed RSS feed source.
-    Used for automatic, scheduled news fetching for entities.
-    """
+    """Admin-configured RSS feed endpoint used for scheduled entity news aggregation."""
     
     SPORT_CHOICES = Entity.SPORT_CHOICES
     
@@ -246,12 +238,7 @@ class RSSSource(models.Model):
 
 
 class EntitySource(models.Model):
-    """
-    Link between a UserNest entity and user-selected sources for that entity.
-    
-    When user adds Barcelona to nest + selects ESPN as source,
-    this tracks that ESPN should be included in Barcelona's feed.
-    """
+    """Link between a user's followed Nest entity and personalized publication feed sources."""
     
     from apps.nest.models import UserNest
     

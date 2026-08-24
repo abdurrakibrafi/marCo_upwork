@@ -23,7 +23,14 @@ logger = logging.getLogger(__name__)
 
 @shared_task
 def update_nfl_fixtures(dates: list[str] = None):
-    """Update NFL fixtures using StatPal"""
+    """Synchronize NFL fixtures using StatPal provider endpoints.
+
+    Args:
+        dates (list[str], optional): List of ISO date strings (YYYY-MM-DD) to fetch.
+
+    Returns:
+        str: Summary of updated fixtures count.
+    """
     if not dates:
         dates = [timezone.now().date().isoformat()]
 
@@ -53,7 +60,14 @@ def update_nfl_fixtures(dates: list[str] = None):
 
 @shared_task
 def update_soccer_fixtures(date=None):
-    """Update soccer fixtures for a date using StatPal"""
+    """Synchronize soccer match fixtures for a specific date using StatPal.
+
+    Args:
+        date (str, optional): ISO date string (YYYY-MM-DD). Defaults to today.
+
+    Returns:
+        str: Result summary string.
+    """
     if not date:
         date = timezone.now().date().isoformat()
     
@@ -82,9 +96,15 @@ def update_soccer_fixtures(date=None):
 
 @shared_task
 def update_statpal_fixtures_for_dates(dates: list[str] = None):
-    """
-    Fetch and save upcoming/past fixtures from StatPal for all sports:
-    Soccer, NBA, NFL, Cricket, Tennis, Baseball, Handball.
+    """Fetch and synchronize upcoming/past fixtures from StatPal across all sports.
+
+    Orchestrates ingestion for Soccer, NBA, NFL, Cricket, Tennis, Baseball, and Handball.
+
+    Args:
+        dates (list[str], optional): List of date strings in YYYY-MM-DD format.
+
+    Returns:
+        str: Completion summary of saved and updated fixtures.
     """
     if not dates:
         dates = [timezone.now().date().isoformat()]
@@ -149,7 +169,11 @@ def update_statpal_fixtures_for_dates(dates: list[str] = None):
 
 @shared_task
 def update_all_fixtures():
-    """Update fixtures for all sports — past 30 days to next 90 days"""
+    """Trigger background fixture synchronization covering the historical past 30 days to upcoming 90 days.
+
+    Returns:
+        str: Dispatched task notification message.
+    """
     dates = [
         (timezone.now().date() + timedelta(days=i)).isoformat()
         for i in range(-30, 91)
@@ -163,7 +187,19 @@ def update_all_fixtures():
 # HELPERS
 # ================================================================
 
-def _get_or_create_team_entity(api_source, external_id, name, sport, logo_url=''):
+def _get_or_create_team_entity(api_source: str, external_id: str, name: str, sport: str, logo_url: str = ''):
+    """Retrieve or create a team Entity and associated Team model record.
+
+    Args:
+        api_source (str): Source identifier (e.g. 'statpal', 'thesportsdb').
+        external_id (str): Remote ID.
+        name (str): Team name.
+        sport (str): Sport slug.
+        logo_url (str, optional): Team badge/logo URL.
+
+    Returns:
+        Entity: Resolved team entity instance.
+    """
     entity, created = Entity.objects.get_or_create(
         api_source=api_source,
         external_id=str(external_id),
@@ -185,7 +221,19 @@ def _get_or_create_team_entity(api_source, external_id, name, sport, logo_url=''
     return entity
 
 
-def _get_or_create_league_entity(api_source, external_id, name, sport, logo_url=''):
+def _get_or_create_league_entity(api_source: str, external_id: str, name: str, sport: str, logo_url: str = ''):
+    """Retrieve or create a league Entity and associated League model record.
+
+    Args:
+        api_source (str): Source identifier.
+        external_id (str): Remote ID.
+        name (str): League name.
+        sport (str): Sport slug.
+        logo_url (str, optional): League logo URL.
+
+    Returns:
+        Entity: Resolved league entity instance.
+    """
     entity, created = Entity.objects.get_or_create(
         api_source=api_source,
         external_id=str(external_id),
@@ -213,7 +261,7 @@ def _get_or_create_league_entity(api_source, external_id, name, sport, logo_url=
 
 @shared_task
 def update_soccer_live_scores_only():
-    """Delegated to StatPal sync"""
+    """Trigger background synchronization of soccer live scores via StatPal."""
     sync_statpal_data.delay()
     return "Delegated to sync_statpal_data"
 
@@ -223,6 +271,14 @@ def update_soccer_live_scores_only():
 # ================================================================
 
 def _extract_minute(val) -> int:
+    """Extract numeric match minute from string or int representations (e.g. '45+2').
+
+    Args:
+        val (Any): Input minute representation.
+
+    Returns:
+        int: Parsed integer minute.
+    """
     import re
     if not val:
         return 0
@@ -237,9 +293,12 @@ def _extract_minute(val) -> int:
 
 
 def _populate_statpal_event_details(event):
-    """
-    Parse StatPal metadata to populate EventTimeline (goals, cards, subs)
-    and update HT/FT/ET scores for a completed event.
+    """Parse StatPal metadata payload to populate EventTimeline, lineups, and match statistics.
+
+    Extracts goals, yellow/red cards, substitutions, formations, and half-time/full-time scores.
+
+    Args:
+        event (Event): Event model instance to enrich.
     """
     meta = event.metadata or {}
     
@@ -643,9 +702,14 @@ def _populate_statpal_event_details(event):
     logger.info(f"_populate_statpal_event_details: populated timeline for event {event.id}")
 
 
-def _on_the_fly_update_statpal_event(event):
-    """
-    On-the-fly fetch and save latest event details/fixtures for a StatPal event.
+def _on_the_fly_update_statpal_event(event) -> bool:
+    """Fetch and update live or completed match details on-the-fly for a StatPal event.
+
+    Args:
+        event (Event): Event model instance to refresh.
+
+    Returns:
+        bool: True if latest fixture data was retrieved and saved successfully.
     """
     from apps.sports_apis.services.statpal import statpal_service
     
@@ -745,9 +809,14 @@ def _on_the_fly_update_statpal_event(event):
 
 @shared_task(bind=True, max_retries=2, default_retry_delay=60)
 def fetch_event_details(self, event_id: int):
-    """
-    Fetch full stats, lineups, and player stats for a completed event.
-    Handles both api_sports and statpal events.
+    """Fetch and populate full statistics, lineups, and timeline events for a completed event.
+
+    Args:
+        self: Bound Celery task instance.
+        event_id (int): Primary key ID of the Event fixture.
+
+    Returns:
+        str: Task execution summary message.
     """
     try:
         event = Event.objects.select_related(
@@ -775,10 +844,10 @@ def fetch_event_details(self, event_id: int):
  
 @shared_task
 def check_completed_events():
-    """
-    Backup sync: Runs once per completed event to ensure timeline and match statistics 
-    are populated if they were missed during live streaming.
-    Guaranteed to run strictly ONCE per event to avoid server load.
+    """Backup synchronization task ensuring completed matches have populated statistics and timeline data.
+
+    Returns:
+        str: Summary of triggered event detail background tasks.
     """
     cutoff_recent = timezone.now() - timedelta(days=1)
     candidates = (
@@ -815,6 +884,7 @@ def check_completed_events():
 
 @shared_task
 def cleanup_stale_live_events():
+    """Auto-transition events that have been in 'live' status for over 5 hours into 'completed'."""
     cutoff = timezone.now() - timedelta(hours=5)
     stale = Event.objects.filter(
         status='live',
@@ -852,13 +922,19 @@ _LIVE = {
 }
 
 
-def _map_status(raw: str, sport: str = None, metadata: dict = None):
-    """
-    Receives raw status strings from multiple different sports data providers (StatPal etc.)
-    across 13 sports. Provider formatting is inconsistent (capitalization, periods, and
-    abbreviations vary), so exact-string matching alone is fragile.
-    Normalization is required, and any new provider integration should audit status strings
-    against _FINISHED/_LIVE before assuming defaults are safe.
+def _map_status(raw: str, sport: str = None, metadata: dict = None) -> str:
+    """Normalize inconsistent provider match status strings into standard internal choices.
+
+    Maps varied raw statuses (e.g. 'FT', 'AET', 'Q3', 'Set 2', 'Rain Delay') to:
+    'upcoming', 'live', 'completed', or 'cancelled'.
+
+    Args:
+        raw (str): Raw status string from data provider.
+        sport (str, optional): Sport slug identifier.
+        metadata (dict, optional): Match metadata for multi-set analysis.
+
+    Returns:
+        str: Normalized status choice string.
     """
     import re
     if not raw:
@@ -907,6 +983,15 @@ def _map_status(raw: str, sport: str = None, metadata: dict = None):
 
 
 def _parse_dt(date_str: str, time_str: str) -> datetime:
+    """Parse date and time strings (DD.MM.YYYY HH:MM) into a timezone-aware datetime.
+
+    Args:
+        date_str (str): Date string.
+        time_str (str): Time string.
+
+    Returns:
+        datetime: Aware datetime object.
+    """
     try:
         naive = datetime.strptime(f"{date_str} {time_str}", "%d.%m.%Y %H:%M")
         return timezone.make_aware(naive, timezone.get_current_timezone())
@@ -914,7 +999,15 @@ def _parse_dt(date_str: str, time_str: str) -> datetime:
         return timezone.now()
 
 
-def _safe_int(val):
+def _safe_int(val) -> int | None:
+    """Safely convert numeric string or object into an integer, ignoring non-numeric characters.
+
+    Args:
+        val (Any): Input value.
+
+    Returns:
+        int or None: Parsed integer or None.
+    """
     if val is None or str(val).strip() in ("", "?", "-", "None", "null", "undefined"):
         return None
     try:
@@ -924,6 +1017,14 @@ def _safe_int(val):
 
 
 def _soccer_rows(data: dict) -> list:
+    """Extract and normalize soccer match fixture dictionaries from raw StatPal response payload.
+
+    Args:
+        data (dict): StatPal soccer API response.
+
+    Returns:
+        list: Normalized fixture dictionaries.
+    """
     root_data = None
     if "live_matches" in data:
         root_data = data["live_matches"]
@@ -976,7 +1077,15 @@ def _soccer_rows(data: dict) -> list:
 
 
 def _generic_sport_rows(data: dict, sport_name: str) -> list:
-    """Generic parser for NBA, Hockey, Baseball, etc."""
+    """Extract and normalize match fixtures for generic multi-tournament sports (NBA, NFL, NHL, Tennis, etc.).
+
+    Args:
+        data (dict): Raw StatPal API response payload.
+        sport_name (str): Sport slug identifier.
+
+    Returns:
+        list: Normalized fixture dictionaries.
+    """
     tournaments_data = (
         data.get("livescores", {}).get("tournament")
         or data.get("scores", {}).get("tournament", {})
@@ -1034,34 +1143,49 @@ def _generic_sport_rows(data: dict, sport_name: str) -> list:
 
 
 def _nba_rows(data: dict) -> list:
+    """Extract NBA basketball match fixture rows from StatPal response."""
     return _generic_sport_rows(data, "nba")
 
 
 def _nfl_rows(data: dict) -> list:
+    """Extract American football (NFL) match fixture rows from StatPal response."""
     return _generic_sport_rows(data, "football")
 
 
 def _hockey_rows(data: dict) -> list:
+    """Extract ice hockey match fixture rows from StatPal response."""
     return _generic_sport_rows(data, "hockey")
 
 
 def _tennis_rows(data: dict) -> list:
+    """Extract tennis match fixture rows from StatPal response."""
     return _generic_sport_rows(data, "tennis")
 
 
 def _mlb_rows(data: dict) -> list:
+    """Extract baseball (MLB) match fixture rows from StatPal response."""
     return _generic_sport_rows(data, "baseball")
 
 
 def _handball_rows(data: dict) -> list:
+    """Extract handball match fixture rows from StatPal response."""
     return _generic_sport_rows(data, "handball")
 
 
 def _volleyball_rows(data: dict) -> list:
+    """Extract volleyball match fixture rows from StatPal response."""
     return _generic_sport_rows(data, "volleyball")
 
 
 def _cricket_rows(data: dict) -> list:
+    """Extract cricket match fixture rows from StatPal response payload.
+
+    Args:
+        data (dict): Raw cricket scores response.
+
+    Returns:
+        list: Normalized cricket fixture dictionaries.
+    """
     categories = (
         data.get("scores", {}).get("category", [])
         or data.get("fixtures", {}).get("category", [])
@@ -1099,6 +1223,14 @@ def _cricket_rows(data: dict) -> list:
 
 
 def _f1_rows(data: dict) -> list:
+    """Extract Formula 1 grand prix race events from StatPal response payload.
+
+    Args:
+        data (dict): Raw F1 race response.
+
+    Returns:
+        list: Normalized F1 race event dictionaries.
+    """
     races_data = data.get("livescores", {}).get("tournament") or data.get("tournament") or data.get("races")
     if not races_data:
         return []
@@ -1130,8 +1262,15 @@ def _f1_rows(data: dict) -> list:
     return rows
 
 
-def _golf_position_sort_key(p):
-    """Safely converts position to int. Handles blank/'T1'/'CUT', etc."""
+def _golf_position_sort_key(p) -> int:
+    """Safely convert player leaderboard position string (e.g. 'T1', 'CUT') into an integer sort key.
+
+    Args:
+        p (dict): Golf player record.
+
+    Returns:
+        int: Numeric sort key.
+    """
     pos = p.get('pos', '999')
     if not pos:
         return 999
@@ -1144,6 +1283,14 @@ def _golf_position_sort_key(p):
         
 
 def _golf_rows(data: dict) -> list:
+    """Extract golf tournament event and leaderboard rows from StatPal response payload.
+
+    Args:
+        data (dict): Raw golf tournament payload.
+
+    Returns:
+        list: Normalized golf tournament event dictionaries.
+    """
     tour_data = (
         data.get("livescore", {}).get("tournament")
         or data.get("fixtures", {}).get("tournament")
@@ -1195,6 +1342,14 @@ def _golf_rows(data: dict) -> list:
 
 
 def _horse_racing_rows(data: dict) -> list:
+    """Extract horse racing tournament fixture rows from StatPal response payload.
+
+    Args:
+        data (dict): Raw horse racing response.
+
+    Returns:
+        list: Normalized horse race event dictionaries.
+    """
     tournaments = data.get("scores", {}).get("tournament", [])
     if not isinstance(tournaments, list):
         tournaments = [tournaments]
@@ -1229,7 +1384,15 @@ def _horse_racing_rows(data: dict) -> list:
     return rows
 
 
-def _clean_score(val):
+def _clean_score(val) -> int | None:
+    """Clean and parse raw match score value into an integer.
+
+    Args:
+        val (Any): Input score value.
+
+    Returns:
+        int or None: Parsed integer score or None.
+    """
     if val is None or str(val).strip() in ("", "?", "-", "None", "null", "undefined"):
         return None
     try:
@@ -1239,6 +1402,17 @@ def _clean_score(val):
 
 
 def _save_event(row: dict, api_source: str = "statpal") -> Event | None:
+    """Save or update an Event record in the database from a normalized fixture row.
+
+    Resolves participants, venues, and status mappings, triggering detail population on completion.
+
+    Args:
+        row (dict): Normalized fixture data row.
+        api_source (str, optional): API source identifier. Defaults to 'statpal'.
+
+    Returns:
+        Event or None: Persisted Event instance, or None if skipped/cancelled.
+    """
     status = _map_status(row["status_raw"], sport=row.get("sport"), metadata=row.get("raw"))
     if status is None:
         if row.get("external_id"):
@@ -1343,6 +1517,15 @@ def _save_event(row: dict, api_source: str = "statpal") -> Event | None:
 
 
 def _save_livescore(row: dict, event: Event):
+    """Save or synchronize an active LiveScore record corresponding to an ongoing match event.
+
+    Args:
+        row (dict): Normalized match data payload.
+        event (Event): Associated Event instance.
+
+    Returns:
+        LiveScore or None: Updated LiveScore model instance if active, else None.
+    """
     status = event.status
     ls_sport = row["sport"]
     external_id = row["external_id"]
@@ -1406,10 +1589,15 @@ def _save_livescore(row: dict, event: Event):
 # ================================================================
 
 def _tsdb_soccer_row(event: dict) -> dict:
-    """
-    Convert a raw TheSportsDB event dict into the internal row format
-    expected by _save_event(). IDs are prefixed with 'tsdb_' to avoid
-    collision with StatPal external IDs.
+    """Convert a raw TheSportsDB event payload into the standardized internal row structure.
+
+    Prefixes IDs with 'tsdb_' to prevent key collisions with StatPal fixture records.
+
+    Args:
+        event (dict): TheSportsDB match event dictionary.
+
+    Returns:
+        dict: Standardized fixture dictionary.
     """
     from datetime import datetime as _dt
 
@@ -1459,13 +1647,15 @@ def _tsdb_soccer_row(event: dict) -> dict:
 
 @shared_task(bind=True, max_retries=2, default_retry_delay=300)
 def sync_thesportsdb_upcoming_fixtures(self):
-    """
-    Fetches upcoming soccer fixtures for the next 30 days from TheSportsDB
-    (eventsday.php endpoint). TheSportsDB has no day-offset limit unlike
-    StatPal (which caps at ±7 days), so this fills the long-range gap.
+    """Fetch long-range soccer fixtures for the next 30 days from TheSportsDB (eventsday.php).
 
-    Runs once daily at 7am via Celery beat.
-    Rate-limited: TheSportsDB free key allows ~1 req/1.5s (enforced in service).
+    Fills the scheduling horizon beyond StatPal's ±7 day window.
+
+    Args:
+        self: Bound Celery task instance.
+
+    Returns:
+        str: Task execution summary message.
     """
     from apps.sports_apis.services.thesportsdb import thesportsdb_service
 
@@ -1528,11 +1718,15 @@ def sync_thesportsdb_upcoming_fixtures(self):
 
 @shared_task(bind=True, max_retries=3, default_retry_delay=60)
 def sync_statpal_data(self):
-    """
-    Fetches ONLY active/live matches for Soccer, NBA, Cricket, Tennis, etc.
-    Saves to both Event and LiveScore models and publishes via WebSocket.
+    """Fetch active live matches across all supported sports and publish updates via WebSockets.
 
-    Recommended beat schedule: every 60 seconds.
+    Saves data to Event and LiveScore tables and broadcasts real-time score updates to connected clients.
+
+    Args:
+        self: Bound Celery task instance.
+
+    Returns:
+        str: Task execution summary message.
     """
     lock_id = "sync_statpal_data_lock"
     if not cache.add(lock_id, "true", timeout=90):
@@ -1612,15 +1806,13 @@ def sync_statpal_data(self):
 
 @shared_task(bind=True, max_retries=2, default_retry_delay=300)
 def sync_statpal_fixtures_data(self):
-    """
-    Fetches upcoming match fixtures for Soccer, NBA, Cricket, etc.
-    Runs periodically (e.g., every 6 hours) to update match schedules without overloading the server.
+    """Fetch and sync upcoming and past match fixtures from StatPal within the ±7 day window.
 
-    Daily-offset sports (soccer, nba, etc.) are fetched for:
-      - past 7 days  (offset -7 … -1) → catch any late-updated past matches
-      - today        (offset  0)
-      - next 7 days  (offset +1 … +7) → StatPal API max limit is ±7
-    Cricket is fetched once (bulk future/current schedule, no offset needed).
+    Args:
+        self: Bound Celery task instance.
+
+    Returns:
+        str: Task execution summary message.
     """
     lock_id = "sync_statpal_fixtures_data_lock"
     if not cache.add(lock_id, "true", timeout=600):
@@ -1709,9 +1901,11 @@ def sync_statpal_fixtures_data(self):
         cache.delete(lock_id)
 
 
-def reprocess_all_events_stats():
-    """
-    Backfills and updates all existing EventStatistics in the database according to current normalization rules.
+def reprocess_all_events_stats() -> str:
+    """Reprocess and backfill all existing EventStatistics according to updated normalization schemas.
+
+    Returns:
+        str: Reprocessing summary report with updated and created statistics counts.
     """
     from apps.event.models import Event, EventStatistics
     from apps.event.utils_stats import normalize_event_stats

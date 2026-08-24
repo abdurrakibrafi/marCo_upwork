@@ -9,9 +9,11 @@ from apps.sports_apis.services.mlb_stats import mlb_stats_service
 from apps.sports_apis.services.nhl_api import nhl_api_service
 
 class Command(BaseCommand):
+    """Management command to backfill and synchronize MLB and NHL team rosters using official open APIs."""
     help = "Backfill roster/athlete entities for MLB and NHL teams using free official APIs"
 
     def add_arguments(self, parser):
+        """Register CLI options."""
         parser.add_argument(
             '--dry-run',
             action='store_true',
@@ -19,12 +21,14 @@ class Command(BaseCommand):
         )
 
     def normalize_name(self, name: str) -> str:
+        """Normalize team name string for dictionary key mapping."""
         if not name:
             return ""
         name = unicodedata.normalize('NFKD', name).encode('ASCII', 'ignore').decode('utf-8')
         return "".join(c for c in name.lower() if c.isalnum())
 
     def parse_mlb_height(self, height_str: str) -> int | None:
+        """Parse US customary height string (e.g. `6'2"`) to centimeters integer."""
         if not height_str:
             return None
         match = re.match(r"(\d+)'\s*(\d+)", height_str)
@@ -38,6 +42,7 @@ class Command(BaseCommand):
         return None
 
     def parse_mlb_weight(self, weight_lbs) -> int | None:
+        """Convert weight in pounds to metric kilograms."""
         if not weight_lbs:
             return None
         try:
@@ -46,6 +51,7 @@ class Command(BaseCommand):
             return None
 
     def parse_birth_date(self, date_str: str) -> datetime.date | None:
+        """Parse ISO date string (`YYYY-MM-DD`) to Python date object."""
         if not date_str:
             return None
         try:
@@ -54,6 +60,7 @@ class Command(BaseCommand):
             return None
 
     def handle(self, *args, **options):
+        """Execute MLB and NHL athlete roster backfill."""
         dry_run = options['dry_run']
         if dry_run:
             self.stdout.write(self.style.WARNING("=== DRY RUN MODE: Database changes will not be saved ==="))

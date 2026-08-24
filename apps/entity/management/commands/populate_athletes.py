@@ -40,18 +40,34 @@ NBA_ABBR_MAP = {
     'Washington Wizards': 'was',
 }
 
-def parse_nba_height(h_str):
+def parse_nba_height(h_str) -> int:
+    """Parse NBA height string format (e.g. 6-7 or 6'7") into centimeters.
+
+    Args:
+        h_str (str): Height string.
+
+    Returns:
+        int or None: Height in cm.
+    """
     if not h_str or h_str == '--':
         return None
     try:
-        parts = h_str.replace('"', '').split("'")
-        feet = int(parts[0].strip())
-        inches = int(parts[1].strip()) if len(parts) > 1 else 0
+        parts = h_str.replace('"', '').split('-') if '-' in h_str else h_str.replace('"', '').split("'")
+        feet = int(parts[0])
+        inches = int(parts[1]) if len(parts) > 1 else 0
         return int(feet * 30.48 + inches * 2.54)
     except Exception:
         return None
 
-def parse_nba_weight(w_str):
+def parse_nba_weight(w_str) -> int:
+    """Parse NBA weight string (e.g. '220 lbs') into kilograms.
+
+    Args:
+        w_str (str): Weight string in pounds.
+
+    Returns:
+        int or None: Weight in kg.
+    """
     if not w_str or w_str == '--':
         return None
     try:
@@ -61,9 +77,11 @@ def parse_nba_weight(w_str):
         return None
 
 class Command(BaseCommand):
+    """Management command to populate and seed athlete profiles for major soccer and NBA teams."""
     help = 'Populate athletes/players for major seeded soccer and NBA teams'
 
     def handle(self, *args, **options):
+        """Execute the roster discovery and athlete seeding routine."""
         # 1. NBA Teams
         nba_teams = Entity.objects.filter(sport='basketball', type='team', api_source='statpal')
         self.stdout.write(f"Found {nba_teams.count()} NBA teams in database.")

@@ -17,13 +17,28 @@ HEADERS_BDL = {
 }
 
 
-def _current_season(sport='soccer'):
-    """Always return the current calendar year (e.g. 2026)."""
+def _current_season(sport='soccer') -> int:
+    """Return the current calendar year to be used as default sport season.
+
+    Args:
+        sport (str, optional): Sport slug. Defaults to 'soccer'.
+
+    Returns:
+        int: Current calendar year (e.g. 2026).
+    """
     return datetime.now().year
 
 
-def _safe_league_data(ent, req):
-    """Return league data safe for serialization — handles pk-less in-memory Entity objects."""
+def _safe_league_data(ent, req) -> dict:
+    """Return serialized league dictionary safe for in-memory or unpersisted Entity instances.
+
+    Args:
+        ent (Entity): Entity instance (may be unpersisted/in-memory).
+        req (Request): HTTP request context.
+
+    Returns:
+        dict: Safe league dictionary for response serialization.
+    """
     if ent and getattr(ent, 'pk', None):
         return EntitySerializer(ent, context={'request': req}).data
     return {

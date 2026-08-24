@@ -93,6 +93,7 @@ class Entity(models.Model):
         ]
     
     def save(self, *args, **kwargs):
+        """Save entity record, auto-generating a unique slug and normalizer name if missing."""
         if not self.slug:
             base_slug = slugify(f"{self.name}-{self.type}")
             slug = base_slug
@@ -110,7 +111,7 @@ class Entity(models.Model):
 
 
 class Team(models.Model):
-    """Extended model for teams"""
+    """Extended model for team entities storing stadium and career record details."""
     
     entity = models.OneToOneField(Entity, on_delete=models.CASCADE, related_name='team_details')
     
@@ -143,7 +144,7 @@ class Team(models.Model):
 
 
 class Athlete(models.Model):
-    """Extended model for athletes"""
+    """Extended model for athlete entities storing bio, physical metrics, position, and team affiliation."""
     
     entity = models.OneToOneField(Entity, on_delete=models.CASCADE, related_name='athlete_details')
     
@@ -182,6 +183,11 @@ class Athlete(models.Model):
     
     @property
     def age(self):
+        """Calculate the athlete's current age in whole years from their date of birth.
+
+        Returns:
+            int or None: Current age in years, or None if date_of_birth is unset.
+        """
         if self.date_of_birth:
             from datetime import date
             today = date.today()
@@ -192,7 +198,7 @@ class Athlete(models.Model):
 
 
 class League(models.Model):
-    """Extended model for leagues"""
+    """Extended model for leagues and competition tournaments."""
     
     entity = models.OneToOneField(Entity, on_delete=models.CASCADE, related_name='league_details')
     
@@ -209,7 +215,7 @@ class League(models.Model):
 
 
 class EntityStats(models.Model):
-    """Cached statistics for entities"""
+    """Cached performance and season/career statistics for sports entities."""
     
     entity = models.ForeignKey(Entity, on_delete=models.CASCADE, related_name='stats')
     
@@ -229,12 +235,7 @@ class EntityStats(models.Model):
 
 
 class CanonicalEntity(models.Model):
-    """
-    Canonical entity reference with manual override capability.
-    
-    Maps all name variations to a single canonical entity.
-    Allows admins to manually curate and merge entities.
-    """
+    """Canonical entity reference with manual override and multi-source cross-referencing capabilities."""
     
     entity = models.OneToOneField(
         Entity,
@@ -286,12 +287,21 @@ class CanonicalEntity(models.Model):
         return f"{self.canonical_name} ({self.entity.sport}/{self.entity.type})"
     
     def add_variation(self, name: str):
-        """Add name variation."""
+        """Add an alternative name variation for fuzzy matching.
+
+        Args:
+            name (str): Alias or variation string.
+        """
         if name not in self.name_variations:
             self.name_variations.append(name)
             self.save(update_fields=['name_variations'])
     
     def add_external_id(self, api_source: str, external_id):
-        """Add external ID for an API source."""
+        """Map a third-party API provider identifier to this canonical entity.
+
+        Args:
+            api_source (str): Source identifier ('api_sports', 'statpal', etc.).
+            external_id (str or int): External ID in the provider's database.
+        """
         self.external_ids[api_source] = str(external_id)
         self.save(update_fields=['external_ids'])

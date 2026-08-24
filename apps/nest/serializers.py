@@ -3,7 +3,7 @@ from apps.nest.models import UserNest, UserPreferences, RecentSearch
 from apps.entity.serializers import EntitySerializer
 
 class UserNestSerializer(serializers.ModelSerializer):
-    """User's nest serializer"""
+    """Serializer for user nest entries with nested Entity details."""
     
     entity = EntitySerializer()
     
@@ -16,11 +16,12 @@ class UserNestSerializer(serializers.ModelSerializer):
 
 
 class AddToNestSerializer(serializers.Serializer):
-    """Serializer for adding entities to nest"""
+    """Validation serializer for adding an entity to the authenticated user's Nest."""
     
     entity_id = serializers.IntegerField()
     
     def validate_entity_id(self, value):
+        """Validate that target entity exists and is active."""
         from apps.entity.models import Entity
         try:
             Entity.objects.get(id=value)
@@ -30,7 +31,7 @@ class AddToNestSerializer(serializers.Serializer):
 
 
 class UserPreferencesSerializer(serializers.ModelSerializer):
-    """User preferences serializer"""
+    """Serializer for managing user notification, score display, and news filter preferences."""
     
     class Meta:
         model = UserPreferences
@@ -42,7 +43,7 @@ class UserPreferencesSerializer(serializers.ModelSerializer):
 
 
 class RecentSearchSerializer(serializers.ModelSerializer):
-    """Recent search serializer"""
+    """Serializer for user search history records."""
     
     entity = EntitySerializer()
     

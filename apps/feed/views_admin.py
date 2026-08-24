@@ -16,18 +16,13 @@ logger = logging.getLogger(__name__)
 @api_view(['POST'])
 @permission_classes([IsAdminUser])
 def create_rss_source(request):
-    """
-    Admin: Create a new RSS source.
-    
-    POST /api/admin/rss-sources/create/
-    Body: {
-        "name": "La Liga Official",
-        "url": "https://www.laliga.com/feed",
-        "sport": "soccer",
-        "keywords": ["La Liga", "Spanish Football"],
-        "estimated_quality": "high",
-        "is_verified": true
-    }
+    """Create a new RSS source record linked to target sports entities.
+
+    Args:
+        request: Admin HTTP request containing name, url, sport, keywords, estimated_quality, and entity_ids.
+
+    Returns:
+        Response: Created RSS source details or error message.
     """
     data = request.data
     
@@ -70,10 +65,14 @@ def create_rss_source(request):
 @api_view(['PUT'])
 @permission_classes([IsAdminUser])
 def update_rss_source(request, rss_source_id):
-    """
-    Admin: Update RSS source.
-    
-    PUT /api/admin/rss-sources/{id}/update/
+    """Update configuration, targets, or active state for an existing RSS source.
+
+    Args:
+        request: Admin HTTP request with updated field values.
+        rss_source_id (int): Primary key of the RSSSource.
+
+    Returns:
+        Response: Updated status or error message.
     """
     try:
         rss_source = RSSSource.objects.get(id=rss_source_id)
@@ -113,10 +112,14 @@ def update_rss_source(request, rss_source_id):
 @api_view(['DELETE'])
 @permission_classes([IsAdminUser])
 def delete_rss_source(request, rss_source_id):
-    """
-    Admin: Delete RSS source.
-    
-    DELETE /api/admin/rss-sources/{id}/delete/
+    """Permanently delete an RSS source configuration.
+
+    Args:
+        request: Admin HTTP request.
+        rss_source_id (int): Primary key of the RSSSource.
+
+    Returns:
+        Response: Deletion confirmation or error.
     """
     try:
         rss_source = RSSSource.objects.get(id=rss_source_id)
@@ -140,10 +143,13 @@ def delete_rss_source(request, rss_source_id):
 @api_view(['GET'])
 @permission_classes([IsAdminUser])
 def list_rss_sources(request):
-    """
-    Admin: List all RSS sources with stats.
-    
-    GET /api/admin/rss-sources/
+    """List all configured RSS sources with health metrics and entity associations.
+
+    Args:
+        request: Admin HTTP request with optional query filters (sport, is_active).
+
+    Returns:
+        Response: List of configured RSS sources and summary statistics.
     """
     sport = request.GET.get('sport', '')
     is_active = request.GET.get('is_active')
@@ -183,10 +189,14 @@ def list_rss_sources(request):
 @api_view(['POST'])
 @permission_classes([IsAdminUser])
 def trigger_rss_fetch(request, rss_source_id):
-    """
-    Admin: Manually trigger RSS fetch for a source.
-    
-    POST /api/admin/rss-sources/{id}/fetch/
+    """Manually dispatch background Celery task to fetch news from a specific RSS source.
+
+    Args:
+        request: Admin HTTP request.
+        rss_source_id (int): Primary key of the RSSSource.
+
+    Returns:
+        Response: Dispatched task ID and confirmation.
     """
     from apps.entity.tasks_rss import fetch_rss_feed
     
@@ -210,10 +220,13 @@ def trigger_rss_fetch(request, rss_source_id):
 @api_view(['POST'])
 @permission_classes([IsAdminUser])
 def trigger_all_rss_fetch(request):
-    """
-    Admin: Manually trigger fetch for all RSS sources.
-    
-    POST /api/admin/rss-sources/fetch-all/
+    """Manually dispatch background Celery tasks to fetch all active RSS sources across the platform.
+
+    Args:
+        request: Admin HTTP request.
+
+    Returns:
+        Response: Dispatched task ID and confirmation.
     """
     from apps.entity.tasks_rss import fetch_all_rss_feeds
     

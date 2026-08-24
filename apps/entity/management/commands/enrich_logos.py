@@ -7,9 +7,11 @@ from apps.nest.models import UserNest
 from apps.sports_apis.services.thesportsdb import thesportsdb_service
 
 class Command(BaseCommand):
+    """Management command to enrich missing team and league logos from TheSportsDB API."""
     help = 'Enrich missing team and league logos from TheSportsDB API with priority ordering and sport isolation'
 
     def add_arguments(self, parser):
+        """Configure command line arguments for sport, limit, and re-fetch options."""
         parser.add_argument(
             '--limit',
             type=int,
@@ -34,6 +36,7 @@ class Command(BaseCommand):
         )
 
     def handle(self, *args, **options):
+        """Execute logo enrichment fetching from TheSportsDB."""
         limit = options['limit']
         sport = options['sport']
         popular_only = options['popular_only']

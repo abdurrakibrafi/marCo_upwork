@@ -3,7 +3,7 @@ from django.conf import settings
 from apps.entity.models import Entity
 
 class UserNest(models.Model):
-    """User's personalized nest of entities"""
+    """User followed entity in their personalized 360-degree Nest dashboard."""
     
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='nest')
     entity = models.ForeignKey(Entity, on_delete=models.CASCADE)
@@ -27,7 +27,7 @@ class UserNest(models.Model):
 
 
 class UserPreferences(models.Model):
-    """User's app preferences"""
+    """Global user application, notification, and source limit preferences."""
     
     user = models.OneToOneField(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='preferences')
     
@@ -52,7 +52,7 @@ class UserPreferences(models.Model):
 
 
 class RecentSearch(models.Model):
-    """User's recent searches"""
+    """User search history entry recording search queries and selected entity links."""
     
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='recent_searches')
     query = models.CharField(max_length=200)

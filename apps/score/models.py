@@ -2,7 +2,7 @@ from django.db import models
 
 
 class LiveScore(models.Model):
-    """Cached live score data"""
+    """Real-time live score cache for ongoing sporting fixtures across supported leagues."""
     
     SPORTS_CHOICES = [
         ('nba', 'NBA'),

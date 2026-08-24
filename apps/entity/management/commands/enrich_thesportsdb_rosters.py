@@ -8,9 +8,11 @@ from apps.sports_apis.services.thesportsdb import thesportsdb_service
 INDIVIDUAL_SPORTS = ['tennis', 'golf', 'mma', 'boxing', 'combat_sports', 'motorsport', 'formula1', 'f1']
 
 class Command(BaseCommand):
+    """Management command to enrich team rosters and seed athlete profiles from TheSportsDB and Wikipedia."""
     help = 'Enrich team rosters and seed athlete profiles from TheSportsDB API and Wikipedia fallback'
 
     def add_arguments(self, parser):
+        """Configure command arguments for filtering teams, sport, and force options."""
         parser.add_argument(
             '--limit',
             type=int,
@@ -41,6 +43,7 @@ class Command(BaseCommand):
         )
 
     def handle(self, *args, **options):
+        """Execute the squad roster ingestion and athlete profile seeding."""
         limit = options['limit']
         sport = options['sport']
         team_name_filter = options['team_name']

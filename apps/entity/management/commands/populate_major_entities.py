@@ -7,9 +7,11 @@ import logging
 logger = logging.getLogger(__name__)
 
 class Command(BaseCommand):
+    """Management command to populate top-tier global sports leagues and clubs from StatPal API."""
     help = 'Populate major sports entities (leagues and teams) from StatPal API'
 
     def handle(self, *args, **options):
+        """Execute major league and club seeding across soccer, basketball, and cricket."""
         # 1. UEFA Champions League (special cup)
         self.stdout.write("Seeding UEFA Champions League...")
         ucl_league = get_or_create_precise_entity('2838', 'UEFA Champions League', 'soccer', 'league')

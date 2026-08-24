@@ -7,24 +7,31 @@ logger = logging.getLogger(__name__)
 
 
 class BraveSearchService:
-    """Brave Search API wrapper used for RSS source discovery."""
+    """Brave Web Search API client used for autonomous RSS source discovery and domain resolution."""
 
     BASE_URL = "https://api.search.brave.com/res/v1/web/search"
 
     def __init__(self):
+        """Initialize Brave Search service with API subscription token."""
         self.api_key = getattr(settings, "BRAVESEARCH_KEY", "")
 
     def _headers(self):
+        """Build HTTP request headers including subscription auth token."""
         return {
             "X-Subscription-Token": self.api_key,
             "Accept": "application/json",
         }
 
     def discover_sources_for_entity(self, entity_name: str, entity_type: str, sport: str) -> list[str]:
-        """Return a list of publisher domains for an entity.
+        """Discover and return a deduplicated list of publisher website domains relevant to a given sports entity.
 
-        This is a lightweight discovery step that only keeps the domain(s),
-        not any content snippets (compliant with Brave Search policy).
+        Args:
+            entity_name (str): Entity display name.
+            entity_type (str): Type category ('team', 'athlete', 'league', etc.).
+            sport (str): Associated sport.
+
+        Returns:
+            list[str]: Unique domain URLs.
         """
         if not self.api_key:
             logger.warning("Brave Search API key is not set; skipping discovery")
@@ -48,6 +55,16 @@ class BraveSearchService:
         return domains
 
     def _build_queries(self, name: str, entity_type: str, sport: str) -> list[str]:
+        """Construct context-aware keyword search queries optimized for entity discovery.
+
+        Args:
+            name (str): Entity name.
+            entity_type (str): Entity type.
+            sport (str): Sport discipline.
+
+        Returns:
+            list[str]: Formatted search query strings.
+        """
         queries = []
         sport_clean = (sport or '').strip()
         has_sport = bool(sport_clean and sport_clean.lower() != 'none')
@@ -82,6 +99,14 @@ class BraveSearchService:
         return queries
 
     def _search(self, query: str) -> list[str]:
+        """Execute web search API request against Brave Search and extract result link URLs.
+
+        Args:
+            query (str): Search term.
+
+        Returns:
+            list[str]: URLs of returned top web results.
+        """
         try:
             resp = requests.get(self.BASE_URL, headers=self._headers(), params={"q": query, "count": 10}, timeout=10)
             resp.raise_for_status()
@@ -102,6 +127,14 @@ class BraveSearchService:
         return urls
 
     def _extract_domain(self, url: str) -> str | None:
+        """Parse absolute domain origin from arbitrary web link URL.
+
+        Args:
+            url (str): Target URL.
+
+        Returns:
+            str or None: Base scheme and netloc domain (e.g., 'https://bbc.com').
+        """
         try:
             parsed = urlparse(url)
             if not parsed.scheme:

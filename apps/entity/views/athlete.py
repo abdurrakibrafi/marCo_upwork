@@ -20,8 +20,16 @@ logger = logging.getLogger(__name__)
 @api_view(['GET'])
 @permission_classes([AllowAny])
 def get_athlete_stats(request, athlete_id):
-    """
-    GET /api/entities/athlete/{athlete_id}/stats/?season=2024
+    """Retrieve player season performance stats, profile metrics, and biographical data.
+
+    Checks local DB cache before falling back to TheSportsDB and API-Football.
+
+    Args:
+        request (Request): HTTP request with optional 'season' and 'force_refresh' query parameters.
+        athlete_id (int): Primary key ID of the athlete entity.
+
+    Returns:
+        Response: Athlete metadata and performance statistics dictionary.
     """
     athlete_entity = get_object_or_404(Entity, id=athlete_id, type='athlete')
     athlete_entity = athlete_entity.canonical_entity or athlete_entity
@@ -89,7 +97,16 @@ def get_athlete_stats(request, athlete_id):
     })
 
 
-def _fetch_soccer_player_stats(external_id, season):
+def _fetch_soccer_player_stats(external_id, season) -> dict:
+    """Fetch soccer player season metrics (goals, assists, passes, cards) from API-Football.
+
+    Args:
+        external_id (str or int): API-Football player external ID.
+        season (int or str): Season year.
+
+    Returns:
+        dict: Performance statistics mapping.
+    """
     cache_key = f'player_stats:soccer:{external_id}:{season}'
     cached = cache.get(cache_key)
     if cached:
@@ -145,7 +162,18 @@ def _fetch_soccer_player_stats(external_id, season):
         return {}
 
 
-def _fetch_thesportsdb_player_stats(player_name, athlete_entity=None, force_refresh=False, team_entity=None, **kwargs):
+def _fetch_thesportsdb_player_stats(player_name, athlete_entity=None, force_refresh=False, team_entity=None, **kwargs) -> dict:
+    """Fetch player biographical and contractual profile information from TheSportsDB.
+
+    Args:
+        player_name (str): Player's display name.
+        athlete_entity (Entity, optional): Athlete entity instance for caching and persistence.
+        force_refresh (bool, optional): Force cache bypass. Defaults to False.
+        team_entity (Entity, optional): Team fallback if athlete_entity is not supplied.
+
+    Returns:
+        dict: Biographical and attribute stats payload.
+    """
     if not athlete_entity and team_entity:
         athlete_entity = team_entity
     cache_key = f'player_stats:thesportsdb:{player_name.lower().strip()}'
@@ -302,6 +330,17 @@ def _fetch_thesportsdb_player_stats(player_name, athlete_entity=None, force_refr
 @api_view(['GET'])
 @permission_classes([AllowAny])
 def get_athlete_bio(request, athlete_id):
+    """Retrieve detailed athlete biography, team affiliation, and physical profile.
+
+    Enriches missing attributes like height, nationality, and headshot from TheSportsDB.
+
+    Args:
+        request (Request): HTTP GET request.
+        athlete_id (int): Primary key ID of the athlete entity.
+
+    Returns:
+        Response: Athlete biographical payload dictionary.
+    """
     athlete_entity = get_object_or_404(Entity, id=athlete_id, type='athlete')
     athlete_entity = athlete_entity.canonical_entity or athlete_entity
     try:

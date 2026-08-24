@@ -72,8 +72,17 @@ __all__ = [
 @api_view(['GET'])
 @permission_classes([AllowAny])
 def get_team_stats(request, team_id):
-    """
-    GET /api/entities/team/{team_id}/stats/?season=2024
+    """Retrieve comprehensive performance statistics and records for a sports team.
+
+    Handles national rankings (ICC, FIFA), club league stats, NBA/NFL/MLB records,
+    and fallback imports.
+
+    Args:
+        request (Request): HTTP GET request with optional 'season' parameter.
+        team_id (int): Primary key ID of the team entity.
+
+    Returns:
+        Response: Team statistics payload with wins, losses, win percentage, and form.
     """
     from .athlete import get_athlete_stats, _fetch_thesportsdb_player_stats
     from .league import _get_standings_for_league
@@ -268,6 +277,17 @@ def get_team_stats(request, team_id):
 @api_view(['GET'])
 @permission_classes([AllowAny])
 def get_team_roster(request, team_id):
+    """Retrieve the squad roster of athletes associated with a sports team.
+
+    Auto-imports missing squad players from TheSportsDB when DB roster is incomplete.
+
+    Args:
+        request (Request): HTTP GET request.
+        team_id (int): Primary key ID of the team entity.
+
+    Returns:
+        Response: List of athlete profiles in the team squad.
+    """
     team_entity = get_object_or_404(Entity, id=team_id, type='team')
     team_entity = team_entity.canonical_entity or team_entity
 
@@ -472,9 +492,14 @@ def get_team_roster(request, team_id):
 @api_view(['GET'])
 @permission_classes([AllowAny])
 def get_team_standings(request, team_id):
-    """
-    GET /api/entities/team/{team_id}/standings/
-    Returns the official primary league standings for clubs or national rankings for national teams.
+    """Retrieve official primary league table with the target team highlighted, or world rankings for national teams.
+
+    Args:
+        request (Request): HTTP GET request with optional 'season' and 'format' parameters.
+        team_id (int): Primary key ID of the team entity.
+
+    Returns:
+        Response: Standings table or national team rankings array.
     """
     from .league import _get_standings_for_league, _fetch_statpal_hierarchical_standings
 
@@ -678,8 +703,14 @@ def get_team_standings(request, team_id):
 @api_view(['GET'])
 @permission_classes([AllowAny])
 def get_team_fixtures(request, team_id):
-    """
-    GET /api/entities/team/{team_id}/fixtures/
+    """Retrieve match fixtures and event results where this team played as home or away.
+
+    Args:
+        request (Request): HTTP GET request.
+        team_id (int): Primary key ID of the team entity.
+
+    Returns:
+        Response: Serialized match event schedule.
     """
     from apps.event.models import Event
     from apps.event.serializers import EventSerializer as EvSerializer

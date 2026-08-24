@@ -3,6 +3,7 @@ from apps.nest.models import UserNest, UserPreferences, RecentSearch
 
 @admin.register(UserNest)
 class UserNestAdmin(admin.ModelAdmin):
+    """Admin management panel for user personalized Nest memberships."""
     list_display = ['user', 'entity', 'position', 'added_at']
     list_filter = ['entity__type', 'entity__sport']
     search_fields = ['user__username', 'entity__name']
@@ -11,6 +12,7 @@ class UserNestAdmin(admin.ModelAdmin):
 
 @admin.register(UserPreferences)
 class UserPreferencesAdmin(admin.ModelAdmin):
+    """Admin configuration for user application preferences."""
     list_display = ['user', 'show_live_scores', 'sources_limit', 'sources_used']
     search_fields = ['user__username']
     list_select_related = ['user']
@@ -18,6 +20,7 @@ class UserPreferencesAdmin(admin.ModelAdmin):
 
 @admin.register(RecentSearch)
 class RecentSearchAdmin(admin.ModelAdmin):
+    """Admin audit panel for user search activity logs."""
     list_display = ['user', 'query', 'entity', 'searched_at']
     list_filter = ['searched_at']
     search_fields = ['user__username', 'query']

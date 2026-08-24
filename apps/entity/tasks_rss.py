@@ -23,12 +23,14 @@ logger = get_task_logger(__name__)
 
 @shared_task(bind=True, max_retries=3)
 def generate_entity_embeddings(self, entity_id=None):
-    """
-    Generate embeddings for entities (AI matching).
-    If entity_id provided, do just that one. Else, batch all missing.
-    
-    Run: python manage.py celery_worker
-    Trigger: generate_entity_embeddings.delay()  or specify entity_id
+    """Generate semantic vector embeddings for sports entities to enable AI-powered matching.
+
+    Args:
+        self (Task): Celery bound task instance.
+        entity_id (int, optional): Specific entity ID to generate embeddings for. If None, processes batch of entities.
+
+    Returns:
+        str: Summary execution message.
     """
     embedding_service = get_embedding_service()
     if not embedding_service:
@@ -74,9 +76,14 @@ def generate_entity_embeddings(self, entity_id=None):
 
 @shared_task(bind=True, max_retries=2)
 def fetch_rss_feed(self, rss_source_id):
-    """
-    Fetch and parse a single RSS feed.
-    Deduplicates articles, links to entities.
+    """Fetch, parse, deduplicate, and ingest news articles from a single RSS feed.
+
+    Args:
+        self (Task): Celery bound task instance.
+        rss_source_id (int): Primary key of the RSSSource to process.
+
+    Returns:
+        str: Summary string with count of new articles created.
     """
     try:
         rss_source = RSSSource.objects.get(id=rss_source_id)
@@ -170,8 +177,10 @@ def fetch_rss_feed(self, rss_source_id):
 
 @shared_task
 def fetch_all_rss_feeds():
-    """
-    Orchestrator: fetch all active RSS sources (called daily or 6-hourly).
+    """Periodic orchestrator task to schedule fetch tasks for all active RSS sources.
+
+    Returns:
+        str: Count of queued RSS fetch tasks.
     """
     rss_sources = RSSSource.objects.filter(is_active=True)
     logger.info(f"Starting to fetch {rss_sources.count()} RSS sources")
@@ -198,13 +207,16 @@ def fetch_all_rss_feeds():
 
 @shared_task
 def aggregate_entity_feed(entity_id: int, user_id: int = None):
-    """
-    Aggregate feed for an entity considering:
-    - RSS sources (global)
-    - User-selected sources (EntitySource)
-    - Brave Search (on-demand)
-    
-    Returns combined feed sorted by relevance/date.
+    """Aggregate a unified feed of articles and news items for an entity.
+
+    Combines global RSS feeds, curated entity sources, and user-specific selections.
+
+    Args:
+        entity_id (int): Primary key of the entity.
+        user_id (int, optional): User ID to include customized nest sources.
+
+    Returns:
+        dict or str: Aggregation summary payload or error message.
     """
     from apps.nest.models import UserNest
     

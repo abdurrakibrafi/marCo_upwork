@@ -54,12 +54,22 @@ from django.utils import timezone
 User = get_user_model()
 
 class RegisterView(BaseResponseMixin, generics.CreateAPIView):
+    """API view to register a new user or resend verification OTP for unverified accounts."""
+
     queryset = User.objects.all()
     serializer_class = RegisterSerializer
     permission_classes = (permissions.AllowAny,)
     throttle_classes = [AnonRateThrottle]
 
     def create(self, request, *args, **kwargs):
+        """Process registration request, check if user exists, and send verification OTP.
+
+        Args:
+            request (Request): HTTP request with registration data.
+
+        Returns:
+            Response: Success response with registration or OTP resend status.
+        """
         email = request.data.get("email")
         
         # Check if user exists
@@ -105,11 +115,21 @@ class RegisterView(BaseResponseMixin, generics.CreateAPIView):
     
 
 class VerifyEmailView(BaseResponseMixin, generics.GenericAPIView):
+    """API view to verify user email address via OTP and activate account."""
+
     serializer_class = VerifyEmailSerializer
     permission_classes = (permissions.AllowAny,)
     throttle_classes = [AnonRateThrottle]
 
     def post(self, request):
+        """Verify email OTP and return JWT access/refresh token pair.
+
+        Args:
+            request (Request): HTTP request with email and otp.
+
+        Returns:
+            Response: JSON response containing JWT tokens upon successful verification.
+        """
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
 
@@ -128,10 +148,21 @@ class VerifyEmailView(BaseResponseMixin, generics.GenericAPIView):
 
 
 class ResendOTPView(BaseResponseMixin, generics.GenericAPIView):
+    """API view to re-send OTP code for verification or password reset."""
+
     serializer_class = ResendOTPSerializer
     permission_classes = (permissions.AllowAny,)
     throttle_classes = [AnonRateThrottle]
+
     def post(self, request):
+        """Re-generate and send OTP code to user's email.
+
+        Args:
+            request (Request): HTTP request with email and purpose.
+
+        Returns:
+            Response: Standard success response.
+        """
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
 
@@ -172,11 +203,21 @@ class ResendOTPView(BaseResponseMixin, generics.GenericAPIView):
 
 
 class LoginView(BaseResponseMixin, generics.GenericAPIView):
+    """API view for standard email/password user authentication."""
+
     serializer_class = LoginSerializer
     permission_classes = (permissions.AllowAny,)
     throttle_classes = [AnonRateThrottle]
 
     def post(self, request):
+        """Authenticate user credentials and issue JWT tokens.
+
+        Args:
+            request (Request): HTTP request with email and password.
+
+        Returns:
+            Response: Response with JWT tokens and user summary if valid.
+        """
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         
@@ -232,10 +273,20 @@ class LoginView(BaseResponseMixin, generics.GenericAPIView):
             )
 
 class LogoutView(BaseResponseMixin, generics.GenericAPIView):
+    """API view to log out user by blacklisting their JWT refresh token."""
+
     permission_classes = (permissions.IsAuthenticated,)
     throttle_classes = [UserRateThrottle]
 
     def post(self, request):
+        """Blacklist refresh token to invalidate session.
+
+        Args:
+            request (Request): HTTP request with refresh token.
+
+        Returns:
+            Response: Logout status response.
+        """
         try:
             refresh_token = request.data.get("refresh")
             if not refresh_token:
@@ -258,11 +309,21 @@ class LogoutView(BaseResponseMixin, generics.GenericAPIView):
             )
         
 class PasswordResetRequestView(BaseResponseMixin, generics.GenericAPIView):
+    """API view to initiate password reset by requesting an OTP."""
+
     serializer_class = PasswordResetRequestSerializer
     permission_classes = (permissions.AllowAny,)
     throttle_classes = [AnonRateThrottle]
 
     def post(self, request):
+        """Process reset request and send OTP email.
+
+        Args:
+            request (Request): HTTP request with target email.
+
+        Returns:
+            Response: Generic confirmation response.
+        """
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
 
@@ -275,11 +336,21 @@ class PasswordResetRequestView(BaseResponseMixin, generics.GenericAPIView):
         )
 
 class PasswordResetOTPVerifyView(BaseResponseMixin, generics.GenericAPIView):
+    """API view to verify password reset OTP code before setting new password."""
+
     serializer_class = PasswordResetOTPVerifySerializer
     permission_classes = (permissions.AllowAny,)
     throttle_classes = [AnonRateThrottle]
 
     def post(self, request):
+        """Verify OTP validity.
+
+        Args:
+            request (Request): HTTP request containing email and OTP.
+
+        Returns:
+            Response: Confirmation response if OTP is valid.
+        """
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
 
@@ -291,11 +362,21 @@ class PasswordResetOTPVerifyView(BaseResponseMixin, generics.GenericAPIView):
 
 
 class PasswordResetConfirmView(BaseResponseMixin, generics.GenericAPIView):
+    """API view to finalize password reset using verified OTP and new password."""
+
     serializer_class = PasswordResetConfirmSerializer
     permission_classes = (permissions.AllowAny,)
     throttle_classes = [AnonRateThrottle]
 
     def post(self, request):
+        """Set new password for user after verifying OTP.
+
+        Args:
+            request (Request): HTTP request with email, OTP, and new password.
+
+        Returns:
+            Response: Password reset success response.
+        """
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
 
@@ -307,11 +388,21 @@ class PasswordResetConfirmView(BaseResponseMixin, generics.GenericAPIView):
 
 
 class ChangePasswordView(BaseResponseMixin, generics.GenericAPIView):
+    """API view for logged-in users to change their account password."""
+
     serializer_class = ChangePasswordSerializer
     permission_classes = (permissions.IsAuthenticated,)
     throttle_classes = [UserRateThrottle]
 
     def post(self, request):
+        """Validate old password and set new password.
+
+        Args:
+            request (Request): HTTP request with old and new password.
+
+        Returns:
+            Response: Password change status response.
+        """
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
 
@@ -334,39 +425,36 @@ class ChangePasswordView(BaseResponseMixin, generics.GenericAPIView):
 
 
 class GoogleLogin(SocialLoginView):
+    """OAuth2 login callback view for Google authentication."""
+
     adapter_class = GoogleOAuth2Adapter
     client_class = OAuth2Client
     callback_url = settings.GOOGLE_CALLBACK_URL
 
 
 class AppleLogin(SocialLoginView):
+    """OAuth2 login callback view for Apple authentication."""
+
     adapter_class = AppleOAuth2Adapter
     client_class = OAuth2Client
     callback_url = settings.APPLE_CALLBACK_URL
 
 
-
-# class AccountSoftDeleteView(BaseResponseMixin, APIView):
-#     permission_classes = (permissions.IsAuthenticated,)
-#     throttle_classes = [UserRateThrottle]
-
-#     @extend_schema(request=AccountSoftDeleteSerializer) 
-#     def post(self, request):
-#         serializer = AccountSoftDeleteSerializer(data=request.data)
-#         serializer.is_valid(raise_exception=True)
-        
-#         user = request.user
-#         user.soft_delete()
-        
-#         return self.success_response(
-#             message="Account has been deactivated successfully"
-#         )
-    
 class ParmanentAccountDeleteView(BaseResponseMixin, APIView):
+    """API view to permanently remove a user account and all associated records."""
+
     permission_classes = (permissions.IsAuthenticated,)
     throttle_classes = [UserRateThrottle]
 
     def post(self, request):
+        """Permanently delete authenticated user account.
+
+        Args:
+            request (Request): HTTP request confirming deletion.
+
+        Returns:
+            Response: Deletion confirmation response.
+        """
         serializer = ParmanentAccountDeleteSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
 
@@ -378,9 +466,19 @@ class ParmanentAccountDeleteView(BaseResponseMixin, APIView):
         )
 
 class AccountRestoreView(BaseResponseMixin, APIView):
+    """Admin API view to restore a soft-deleted user account."""
+
     permission_classes = (permissions.IsAdminUser,)
 
     def post(self, request):
+        """Restore soft-deleted account by email.
+
+        Args:
+            request (Request): HTTP request containing target email.
+
+        Returns:
+            Response: Restore status response.
+        """
         serializer = AccountRestoreSerializer(data=request.data)
         if not serializer.is_valid():
             return self.error_response(
@@ -398,13 +496,24 @@ class AccountRestoreView(BaseResponseMixin, APIView):
         )
 
 class ProfileUpdateView(BaseResponseMixin, generics.UpdateAPIView):
+    """API view to update user profile information and manage email change requests."""
+
     permission_classes = [permissions.IsAuthenticated]
     serializer_class = ProfileUpdateSerializer
 
     def get_object(self):
+        """Retrieve profile associated with the authenticated user."""
         return self.request.user.profile
 
     def update(self, request, *args, **kwargs):
+        """Update profile fields and notify user if an email change OTP was dispatched.
+
+        Args:
+            request (Request): HTTP request containing updated profile attributes.
+
+        Returns:
+            Response: Response containing updated profile data.
+        """
         partial = kwargs.pop("partial", False)
         instance = self.get_object()
         serializer = self.get_serializer(instance, data=request.data, partial=partial)
@@ -426,10 +535,20 @@ class ProfileUpdateView(BaseResponseMixin, generics.UpdateAPIView):
 
 
 class VerifyEmailChangeView(BaseResponseMixin, generics.GenericAPIView):
+    """API view to verify OTP and finalize email address update."""
+
     permission_classes = [IsAuthenticated]
     serializer_class = VerifyEmailChangeSerializer
 
     def post(self, request):
+        """Verify email change OTP and swap user primary email.
+
+        Args:
+            request (Request): HTTP request containing email change OTP.
+
+        Returns:
+            Response: Success response with old and new email addresses.
+        """
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
 
@@ -491,10 +610,20 @@ class VerifyEmailChangeView(BaseResponseMixin, generics.GenericAPIView):
 
 
 class ResendEmailChangeOTPView(BaseResponseMixin, generics.GenericAPIView):
+    """API view to re-send verification OTP for a pending email change."""
+
     permission_classes = [IsAuthenticated]
     serializer_class = ResendEmailChangeOTPSerializer
 
     def post(self, request):
+        """Invalidate old email change OTPs and generate/send a new one.
+
+        Args:
+            request (Request): HTTP request with pending new email.
+
+        Returns:
+            Response: Status response indicating OTP was sent.
+        """
         try:
             profile = request.user.profile
 
@@ -530,9 +659,19 @@ class ResendEmailChangeOTPView(BaseResponseMixin, generics.GenericAPIView):
 
 
 class CancelEmailChangeView(BaseResponseMixin, generics.GenericAPIView):
+    """API view to cancel a pending email change request."""
+
     permission_classes = [IsAuthenticated]
 
     def post(self, request):
+        """Clear pending email change from profile and invalidate active OTPs.
+
+        Args:
+            request (Request): HTTP request to cancel email change.
+
+        Returns:
+            Response: Cancellation confirmation response.
+        """
         try:
             profile = request.user.profile
 
@@ -557,11 +696,21 @@ class CancelEmailChangeView(BaseResponseMixin, generics.GenericAPIView):
 
 
 class SocialAuthView(BaseResponseMixin, generics.GenericAPIView):
+    """API view for third-party social authentication / registration."""
+
     serializer_class = SocialAuthSerializer
     permission_classes = (permissions.AllowAny,)
     throttle_classes = [AnonRateThrottle]
 
     def post(self, request):
+        """Authenticate or create user via social provider data and issue JWT tokens.
+
+        Args:
+            request (Request): HTTP request containing provider and user details.
+
+        Returns:
+            Response: Response containing JWT tokens and user profile information.
+        """
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
 
@@ -586,15 +735,26 @@ class SocialAuthView(BaseResponseMixin, generics.GenericAPIView):
         )
     
 class UserProfileGenericView(BaseResponseMixin, RetrieveUpdateAPIView):
+    """API view to retrieve and update user profile details with file upload support."""
+
     serializer_class = UserProfileSerializer
     permission_classes = [IsAuthenticated]
     parser_classes = [MultiPartParser, FormParser]
     
     def get_object(self):
+        """Get or create the profile for the authenticated user."""
         profile, created = UserProfile.objects.get_or_create(user=self.request.user)
         return profile
     
     def get(self, request, *args, **kwargs):
+        """Retrieve user profile data.
+
+        Args:
+            request (Request): HTTP GET request.
+
+        Returns:
+            Response: Profile data.
+        """
         profile = self.get_object()
         serializer = self.get_serializer(profile)
         
@@ -604,20 +764,19 @@ class UserProfileGenericView(BaseResponseMixin, RetrieveUpdateAPIView):
         )
     
     def put(self, request, *args, **kwargs):
+        """Update user profile fields and/or upload avatar image.
+
+        Args:
+            request (Request): HTTP PUT/PATCH request with form data.
+
+        Returns:
+            Response: Updated profile data or validation error details.
+        """
         profile = self.get_object()
         serializer = self.get_serializer(profile, data=request.data, partial=True)
         
         if serializer.is_valid():
             serializer.save()
-            
-            # Send notification when profile is updated
-            # NotificationService.send_notification(
-            #     user_id=request.user.id,
-            #     title="Profile Updated",
-            #     message="Your profile was updated.",
-            #     notification_types=['push'],
-            #     data={"action": "profile_update"}
-            # )
             
             return self.success_response(
                 data=serializer.data,
@@ -636,11 +795,20 @@ class UserProfileGenericView(BaseResponseMixin, RetrieveUpdateAPIView):
         )
     
     def post(self, request, *args, **kwargs):
+        """Handle POST requests as PUT/partial update for profile."""
         return self.put(request, *args, **kwargs)
     
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def get_user_profile_info(request):
+    """Retrieve aggregated user statistics including streak, nest counts, and bookmarks.
+
+    Args:
+        request (Request): Authenticated HTTP GET request.
+
+    Returns:
+        Response: Summary dictionary with user email, full name, streak count, nests count, and bookmarks count.
+    """
     user = request.user
     profile = getattr(user, 'profile', None)
 
@@ -654,10 +822,20 @@ def get_user_profile_info(request):
 
 
 class ChangeEmailView(BaseResponseMixin, generics.GenericAPIView):
+    """API view to initiate an email address change request and dispatch verification OTP."""
+
     permission_classes = [IsAuthenticated]
     serializer_class = ChangeEmailSerializer
 
     def post(self, request):
+        """Initiate email change workflow by assigning temp email and sending OTP.
+
+        Args:
+            request (Request): HTTP request with proposed new email.
+
+        Returns:
+            Response: Status response indicating OTP has been sent.
+        """
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
 

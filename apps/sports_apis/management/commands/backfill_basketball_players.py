@@ -7,9 +7,11 @@ from apps.entity.models import Entity, Athlete
 from apps.sports_apis.services.statpal import statpal_service
 
 class Command(BaseCommand):
+    """Management command to backfill and synchronize NBA basketball team rosters from StatPal."""
     help = "Backfill roster/athlete entities for NBA basketball teams using StatPal API"
 
     def add_arguments(self, parser):
+        """Register CLI options."""
         parser.add_argument(
             '--dry-run',
             action='store_true',
@@ -17,12 +19,14 @@ class Command(BaseCommand):
         )
 
     def normalize_name(self, name: str) -> str:
+        """Strip accents, punctuation, and casing from team name for consistent dictionary key lookup."""
         if not name:
             return ""
         name = unicodedata.normalize('NFKD', name).encode('ASCII', 'ignore').decode('utf-8')
         return "".join(c for c in name.lower() if c.isalnum())
 
     def parse_height_cm(self, height_str: str) -> int | None:
+        """Parse US customary height string (e.g. `6'6"`) to metric centimeters integer."""
         if not height_str:
             return None
         match = re.match(r"(\d+)'\s*(\d+)", height_str)
@@ -36,6 +40,7 @@ class Command(BaseCommand):
         return None
 
     def parse_weight_kg(self, weight_str: str) -> int | None:
+        """Parse weight in pounds string (e.g. `215 lbs`) to metric kilograms integer."""
         if not weight_str:
             return None
         match = re.search(r"(\d+)", str(weight_str))
@@ -48,6 +53,7 @@ class Command(BaseCommand):
         return None
 
     def handle(self, *args, **options):
+        """Execute NBA basketball player roster synchronization."""
         dry_run = options['dry_run']
         if dry_run:
             self.stdout.write(self.style.WARNING("=== DRY RUN MODE: Database changes will not be saved ==="))

@@ -29,6 +29,14 @@ _SPORT_MAP = {
 
 
 def get_statpal_sport_slug(sport: str) -> str:
+    """Map internal sport name to the corresponding StatPal API sport slug.
+
+    Args:
+        sport (str): Internal sport slug (e.g., 'basketball', 'football', 'hockey').
+
+    Returns:
+        str: StatPal compatible sport slug (e.g., 'nba', 'nfl', 'nhl').
+    """
     sport_lower = str(sport).lower()
     mapping = {
         'soccer': 'soccer',
@@ -46,6 +54,16 @@ def get_statpal_sport_slug(sport: str) -> str:
 
 
 def _logo_url(entity_type: str, statpal_id: str, sport: str) -> str:
+    """Construct an authenticated StatPal image CDN URL for an entity.
+
+    Args:
+        entity_type (str): Entity category ('team', 'athlete', 'league').
+        statpal_id (str): StatPal ID identifier.
+        sport (str): Sport slug.
+
+    Returns:
+        str: StatPal image URL or empty string if sport/type is unsupported.
+    """
     if sport not in _LOGO_SUPPORTED_SPORTS or entity_type == "league":
         return ""
     # Map 'athlete' to 'player' for StatPal API parameter
@@ -56,6 +74,15 @@ def _logo_url(entity_type: str, statpal_id: str, sport: str) -> str:
 
 
 def _needs_logo(entity, sport: str) -> bool:
+    """Determine whether an entity lacks a valid logo URL or is using a statpal image.
+
+    Args:
+        entity (Entity): Entity instance.
+        sport (str): Sport slug.
+
+    Returns:
+        bool: True if entity logo should be refreshed.
+    """
     current_logo = entity.logo_url
     if not current_logo:
         return True
@@ -65,6 +92,15 @@ def _needs_logo(entity, sport: str) -> bool:
 
 
 def _needs_logo_update(entity, new_logo) -> bool:
+    """Determine if an entity should be updated with a new candidate logo.
+
+    Args:
+        entity (Entity): Entity instance.
+        new_logo (str): New candidate logo URL.
+
+    Returns:
+        bool: True if entity should accept the new logo.
+    """
     if not new_logo:
         return False
     current_logo = entity.logo_url
@@ -76,6 +112,14 @@ def _needs_logo_update(entity, new_logo) -> bool:
 
 
 def clean_national_team_name(name: str) -> str:
+    """Strip youth/gender/squad suffixes from a national team name to get the root country name.
+
+    Args:
+        name (str): Full team name (e.g., "England Women", "India Under-19s", "Australia A").
+
+    Returns:
+        str: Cleaned base national team/country name.
+    """
     if not name:
         return ""
     name_clean = name.strip()
@@ -120,6 +164,14 @@ _KNOWN_COUNTRIES = {
 
 
 def is_national_team(name: str) -> bool:
+    """Check if a given team name represents a national sports team.
+
+    Args:
+        name (str): Team name.
+
+    Returns:
+        bool: True if team corresponds to a recognized nation or national team.
+    """
     if not name:
         return False
     base_name = clean_national_team_name(name)
@@ -129,6 +181,16 @@ def is_national_team(name: str) -> bool:
 
 
 def is_valid_statpal_logo(url: str) -> bool:
+    """Validate whether a StatPal logo URL returns a valid, accessible image response.
+
+    Uses Django cache with MD5 hashing to prevent repeated HTTP HEAD requests.
+
+    Args:
+        url (str): The logo URL to test.
+
+    Returns:
+        bool: True if image URL is valid and accessible.
+    """
     if not url:
         return False
     if "statpal.io" not in url:
@@ -160,6 +222,17 @@ def is_valid_statpal_logo(url: str) -> bool:
 
 
 def normalize_statpal_logo_url(url: str, entity_name: str, entity_type: str, sport: str) -> str:
+    """Normalize or replace a StatPal logo URL with an available team logo fallback.
+
+    Args:
+        url (str): Original logo URL.
+        entity_name (str): Name of the entity.
+        entity_type (str): Type of entity ('team', 'athlete', 'league').
+        sport (str): Sport slug.
+
+    Returns:
+        str: Validated or fallback logo URL.
+    """
     if not url:
         return ""
     if "statpal.io" in url:

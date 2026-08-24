@@ -4,6 +4,7 @@ from .models import UserCustomSource
 
 @admin.register(UserCustomSource)
 class UserCustomSourceAdmin(admin.ModelAdmin):
+    """Admin configuration for user-configured custom RSS source follows."""
     list_display = ('user', 'source', 'is_active', 'created_at')
     list_filter = ('is_active', 'created_at')
     search_fields = ('user__username', 'user__email', 'source__name', 'search_query')

@@ -3,6 +3,7 @@ from apps.score.models import LiveScore
 
 
 class LiveScoreSerializer(serializers.ModelSerializer):
+    """Serializer for broadcasting and listing live scores with normalized logos and team abbreviations."""
     home_logo = serializers.SerializerMethodField()
     away_logo = serializers.SerializerMethodField()
 
@@ -15,6 +16,7 @@ class LiveScoreSerializer(serializers.ModelSerializer):
         ]
 
     def _absolute(self, relative_url):
+        """Construct absolute URL for media/logo assets across environments."""
         if not relative_url:
             return ''
         if relative_url.startswith('http://') or relative_url.startswith('https://'):
@@ -33,6 +35,7 @@ class LiveScoreSerializer(serializers.ModelSerializer):
             return relative_url
 
     def get_home_logo(self, obj):
+        """Resolve and format home team badge URL."""
         logo = obj.home_logo
         if logo and "statpal.io" in logo:
             from apps.entity.utils.matcher import normalize_statpal_logo_url
@@ -44,6 +47,7 @@ class LiveScoreSerializer(serializers.ModelSerializer):
         return self._absolute(logo)
 
     def get_away_logo(self, obj):
+        """Resolve and format away team badge URL."""
         logo = obj.away_logo
         if logo and "statpal.io" in logo:
             from apps.entity.utils.matcher import normalize_statpal_logo_url
@@ -55,6 +59,7 @@ class LiveScoreSerializer(serializers.ModelSerializer):
         return self._absolute(logo)
 
     def to_representation(self, instance):
+        """Transform full team names into standardized 3/4-character scoreboard codes."""
         data = super().to_representation(instance)
         home_abbr = get_team_abbreviation(instance.home_team)
         away_abbr = get_team_abbreviation(instance.away_team)
@@ -68,6 +73,15 @@ class LiveScoreSerializer(serializers.ModelSerializer):
 
 
 def get_team_abbreviation(name: str, length: int = 3) -> str:
+    """Generate a compact 3-to-4 letter abbreviation for a sport club or national team.
+
+    Args:
+        name (str): Full team name (e.g., 'Real Madrid', 'Manchester United').
+        length (int, optional): Desired code length. Defaults to 3.
+
+    Returns:
+        str: Upper-case team ticker code.
+    """
     if not name:
         return ""
     name_clean = name.strip().lower()

@@ -23,6 +23,14 @@ from apps.sports_apis.services.statpal import statpal_service
 
 
 def _get_current_season(sport='soccer'):
+    """Calculate the active competitive season year based on sport and current calendar month.
+
+    Args:
+        sport (str, optional): Sport type ('soccer', 'basketball', etc.). Defaults to 'soccer'.
+
+    Returns:
+        int: Active season year.
+    """
     now = datetime.now()
     year, month = now.year, now.month
     if sport == 'soccer':
@@ -34,13 +42,25 @@ def _get_current_season(sport='soccer'):
 
 def _get_or_create_entity(name, entity_type, sport, external_id, api_source,
                           logo_url='', country=''):
-    """
-    Get or create entity with deduplication and normalization.
-    
-    - Normalizes name (lowercase, no accents)
-    - Checks for existing similar entities
-    - Links to canonical entity if it's a duplicate
-    - Generates embeddings for AI matching
+    """Get or create an entity record with fuzzy name normalization, deduplication, and embeddings.
+
+    - Normalizes the name (lowercase, punctuation, accents).
+    - Checks for exact match on (api_source, external_id).
+    - If new, checks for similar existing entities and assigns canonical entity if similarity exceeds threshold.
+    - Generates semantic embeddings for vector search matching.
+    - Instantiates specific subtype records (Team, League, Athlete).
+
+    Args:
+        name (str): Entity display name.
+        entity_type (str): Type of entity ('team', 'league', 'athlete').
+        sport (str): Sport slug ('soccer', 'basketball', 'cricket', etc.).
+        external_id (str): Third-party provider identifier.
+        api_source (str): Source API identifier ('statpal', 'api-sports', 'thesportsdb', etc.).
+        logo_url (str, optional): Remote image URL for the entity's logo/photo.
+        country (str, optional): Country name.
+
+    Returns:
+        tuple: (Entity instance, boolean created flag).
     """
     from apps.entity.models import CanonicalEntity
     
@@ -435,6 +455,14 @@ def seed_all_players(request):
 @api_view(['POST'])
 @permission_classes([IsAdminUser])
 def seed_nba_teams(request):
+    """Fetch NBA basketball standings from StatPal and seed team entities.
+
+    Args:
+        request (Request): Authenticated admin HTTP request.
+
+    Returns:
+        Response: Summary dictionary with count of teams received and created.
+    """
     resp = statpal_service.get_nba_standings()
     if not resp.get('success'):
         return Response({'error': f"StatPal returned {resp.get('error')}"}, status=502)
@@ -482,7 +510,14 @@ from apps.core.tasks import seed_nba_players_task
 @api_view(['POST'])
 @permission_classes([IsAdminUser])
 def seed_nba_players(request):
-    """Kick off a background task to seed NBA players (non-blocking)."""
+    """Dispatch an asynchronous background Celery task to seed NBA players.
+
+    Args:
+        request (Request): Admin HTTP request with optional 'season' and 'per_page' query params.
+
+    Returns:
+        Response: Task ID and status confirmation.
+    """
     season = int(request.GET.get('season', 2026))
     per_page = int(request.GET.get('per_page', 100))
 
@@ -509,6 +544,14 @@ def seed_nba_players(request):
 @api_view(['POST'])
 @permission_classes([IsAdminUser])
 def seed_cricket_leagues(request):
+    """Fetch cricket tournament categories from StatPal and seed cricket league entities.
+
+    Args:
+        request (Request): Admin HTTP request.
+
+    Returns:
+        Response: Seeding results with newly created league count.
+    """
     resp = statpal_service.get_cricket_tournaments()
     if not resp.get('success'):
         return Response({'error': f"StatPal returned {resp.get('error')}"}, status=502)
@@ -550,6 +593,14 @@ def seed_cricket_leagues(request):
 @api_view(['DELETE'])
 @permission_classes([IsAdminUser])
 def delete_all_entities(request):
+    """Delete all entities, teams, leagues, and athletes from the database (admin only).
+
+    Args:
+        request (Request): Admin HTTP DELETE request.
+
+    Returns:
+        Response: Deletion confirmation and breakdown count of deleted records.
+    """
     from apps.entity.models import Athlete, League
     counts = {
         'athletes': Athlete.objects.count(),
@@ -565,7 +616,14 @@ from apps.core.utils.decorators import basic_auth_required
 
 @basic_auth_required
 def api_root(request):
-    """Enhanced API root endpoint with comprehensive information"""
+    """Protected API root endpoint providing system overview, documentation URLs, and service status.
+
+    Args:
+        request (HttpRequest): Incoming HTTP request protected by Basic Auth.
+
+    Returns:
+        JsonResponse: API overview metadata and health check status.
+    """
     # Build absolute URLs
     base_url = request.build_absolute_uri('/')[:-1]
     

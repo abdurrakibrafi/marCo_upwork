@@ -7,12 +7,15 @@ from django.core.management.base import BaseCommand
 from apps.entity.models import Entity, Athlete
 
 class Command(BaseCommand):
+    """Management command to scrape and seed cricket player rosters from Wikipedia team squad tables."""
     help = "Scrape and seed cricket player rosters from Wikipedia"
 
     def add_arguments(self, parser):
-        parser.add_argument('--dry-run', action='store_true')
+        """Register CLI argument flags."""
+        parser.add_argument('--dry-run', action='store_true', help='Preview scrape without saving')
 
     def find_col(self, headers_list, keywords):
+        """Identify column index matching one of the target keyword strings."""
         for i, h in enumerate(headers_list):
             for kw in keywords:
                 if kw in h:
@@ -20,6 +23,7 @@ class Command(BaseCommand):
         return None
 
     def handle(self, *args, **options):
+        """Execute cricket squad scraping from Wikipedia."""
         dry_run = options['dry_run']
         if dry_run:
             self.stdout.write(self.style.WARNING("=== DRY RUN MODE ==="))

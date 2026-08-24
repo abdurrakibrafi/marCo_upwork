@@ -14,9 +14,15 @@ TRACKING_PARAMS = {
 
 
 def clean_tracking_parameters(url: str) -> str:
-    """
-    Strips marketing and analytics tracking parameters (e.g. utm_source, fbclid, gclid)
-    from a URL to normalize it for canonical article deduplication (agent_task.md Section 9).
+    """Strip marketing and analytics tracking parameters (e.g. utm_source, fbclid, gclid) from a URL.
+
+    Normalizes links for canonical article deduplication.
+
+    Args:
+        url (str): Raw article URL.
+
+    Returns:
+        str: Sanitized URL string.
     """
     if not url or not isinstance(url, str):
         return ""
@@ -50,10 +56,15 @@ def clean_tracking_parameters(url: str) -> str:
 
 @lru_cache(maxsize=4096)
 def resolve_real_article_url(url: str) -> str:
-    """
-    Decodes Google News RSS redirect URLs (e.g. news.google.com/rss/articles/...)
-    to the actual publisher source URL (e.g. tbsnews.net, espn.com, reuters.com)
-    and strips tracking parameters for canonical URL deduplication.
+    """Decode Google News RSS redirect URLs to the actual publisher source URL.
+
+    Strips tracking parameters and caches decoded URLs for fast subsequent lookup.
+
+    Args:
+        url (str): Raw Google News or publisher URL.
+
+    Returns:
+        str: Resolved publisher article URL.
     """
     if not url or not isinstance(url, str):
         return ""

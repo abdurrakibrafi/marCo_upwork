@@ -5,10 +5,7 @@ User = get_user_model()
 
 
 class UserCustomSource(models.Model):
-    """
-    A source manually added by the user through the Source Search screen.
-    When this exists, the source's FeedItems appear in the user's nest feed.
-    """
+    """User-followed custom RSS publication source added manually from the Source Search screen."""
     user = models.ForeignKey(
         User, on_delete=models.CASCADE, related_name='custom_sources'
     )

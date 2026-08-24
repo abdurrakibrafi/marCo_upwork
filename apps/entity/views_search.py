@@ -245,21 +245,22 @@ def search_entities(request):
             cache.set(cache_key, result, 300)
     except Exception:
         pass
+
     return Response(result)
 
 
 @api_view(['GET'])
 @permission_classes([AllowAny])
 def search_entities_ai(request):
-    """
-    AI-powered entity search using embeddings.
-    
-    GET /api/search/entities-ai/?q=madrid teams&sport=soccer
-    
-    For complex queries: "teams in madrid", "barcelona players", etc.
-    Falls back to standard search if embedding service is disabled.
-    
-    Rate limited: Cache results for 10 mins, recommend client-side debounce.
+    """AI-powered semantic vector search across sports entities using text embeddings.
+
+    Falls back transparently to standard search if embedding services are disabled.
+
+    Args:
+        request (Request): HTTP GET request with query params 'q', 'sport', and 'limit'.
+
+    Returns:
+        Response: Ranked entities matching semantic intent of query.
     """
     query = request.GET.get('q', '').strip()
     sport = request.GET.get('sport', '')
@@ -352,15 +353,13 @@ def search_entities_ai(request):
 @api_view(['POST'])
 @permission_classes([AllowAny])
 def suggest_canonical_entity(request):
-    """
-    Suggest canonical entity for a given name.
-    
-    POST /api/search/suggest-canonical/
-    Body: {"name": "Real Madrid", "sport": "soccer", "type": "team"}
-    
+    """Suggest or resolve canonical entity mapping for a given name variation.
+
+    Args:
+        request (Request): HTTP POST request containing 'name', 'sport', and 'type'.
+
     Returns:
-    - Canonical entity if found with high confidence
-    - List of alternatives if ambiguous
+        Response: Suggested canonical entity or candidate alternatives.
     """
     from apps.entity.models import CanonicalEntity
     

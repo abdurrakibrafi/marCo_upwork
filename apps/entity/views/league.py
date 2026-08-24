@@ -21,8 +21,14 @@ logger = logging.getLogger(__name__)
 @api_view(['GET'])
 @permission_classes([AllowAny])
 def get_league_standings(request, league_id):
-    """
-    GET /api/entities/league/{league_id}/standings/?season=2024
+    """Retrieve league standings and table rankings for a specific season.
+
+    Args:
+        request (Request): HTTP GET request with optional 'season' query parameter.
+        league_id (int): Primary key ID of the league entity.
+
+    Returns:
+        Response: Standings array with teams, points, goals, form, and records.
     """
     league_entity = get_object_or_404(Entity, id=league_id, type='league')
     league_entity = league_entity.canonical_entity or league_entity
@@ -31,9 +37,17 @@ def get_league_standings(request, league_id):
 
 
 def _get_standings_for_league(request, league_entity, season, highlight_team_id=None, highlight_team_name=None):
-    """
-    Shared logic used by both get_league_standings and get_team_standings.
-    DB first → live API fallback → write back to DB.
+    """Compute and format league standings table with DB cache and multi-API fallback.
+
+    Args:
+        request (Request): HTTP request context.
+        league_entity (Entity): League entity instance.
+        season (str or int): Season identifier.
+        highlight_team_id (str or int, optional): Target team ID to mark with 'is_highlighted'.
+        highlight_team_name (str, optional): Target team name to match.
+
+    Returns:
+        Response: Serialized standings payload with league data.
     """
     try:
         canonical = Entity.objects.filter(
@@ -195,8 +209,16 @@ def _get_standings_for_league(request, league_entity, season, highlight_team_id=
     })
 
 
-def _fetch_league_standings_thesportsdb(league_entity, season):
-    """Fallback: Search league on TheSportsDB API and fetch lookup table standings."""
+def _fetch_league_standings_thesportsdb(league_entity, season) -> list:
+    """Fetch league table standings using TheSportsDB league lookup and table endpoints.
+
+    Args:
+        league_entity (Entity): League entity object.
+        season (int or str): Target season year or range (e.g. 2024 or '2024-2025').
+
+    Returns:
+        list: Standings rows with team records.
+    """
     try:
         from apps.sports_apis.services.thesportsdb import TheSportsDBService
         tsdb = TheSportsDBService()
@@ -240,7 +262,16 @@ def _fetch_league_standings_thesportsdb(league_entity, season):
     return []
 
 
-def _fetch_statpal_hierarchical_standings(sport: str, cache_key: str):
+def _fetch_statpal_hierarchical_standings(sport: str, cache_key: str) -> list:
+    """Fetch structured conference/division standings from StatPal API (NBA, NFL, MLB, NHL).
+
+    Args:
+        sport (str): Sport slug ('nba', 'mlb', 'nfl', 'nhl', etc.).
+        cache_key (str): Redis cache key string.
+
+    Returns:
+        list: Formatted standings row dictionaries.
+    """
     try:
         cached = cache.get(cache_key)
         if cached:
@@ -332,7 +363,16 @@ def _fetch_statpal_hierarchical_standings(sport: str, cache_key: str):
         return []
 
 
-def _fetch_soccer_standings(external_id, season):
+def _fetch_soccer_standings(external_id, season) -> list:
+    """Fetch soccer league standings table from API-Football.
+
+    Args:
+        external_id (str or int): League external ID in API-Football.
+        season (int or str): Season year.
+
+    Returns:
+        list: Standings rows with team records and points.
+    """
     cache_key = f'standings:soccer:{external_id}:{season}'
     cached = cache.get(cache_key)
     if cached:
@@ -387,8 +427,14 @@ def _fetch_soccer_standings(external_id, season):
 @api_view(['GET'])
 @permission_classes([AllowAny])
 def get_league_leaders(request, league_id):
-    """
-    GET /api/entities/league/{league_id}/leaders/?season=2024&stat=goals
+    """Retrieve the top player statistical leaders (goals, assists, cards) for a league.
+
+    Args:
+        request (Request): HTTP GET request with optional 'season' and 'stat' query parameters.
+        league_id (int): Primary key ID of the league entity.
+
+    Returns:
+        Response: Ranked list of top athletes and their metric values.
     """
     league_entity = get_object_or_404(Entity, id=league_id, type='league')
     league_entity = league_entity.canonical_entity or league_entity
@@ -458,7 +504,17 @@ def get_league_leaders(request, league_id):
     })
 
 
-def _fetch_soccer_leaders(external_id, season, stat_type):
+def _fetch_soccer_leaders(external_id, season, stat_type) -> list:
+    """Fetch top statistical players (scorers/assists/cards) for a league from API-Football.
+
+    Args:
+        external_id (str or int): API-Football league ID.
+        season (int or str): Season year.
+        stat_type (str): Target metric ('goals', 'assists', 'yellow_cards', 'red_cards').
+
+    Returns:
+        list: Leader records formatted with athlete info.
+    """
     cache_key = f'leaders:soccer:{external_id}:{season}:{stat_type}'
     cached = cache.get(cache_key)
     if cached:
@@ -523,6 +579,15 @@ def _fetch_soccer_leaders(external_id, season, stat_type):
 @api_view(['GET'])
 @permission_classes([AllowAny])
 def get_league_fixtures(request, league_id):
+    """Retrieve recent results and upcoming schedule of fixtures for a league.
+
+    Args:
+        request (Request): HTTP GET request.
+        league_id (int): Primary key ID of the league entity.
+
+    Returns:
+        Response: Serialized match event schedule.
+    """
     from apps.event.models import Event
     from apps.event.serializers import EventSerializer as EvSerializer
 

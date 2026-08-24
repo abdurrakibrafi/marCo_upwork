@@ -2,7 +2,15 @@ from django.core.management.base import BaseCommand
 from django.db.models import Q
 from apps.event.models import Event, EventStatistics
 
-def safe_int(val):
+def safe_int(val) -> int:
+    """Safely cast value to an integer, returning None if parsing fails.
+
+    Args:
+        val (Any): Input value.
+
+    Returns:
+        int or None: Parsed integer or None.
+    """
     if val is None or str(val).strip() == '':
         return None
     try:
@@ -10,10 +18,13 @@ def safe_int(val):
     except (ValueError, TypeError):
         return None
 
+
 class Command(BaseCommand):
+    """Management command to calculate and backfill extra-time score totals to home_score and away_score."""
     help = "Backfill extra time scores to home_score and away_score using Option B (sum ft + et)"
 
     def add_arguments(self, parser):
+        """Configure command line arguments including database commit flag."""
         parser.add_argument(
             '--commit',
             action='store_true',
@@ -21,6 +32,7 @@ class Command(BaseCommand):
         )
 
     def handle(self, *args, **options):
+        """Execute extra-time score resolution and backfill routine."""
         commit = options['commit']
         dry_run = not commit
 

@@ -15,14 +15,17 @@ logger = logging.getLogger(__name__)
 
 
 def normalize_event_stats(stats_dict: dict) -> dict:
-    """
-    Normalizes team statistics according to fixed schema.
-    Always includes the fixed field set:
-      fouls, saves, shots, passes, corners, offsides, redcards, yellowcards,
-      expected_goals, goals_prevented, possession_percent, shot_on_goal,
-      shot_off_goal, block_shots, pass_accuracy
-    If a metric is present in stats_dict -> real string value is returned.
-    If a metric is missing/empty -> None (JSON null) is returned.
+    """Normalize team match performance statistics into a consistent, standard schema.
+
+    Standardizes metric names across fouls, saves, shots, passes, corners, offsides,
+    redcards, yellowcards, expected_goals, possession_percent, shot_on_goal,
+    shot_off_goal, block_shots, and pass_accuracy.
+
+    Args:
+        stats_dict (dict): Raw statistics dictionary from database or live sports API.
+
+    Returns:
+        dict: Cleaned and normalized statistics payload with guaranteed default values.
     """
     if not stats_dict or not isinstance(stats_dict, dict):
         return {}

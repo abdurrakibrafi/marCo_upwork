@@ -3,9 +3,11 @@ from apps.event.models import Event
 from apps.event.tasks import _FINISHED, _populate_statpal_event_details
 
 class Command(BaseCommand):
+    """Management command to transition historical events stuck in 'upcoming' status into 'completed'."""
     help = "Backfill completed status to events stuck as upcoming"
 
     def add_arguments(self, parser):
+        """Configure command line arguments including database commit flag."""
         parser.add_argument(
             '--commit',
             action='store_true',
@@ -13,6 +15,7 @@ class Command(BaseCommand):
         )
 
     def handle(self, *args, **options):
+        """Scan upcoming events and mark matches with finished status details as completed."""
         commit = options['commit']
         dry_run = not commit
 

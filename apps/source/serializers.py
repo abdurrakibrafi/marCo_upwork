@@ -4,7 +4,7 @@ from .models import UserCustomSource
 
 
 class SourceSuggestionSerializer(serializers.Serializer):
-    """Returned by the AI search endpoint — not a DB model yet."""
+    """Serializer for AI source discovery suggestions and auto-detected RSS feeds."""
     name = serializers.CharField()
     domain = serializers.CharField()
     description = serializers.CharField()
@@ -19,7 +19,7 @@ class SourceSuggestionSerializer(serializers.Serializer):
 
 
 class UserCustomSourceSerializer(serializers.ModelSerializer):
-    """Full source detail for the user's source list."""
+    """Serializer for user-followed custom publications and feed health statuses."""
     source_id = serializers.IntegerField(source='source.id', read_only=True)
     name = serializers.CharField(source='source.name', read_only=True)
     domain = serializers.CharField(source='source.domain', read_only=True)

@@ -25,13 +25,12 @@ from django.db.models import Q
 
 
 class SourceAIService:
-    """
-    Suggests sports news sources using Brave Search, DB matching, and RSS autodiscovery.
-    """
+    """Service for discovering, previewing, and enriching publication news sources via DB matching, Brave Search, and RSS autodiscovery."""
 
     BRAVE_URL = "https://api.search.brave.com/res/v1/web/search"
 
     def __init__(self):
+        """Initialize Source AI discovery service with Brave Search credentials."""
         self.brave_key = getattr(settings, "BRAVESEARCH_KEY", "")
 
     # ─────────────────────────────────────────────────────────────────────
@@ -49,10 +48,13 @@ class SourceAIService:
     ]
 
     def suggest_sources(self, query: str) -> list[dict]:
-        """
-        Given a user search query, return a list of suggested sources.
-        Checks DB first, then popular sources, and falls back to Brave Search if needed.
-        Each result: {name, domain, description, favicon_url, rss_url, has_rss, tags}
+        """Search and suggest candidate sports news sources given a user query keyword.
+
+        Args:
+            query (str): Keyword or publication name (e.g. 'espn', 'cricket news').
+
+        Returns:
+            list[dict]: List of enriched source suggestion dictionaries.
         """
         ai_suggestions = []
         
@@ -139,6 +141,14 @@ class SourceAIService:
     # ─────────────────────────────────────────────────────────────────────
 
     def _brave_fallback(self, query: str) -> list[dict]:
+        """Execute web query via Brave Search to find publisher domains matching sports query.
+
+        Args:
+            query (str): Search term.
+
+        Returns:
+            list[dict]: Candidate publisher objects.
+        """
         if not self.brave_key:
             return []
 
@@ -183,6 +193,14 @@ class SourceAIService:
     # ─────────────────────────────────────────────────────────────────────
 
     def _enrich(self, suggestion: dict) -> dict | None:
+        """Enrich a candidate publisher dictionary with high-res favicon and active RSS autodiscovery.
+
+        Args:
+            suggestion (dict): Raw candidate source data.
+
+        Returns:
+            dict or None: Fully enriched source dictionary.
+        """
         domain = suggestion.get("domain", "").strip()
         if not domain:
             return None
@@ -218,7 +236,14 @@ class SourceAIService:
         }
 
     def _enrich_lightweight(self, suggestion: dict) -> dict | None:
-        """Lightweight enrichment without RSS discovery to reduce API calls."""
+        """Enrich a source candidate with favicon without invoking slow synchronous RSS discovery.
+
+        Args:
+            suggestion (dict): Candidate source data.
+
+        Returns:
+            dict or None: Lightweight enriched source object.
+        """
         domain = suggestion.get("domain", "").strip()
         if not domain:
             return None
@@ -243,14 +268,14 @@ class SourceAIService:
             "tags": suggestion.get("tags", []),
         }
     
-    # ADD THIS inside the SourceAIService class
-# Place it between _enrich_lightweight and _extract_domain
-
     def preview_source(self, url_or_name: str) -> dict | None:
-        """
-        User pastes a URL or name (e.g. "https://www.espn.com" or "ESPN").
-        We validate it, discover RSS, and return a preview card.
-        No saving happens here — just validation + enrichment.
+        """Validate a user-provided URL or publisher name and return preview metadata and active RSS feeds.
+
+        Args:
+            url_or_name (str): Website domain or publisher name.
+
+        Returns:
+            dict or None: Preview card dictionary or None if invalid.
         """
         raw = url_or_name.strip()
         if not raw:
@@ -328,6 +353,14 @@ class SourceAIService:
 
 
     def _extract_domain(self, url: str) -> str | None:
+        """Parse base scheme and hostname domain from an arbitrary URL.
+
+        Args:
+            url (str): Full web address.
+
+        Returns:
+            str or None: Base URL scheme and host.
+        """
         try:
             parsed = urlparse(url)
             if not parsed.netloc:

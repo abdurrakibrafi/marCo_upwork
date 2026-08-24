@@ -13,9 +13,11 @@ logger = logging.getLogger(__name__)
 
 
 class LiveScoreConsumer(AsyncWebsocketConsumer):
+    """WebSocket consumer for streaming live score ticker updates across all sports or per sport channel."""
     GROUP_ALL = 'live_scores'
 
     async def connect(self):
+        """Handle WebSocket connection, register client to sport group, and push initial scoreboard snapshot."""
         # optional ?sport=soccer filter via query param
         query_string = self.scope.get('query_string', b'').decode()
         params = parse_qs(query_string)
@@ -38,6 +40,7 @@ class LiveScoreConsumer(AsyncWebsocketConsumer):
         await self.send_snapshot()
 
     async def disconnect(self, close_code):
+        """Handle WebSocket disconnect and unsubscribe from live score channel groups."""
         if self.sport_filter:
             await self.channel_layer.group_discard(
                 f'live_scores_{self.sport_filter}',
@@ -47,6 +50,7 @@ class LiveScoreConsumer(AsyncWebsocketConsumer):
             await self.channel_layer.group_discard(self.GROUP_ALL, self.channel_name)
 
     async def send_snapshot(self):
+        """Query currently active live games and push immediate scoreboard snapshot to client."""
         games = await self.get_live_games()
         await self.send(text_data=json.dumps({
             'type': 'snapshot',
@@ -55,10 +59,12 @@ class LiveScoreConsumer(AsyncWebsocketConsumer):
         }, cls=DjangoJSONEncoder))
 
     async def score_update(self, event):
+        """Relay broadcast score updates from Redis channel layer to the connected client."""
         await self.send(text_data=json.dumps(event, cls=DjangoJSONEncoder))
 
     @database_sync_to_async
     def get_live_games(self):
+        """Synchronously fetch active live scores matching the current sport filter."""
         qs = LiveScore.objects.filter(status='live').order_by('-updated_at')
         if self.sport_filter:
             qs = qs.filter(sport=self.sport_filter)
@@ -67,14 +73,7 @@ class LiveScoreConsumer(AsyncWebsocketConsumer):
 
 
 class LiveScoreDetailConsumer(AsyncWebsocketConsumer):
-    """
-    WebSocket consumer for live match details.
-    Clients can connect to:
-      - /ws/scores/live/detail/<score_id>/
-      - /ws/scores/live/<score_id>/detail/
-      - /ws/scores/live/<score_id>/
-      - /ws/scores/live/detail/?score_id=<score_id>
-    """
+    """WebSocket consumer for streaming detailed in-game match statistics, timeline, and box scores."""
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -82,6 +81,7 @@ class LiveScoreDetailConsumer(AsyncWebsocketConsumer):
         self.group_name = None
 
     async def connect(self):
+        """Connect client, parse score_id from path or query parameters, and subscribe to match room."""
         # 1. Extract score_id from URL route kwargs if present
         score_id_param = self.scope.get('url_route', {}).get('kwargs', {}).get('score_id')
 
@@ -109,10 +109,12 @@ class LiveScoreDetailConsumer(AsyncWebsocketConsumer):
             await self.send_detail()
 
     async def disconnect(self, close_code):
+        """Handle client disconnect and remove from match detail group."""
         if self.group_name:
             await self.channel_layer.group_discard(self.group_name, self.channel_name)
 
     async def receive(self, text_data=None, bytes_data=None):
+        """Process incoming WebSocket JSON messages (ping/pong, dynamic subscription changes, snapshots)."""
         if not text_data:
             return
         try:
@@ -147,7 +149,7 @@ class LiveScoreDetailConsumer(AsyncWebsocketConsumer):
             await self.send_detail()
 
     async def send_detail(self):
-        """Fetch match details and send to the connected client"""
+        """Fetch real-time match details and push JSON response payload to the client."""
         if not self.score_id:
             await self.send(text_data=json.dumps({
                 'type': 'live_score_detail',
@@ -182,7 +184,7 @@ class LiveScoreDetailConsumer(AsyncWebsocketConsumer):
         await self.send(text_data=json.dumps(response, cls=DjangoJSONEncoder))
 
     async def score_detail_update(self, event):
-        """Called when a score detail update is broadcasted via channel layer"""
+        """Handle score detail broadcast event from channel layer."""
         # If event already contains formatted response dict
         if 'data' in event and 'success' in event:
             await self.send(text_data=json.dumps(event, cls=DjangoJSONEncoder))
@@ -191,9 +193,10 @@ class LiveScoreDetailConsumer(AsyncWebsocketConsumer):
             await self.send_detail()
 
     async def score_update(self, event):
-        """Handle general score_update event broadcasted to match group"""
+        """Handle general score update event broadcasted to match group."""
         await self.send_detail()
 
     @database_sync_to_async
     def fetch_detail(self, score_id):
+        """Synchronously retrieve full live match and box score data from services."""
         return get_live_score_detail_data(score_id)

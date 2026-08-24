@@ -2,9 +2,11 @@ from django.core.management.base import BaseCommand
 from apps.entity.models import Entity
 
 class Command(BaseCommand):
+    """Management command to purge defunct StatPal image URLs from non-soccer team entities."""
     help = "Clean up broken StatPal logo URLs for non-soccer teams in the database"
 
     def add_arguments(self, parser):
+        """Register CLI flag options."""
         parser.add_argument(
             '--dry-run',
             action='store_true',
@@ -12,6 +14,7 @@ class Command(BaseCommand):
         )
 
     def handle(self, *args, **options):
+        """Execute cleanup query finding and resetting logo_url containing 'statpal.io'."""
         dry_run = options['dry_run']
         if dry_run:
             self.stdout.write(self.style.WARNING("=== DRY RUN MODE ==="))

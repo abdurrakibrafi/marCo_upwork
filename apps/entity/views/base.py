@@ -27,6 +27,14 @@ logger = logging.getLogger(__name__)
 @api_view(['GET'])
 @permission_classes([AllowAny])
 def search_entities(request):
+    """Search active sports entities matching keyword and optional filters.
+
+    Args:
+        request (Request): HTTP request containing query params 'q', 'type', 'sport', 'country'.
+
+    Returns:
+        Response: Standard JSON response with matching entities list.
+    """
     mixin = BaseResponseMixin()
     try:
         query = request.GET.get('q', '')
@@ -51,6 +59,14 @@ def search_entities(request):
 @api_view(['GET'])
 @permission_classes([AllowAny])
 def get_trending(request):
+    """Retrieve trending sports entities grouped by type or query matching with fallback import.
+
+    Args:
+        request (Request): HTTP request with optional query params 'q', 'country', 'sport', 'type'.
+
+    Returns:
+        Response: Grouped entity results across teams, athletes, and leagues.
+    """
     query   = request.GET.get('q', '').strip()
     country = request.GET.get('country')
     sport   = request.GET.get('sport')
@@ -125,6 +141,15 @@ def get_trending(request):
 @api_view(['GET'])
 @permission_classes([AllowAny])
 def get_entity_detail(request, entity_id):
+    """Retrieve full details for an entity by primary key, routing to specific subtype serializers.
+
+    Args:
+        request (Request): HTTP GET request.
+        entity_id (int): Primary key ID of the entity.
+
+    Returns:
+        Response: Detailed serialized entity representation.
+    """
     entity = get_object_or_404(Entity, id=entity_id)
     entity = entity.canonical_entity or entity
     if entity.type == 'team':
@@ -153,6 +178,15 @@ def get_entity_detail(request, entity_id):
 @api_view(['GET'])
 @permission_classes([AllowAny])
 def get_entity_by_slug(request, slug):
+    """Retrieve entity details using a slug identifier.
+
+    Args:
+        request (Request): HTTP GET request.
+        slug (str): Unique slug string of the entity.
+
+    Returns:
+        Response: Detailed serialized entity representation.
+    """
     entity = get_object_or_404(Entity, slug=slug)
     entity = entity.canonical_entity or entity
     if entity.type == 'team':
@@ -387,6 +421,14 @@ def get_entity_standings(request, entity_id):
 @api_view(['GET'])
 @permission_classes([AllowAny])
 def list_entities(request):
+    """Retrieve a paginated list of sports entities filtered by sport, type, or country.
+
+    Args:
+        request (Request): HTTP GET request with optional query params 'type', 'sport', 'country', 'limit'.
+
+    Returns:
+        Response: Paginated entity list response.
+    """
     queryset = Entity.objects.filter(is_active=True).order_by('-follower_count', 'name')
 
     entity_type = request.GET.get('type')

@@ -7,9 +7,11 @@ from apps.entity.models import Entity, Athlete
 from apps.sports_apis.services.statpal import statpal_service
 
 class Command(BaseCommand):
+    """Management command to backfill missing soccer athlete details and bios from StatPal API."""
     help = 'Backfill missing soccer athlete details from StatPal API'
 
     def add_arguments(self, parser):
+        """Define command-line arguments for limit and dry-run flags."""
         parser.add_argument(
             '--limit',
             type=int,
@@ -23,6 +25,7 @@ class Command(BaseCommand):
         )
 
     def handle(self, *args, **options):
+        """Execute the athlete backfilling process across unprocessed entities."""
         limit = options['limit']
         dry_run = options['dry_run']
 

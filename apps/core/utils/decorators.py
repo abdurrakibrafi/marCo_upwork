@@ -3,6 +3,17 @@ from django.http import HttpResponse
 from django.conf import settings
 
 def basic_auth_required(view_func):
+    """Decorator to enforce HTTP Basic Authentication on API views (e.g., Swagger/Redoc).
+
+    Checks the incoming HTTP Authorization header against configured DOCS_USERNAME
+    and DOCS_PASSWORD settings. Prompts browser Basic Auth dialog with a 401 response if missing or invalid.
+
+    Args:
+        view_func (callable): The target Django view function to protect.
+
+    Returns:
+        callable: Decorated view wrapper handling Basic Auth verification.
+    """
     def wrapper(request, *args, **kwargs):
         # Get credentials from settings
         VALID_USERNAME = settings.DOCS_USERNAME

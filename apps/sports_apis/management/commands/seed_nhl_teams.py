@@ -3,9 +3,11 @@ from django.core.management.base import BaseCommand
 from apps.entity.models import Entity, Team
 
 class Command(BaseCommand):
+    """Management command to fetch and seed official NHL hockey teams and logos into the database."""
     help = "Seed 32 official NHL teams into the database from the official NHL API"
 
     def add_arguments(self, parser):
+        """Register CLI flags."""
         parser.add_argument(
             '--dry-run',
             action='store_true',
@@ -13,6 +15,7 @@ class Command(BaseCommand):
         )
 
     def handle(self, *args, **options):
+        """Fetch standings from official NHL API and upsert hockey Team entities."""
         dry_run = options['dry_run']
         if dry_run:
             self.stdout.write(self.style.WARNING("=== DRY RUN MODE: Database changes will not be saved ==="))

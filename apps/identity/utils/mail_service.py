@@ -14,6 +14,19 @@ else:
 
 
 def send_otp_email(user, otp_code, purpose, to_email=None):
+    """Send an OTP email using the Resend API.
+
+    Renders HTML and plaintext email templates and transmits them via the Resend API client.
+
+    Args:
+        user (User): The User requesting verification or password reset.
+        otp_code (str): The one-time authentication code.
+        purpose (str): Purpose of the OTP ('verification', 'password_reset', 'email_change', etc.).
+        to_email (str, optional): Target email address override. Defaults to user's registered email.
+
+    Returns:
+        dict: The response payload returned by the Resend API client.
+    """
     if purpose == "verification":
         subject = "Verification Code"
     elif purpose == "password_reset":

@@ -4,6 +4,17 @@ from django.conf import settings
 
 
 def send_otp_email(user, otp_code, purpose, to_email=None):
+    """Send an OTP code via Django's standard SMTP email backend.
+
+    Renders text and HTML email templates with the OTP code and dispatches it
+    to the user's primary or requested email address.
+
+    Args:
+        user (User): The User instance requesting the OTP.
+        otp_code (str): The one-time password string.
+        purpose (str): Purpose of the OTP ('verification', 'password_reset', 'email_change', etc.).
+        to_email (str, optional): Target email address override. Defaults to user's registered email.
+    """
     if purpose == "verification":
         subject = "Verification Code"
     elif purpose == "password_reset":

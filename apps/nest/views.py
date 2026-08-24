@@ -14,9 +14,15 @@ from apps.nest.serializers import (
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def get_user_nest(request):
-    """
-    Get user's nest
-    GET /api/nest
+    """Retrieve all entities followed by the authenticated user in their 360-degree Nest.
+
+    Supports offset-limit windowing for dial navigation.
+
+    Args:
+        request: HTTP request with optional offset and limit query parameters.
+
+    Returns:
+        Response: Serialized nest entities with pagination metadata.
     """
     nest_items = UserNest.objects.filter(user=request.user).select_related('entity')
     
@@ -41,10 +47,15 @@ def get_user_nest(request):
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 def add_to_nest(request):
-    """
-    Add entity to user's nest
-    POST /api/nest/add
-    Body: {"entity_id": 123}
+    """Add a sports entity (team, athlete, or league) to the authenticated user's Nest.
+
+    Increments entity follower counts and triggers asynchronous background news feed ingestion.
+
+    Args:
+        request: HTTP request with payload {"entity_id": 123}.
+
+    Returns:
+        Response: Created nest item object and confirmation.
     """
     serializer = AddToNestSerializer(data=request.data)
     
@@ -94,10 +105,13 @@ def add_to_nest(request):
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 def remove_from_nest(request):
-    """
-    Remove entity from user's nest
-    POST /api/nest/remove
-    Body: {"entity_id": 123}
+    """Remove an entity from the authenticated user's Nest and re-index remaining positions.
+
+    Args:
+        request: HTTP request with payload {"entity_id": 123}.
+
+    Returns:
+        Response: Removal confirmation and updated nest count.
     """
     entity_id = request.data.get('entity_id')
     
@@ -134,9 +148,13 @@ def remove_from_nest(request):
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def get_nest_summary(request):
-    """
-    Get summary of user's nest
-    GET /api/nest/summary
+    """Retrieve summary counts of teams, athletes, and leagues configured in the user's Nest.
+
+    Args:
+        request: HTTP request.
+
+    Returns:
+        Response: Categorized counts and serialized entity records.
     """
     nest_items = UserNest.objects.filter(user=request.user).select_related('entity')
     
@@ -156,10 +174,13 @@ def get_nest_summary(request):
 @api_view(['GET', 'PUT'])
 @permission_classes([IsAuthenticated])
 def user_preferences(request):
-    """
-    Get or update user preferences
-    GET /api/user/preferences
-    PUT /api/user/preferences
+    """Retrieve or partially update global notification, score display, and source limit preferences.
+
+    Args:
+        request: GET request or PUT request with preference updates.
+
+    Returns:
+        Response: Current or updated user preferences dictionary.
     """
     preferences, created = UserPreferences.objects.get_or_create(user=request.user)
     
@@ -178,9 +199,13 @@ def user_preferences(request):
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def recent_searches(request):
-    """
-    Get user's recent searches
-    GET /api/search/recent
+    """Retrieve the 10 most recent search history items for the authenticated user.
+
+    Args:
+        request: HTTP request.
+
+    Returns:
+        Response: List of serialized recent search entries.
     """
     searches = RecentSearch.objects.filter(user=request.user)[:10]
     serializer = RecentSearchSerializer(searches, many=True)
@@ -190,10 +215,13 @@ def recent_searches(request):
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 def save_search(request):
-    """
-    Save a search query
-    POST /api/search/save
-    Body: {"query": "Lakers", "entity_id": 123}
+    """Save a user query or selected entity search to the recent search history.
+
+    Args:
+        request: HTTP request with body {"query": "Lakers", "entity_id": 123}.
+
+    Returns:
+        Response: Created search history record.
     """
     query = request.data.get('query')
     entity_id = request.data.get('entity_id')

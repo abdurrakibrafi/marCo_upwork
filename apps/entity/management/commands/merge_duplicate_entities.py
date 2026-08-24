@@ -6,9 +6,11 @@ from apps.entity.utils.normalizers import clean_team_prefix_suffix, normalize_en
 
 
 class Command(BaseCommand):
+    """Management command to detect duplicate sports entities and link them to canonical parents."""
     help = 'Automatically detect duplicate entities (e.g. Roma vs AS Roma) and link them to a canonical entity.'
 
     def add_arguments(self, parser):
+        """Configure command line arguments including commit flag and sport filter."""
         parser.add_argument(
             '--commit',
             action='store_true',
@@ -21,6 +23,7 @@ class Command(BaseCommand):
         )
 
     def handle(self, *args, **options):
+        """Execute duplicate entity grouping and canonical relationship linking."""
         commit = options['commit']
         sport_filter = options.get('sport')
 

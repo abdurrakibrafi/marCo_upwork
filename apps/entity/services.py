@@ -2,18 +2,20 @@ from django.db.models import Q
 from apps.nest.models import Entity
 
 class EntitySearchService:
-    """Service for searching entities"""
+    """Service providing search, trending, and filtered queries for sports entities."""
     
     @staticmethod
     def search(query: str, entity_type: str = None, sport: str = None, limit: int = 20):
-        """
-        Search entities by name
+        """Search active entities by keyword matching across name, description, and aliases.
         
         Args:
-            query: Search term
-            entity_type: Filter by type (team, athlete, league)
-            sport: Filter by sport
-            limit: Max results
+            query (str): Keyword query string.
+            entity_type (str, optional): Filter by entity type ('team', 'athlete', 'league').
+            sport (str, optional): Filter by sport slug.
+            limit (int, optional): Maximum result limit. Defaults to 20.
+
+        Returns:
+            QuerySet: Filtered Entity queryset.
         """
         queryset = Entity.objects.filter(is_active=True)
         
@@ -37,12 +39,28 @@ class EntitySearchService:
     
     @staticmethod
     def get_trending(limit: int = 10):
-        """Get trending entities (by follower count)"""
+        """Retrieve trending entities ordered by highest follower count.
+
+        Args:
+            limit (int, optional): Maximum number of results to return. Defaults to 10.
+
+        Returns:
+            QuerySet: Top trending Entity instances.
+        """
         return Entity.objects.filter(is_active=True).order_by('-follower_count')[:limit]
     
     @staticmethod
     def get_by_type_and_sport(entity_type: str, sport: str, limit: int = 20):
-        """Get entities by type and sport"""
+        """Retrieve entities filtered by a specific type and sport.
+
+        Args:
+            entity_type (str): Type of entity ('team', 'athlete', 'league').
+            sport (str): Sport slug ('soccer', 'basketball', etc.).
+            limit (int, optional): Maximum result limit. Defaults to 20.
+
+        Returns:
+            QuerySet: Filtered Entity instances ordered by follower count.
+        """
         return Entity.objects.filter(
             type=entity_type,
             sport=sport,

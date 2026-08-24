@@ -7,9 +7,11 @@ from django.core.management.base import BaseCommand
 from apps.entity.models import Entity, Athlete
 
 class Command(BaseCommand):
+    """Management command to scrape and seed volleyball club player rosters from Wikipedia squad tables."""
     help = "Scrape and seed volleyball club player rosters from Wikipedia"
 
     def add_arguments(self, parser):
+        """Register CLI options."""
         parser.add_argument(
             '--dry-run',
             action='store_true',
@@ -17,6 +19,7 @@ class Command(BaseCommand):
         )
 
     def handle(self, *args, **options):
+        """Execute volleyball squad scraping from Wikipedia."""
         dry_run = options['dry_run']
         if dry_run:
             self.stdout.write(self.style.WARNING("=== DRY RUN MODE: Database changes will not be saved ==="))

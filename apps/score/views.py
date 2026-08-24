@@ -46,6 +46,14 @@ from apps.event.tasks import _extract_minute
 #         return mixin.handle_exception(exc)
 
 def _normalize_list(val):
+    """Normalize input object into a list if it is a dictionary or scalar.
+
+    Args:
+        val: Input structure.
+
+    Returns:
+        list: Normalized list.
+    """
     if not val:
         return []
     if isinstance(val, dict):
@@ -56,13 +64,32 @@ def _normalize_list(val):
 
 
 def _clean_cricket_league_name(league_name):
-    """Remove an incorrectly persisted ODI suffix from a cricket tour name."""
+    """Remove erroneous ODI suffix from cricket tournament and series titles.
+
+    Args:
+        league_name (str): Competition title.
+
+    Returns:
+        str: Cleaned series name.
+    """
     if not isinstance(league_name, str):
         return league_name
     return re.sub(r'\s*-\s*ODI\s*$', '', league_name, flags=re.IGNORECASE)
 
 
 def _convert_statpal_stats_to_api_sports(team_stats, home_team_name, home_team_id, away_team_name, away_team_id):
+    """Convert soccer match statistics from StatPal format into API-Sports standardized schema.
+
+    Args:
+        team_stats (dict): Raw team statistics dictionary.
+        home_team_name (str): Home club name.
+        home_team_id: Home team identifier.
+        away_team_name (str): Away club name.
+        away_team_id: Away team identifier.
+
+    Returns:
+        list: Formatted team statistics array.
+    """
     if not team_stats or not isinstance(team_stats, dict):
         return []
     
@@ -118,6 +145,18 @@ def _convert_statpal_stats_to_api_sports(team_stats, home_team_name, home_team_i
 
 
 def _convert_tennis_stats(match_data, home_player_name, home_team_id, away_player_name, away_team_id):
+    """Normalize tennis serving, breakpoint, and rally stats from raw match feed into standardized structure.
+
+    Args:
+        match_data (dict): Raw tennis match metadata dictionary.
+        home_player_name (str): Player 1 name.
+        home_team_id: Player 1 identifier.
+        away_player_name (str): Player 2 name.
+        away_team_id: Player 2 identifier.
+
+    Returns:
+        list: Normalized player stats array.
+    """
     players = match_data.get('player', [])
     if not isinstance(players, list) or len(players) < 2:
         return []
@@ -206,6 +245,18 @@ def _convert_tennis_stats(match_data, home_player_name, home_team_id, away_playe
 
 
 def _convert_generic_team_stats(team_stats, home_team_name, home_team_id, away_team_name, away_team_id):
+    """Normalize team-level box score statistics for generic sports leagues.
+
+    Args:
+        team_stats (dict): Raw team statistics payload.
+        home_team_name (str): Home team name.
+        home_team_id: Home team identifier.
+        away_team_name (str): Away team name.
+        away_team_id: Away team identifier.
+
+    Returns:
+        list: Formatted team metric lists.
+    """
     if not team_stats or not isinstance(team_stats, dict):
         return []
     
@@ -242,6 +293,18 @@ def _convert_generic_team_stats(team_stats, home_team_name, home_team_id, away_t
 
 
 def _convert_statpal_events_to_api_sports(match_data, home_team_name, home_team_id, away_team_name, away_team_id):
+    """Extract and format in-game events timeline (goals, bookings, substitutions, VAR).
+
+    Args:
+        match_data (dict): Raw match event summary dictionary.
+        home_team_name (str): Home team name.
+        home_team_id: Home team identifier.
+        away_team_name (str): Away team name.
+        away_team_id: Away team identifier.
+
+    Returns:
+        list: Chronologically sorted list of match events.
+    """
     events = []
     summary = match_data.get("event_summary", {})
     subs = match_data.get("substitutions", {})
@@ -401,9 +464,13 @@ def _convert_statpal_events_to_api_sports(match_data, home_team_name, home_team_
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def live_scores(request):
-    """
-    Get all live scores across all sports
-    Frontend polls this every 15 seconds
+    """Retrieve top active live scores across all sports for periodic frontend polling.
+
+    Args:
+        request: Django HTTP request.
+
+    Returns:
+        Response: Standardized JSON payload with count and serialized live score objects.
     """
     mixin = BaseResponseMixin()
     try:
@@ -421,7 +488,14 @@ def live_scores(request):
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def nest_live_scores(request):
+    """Retrieve active live scores filtered exclusively for entities followed in the user's Nest.
 
+    Args:
+        request: Django HTTP request with optional ?sport= query parameter.
+
+    Returns:
+        Response: Standardized JSON payload containing matching user-relevant live games.
+    """
     mixin = BaseResponseMixin()
     try:
         from apps.nest.models import UserNest
@@ -466,15 +540,23 @@ def nest_live_scores(request):
 
     except Exception as exc:
         return mixin.handle_exception(exc)
-    
-# apps/score/views.py
-# Replace your live_score_detail function with this
+
 
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def live_score_detail(request, score_id):
+    """Retrieve comprehensive match center details (box score, events timeline, statistics, and lineups).
+
+    Args:
+        request: Django HTTP request.
+        score_id: Primary key of target LiveScore or Event model.
+
+    Returns:
+        Response: Detailed game metrics, rosters, commentary, and period breakdowns.
+    """
     mixin = BaseResponseMixin()
     def _make_absolute(url):
+        """Construct absolute URL for media asset path."""
         if not url:
             return ""
         if url.startswith("http://") or url.startswith("https://"):
@@ -1313,10 +1395,15 @@ def live_score_detail(request, score_id):
     
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
-def live_scores_by_sport(request, sport):
-    """
-    Get live scores for a specific sport
-    Example: /api/scores/live/nba
+def live_scores_by_sport(request, sport: str):
+    """Retrieve active live scores filtered by sport league code (e.g. nba, nfl, soccer, cricket).
+
+    Args:
+        request: Django HTTP request.
+        sport (str): Target sport slug.
+
+    Returns:
+        Response: Serialized scoreboard data for the requested sport.
     """
     mixin = BaseResponseMixin()
     try:

@@ -19,7 +19,14 @@ POS_MAP = {
 }
 
 def clean_player_name(raw_name: str) -> str:
-    """Removes citations like [1], [208] and parenthetical annotations like (captain), (loan)"""
+    """Remove citation references (e.g. `[1]`, `[208]`) and parenthetical notes (e.g. `(captain)`, `(loan)`) from player names.
+
+    Args:
+        raw_name (str): Scraped text from table cell.
+
+    Returns:
+        str: Cleaned athlete name.
+    """
     cleaned = re.sub(r'\[.*?\]', '', raw_name)
     cleaned = re.sub(r'\(.*?\)', '', cleaned)
     cleaned = cleaned.replace('\xa0', ' ').strip()
@@ -27,12 +34,17 @@ def clean_player_name(raw_name: str) -> str:
 
 
 class WikipediaService:
-    """Service to search and scrape team rosters / squads from Wikipedia as fallback."""
+    """Fallback scraper service for extracting team squads and active rosters from Wikipedia tables."""
 
     def get_team_roster(self, team_name: str, sport: str = 'soccer') -> list[dict]:
-        """
-        Search Wikipedia for the team and extract squad/roster.
-        Returns a list of standardized player dictionaries compatible with TheSportsDBService output.
+        """Search Wikipedia API for a sports team page and parse HTML squad tables into standardized roster records.
+
+        Args:
+            team_name (str): Full team name.
+            sport (str, optional): Sport category. Defaults to 'soccer'.
+
+        Returns:
+            list[dict]: List of athlete player dictionary objects.
         """
         search_url = 'https://en.wikipedia.org/w/api.php'
         query = f"{team_name} football club" if sport == 'soccer' else f"{team_name} {sport}"

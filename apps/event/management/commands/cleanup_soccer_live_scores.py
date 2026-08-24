@@ -2,9 +2,11 @@ from django.core.management.base import BaseCommand
 from apps.score.models import LiveScore
 
 class Command(BaseCommand):
+    """Management command to clean up soccer live score entries where live stats are unavailable."""
     help = "Cleanup soccer live scores where has_live_stats is 'False'"
 
     def add_arguments(self, parser):
+        """Configure command line arguments including dry-run simulation mode."""
         parser.add_argument(
             '--dry-run',
             action='store_true',
@@ -12,6 +14,7 @@ class Command(BaseCommand):
         )
 
     def handle(self, *args, **options):
+        """Purge invalid soccer live score entries lacking live statistics."""
         dry_run = options['dry_run']
 
         # Get all soccer LiveScore records

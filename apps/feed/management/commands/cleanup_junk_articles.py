@@ -3,9 +3,11 @@ from apps.feed.models import FeedItem
 from apps.feed.tasks import _is_junk_page
 
 class Command(BaseCommand):
+    """Management command to identify and reset previously scraped sportsbook promo and junk articles."""
     help = 'Identify and clean up already scraped junk/sportsbook articles, resetting their fetch state.'
 
     def add_arguments(self, parser):
+        """Register CLI arguments for dry-run mode and batch limits."""
         parser.add_argument(
             '--dry-run',
             action='store_true',
@@ -19,6 +21,7 @@ class Command(BaseCommand):
         )
 
     def handle(self, *args, **options):
+        """Execute junk page detection across fetched articles and clear contents."""
         dry_run = options['dry_run']
         limit = options['limit']
 

@@ -4,9 +4,11 @@ from datetime import timedelta
 from apps.event.tasks import update_statpal_fixtures_for_dates
 
 class Command(BaseCommand):
+    """Management command to fetch upcoming and past sporting fixtures from StatPal and populate the database."""
     help = "Fetch upcoming fixtures for all sports from StatPal and populate the database"
 
     def add_arguments(self, parser):
+        """Configure command line arguments including days horizon and past days offset."""
         parser.add_argument(
             '--days',
             type=int,
@@ -21,6 +23,7 @@ class Command(BaseCommand):
         )
 
     def handle(self, *args, **options):
+        """Execute multi-sport fixture synchronization across specified dates."""
         days = options['days']
         past_days = options['past_days']
 

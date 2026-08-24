@@ -9,6 +9,14 @@ logger = logging.getLogger(__name__)
 
 
 def _normalize_list(val):
+    """Ensure raw scalar, dictionary, or list API inputs are normalized into a Python list.
+
+    Args:
+        val: Input data of arbitrary type.
+
+    Returns:
+        list: Normalized list container.
+    """
     if not val:
         return []
     if isinstance(val, dict):
@@ -18,14 +26,33 @@ def _normalize_list(val):
     return []
 
 
-def _clean_cricket_league_name(league_name):
-    """Remove an incorrectly persisted ODI suffix from a cricket tour name."""
+def _clean_cricket_league_name(league_name: str) -> str:
+    """Remove erroneous persisted ODI suffix from a cricket competition tour name.
+
+    Args:
+        league_name (str): Raw league/series title.
+
+    Returns:
+        str: Cleaned series name.
+    """
     if not isinstance(league_name, str):
         return league_name
     return re.sub(r'\s*-\s*ODI\s*$', '', league_name, flags=re.IGNORECASE)
 
 
 def _convert_statpal_stats_to_api_sports(team_stats, home_team_name, home_team_id, away_team_name, away_team_id):
+    """Convert soccer match statistics from StatPal format into API-Sports standardized schema.
+
+    Args:
+        team_stats (dict): Raw team statistics dictionary.
+        home_team_name (str): Home club name.
+        home_team_id: Home team identifier.
+        away_team_name (str): Away club name.
+        away_team_id: Away team identifier.
+
+    Returns:
+        list: List of team metric dictionary items.
+    """
     if not team_stats or not isinstance(team_stats, dict):
         return []
 
@@ -81,6 +108,18 @@ def _convert_statpal_stats_to_api_sports(team_stats, home_team_name, home_team_i
 
 
 def _convert_tennis_stats(match_data, home_player_name, home_team_id, away_player_name, away_team_id):
+    """Extract and normalize tennis serve, return, and point statistics for competing players.
+
+    Args:
+        match_data (dict): Raw tennis match metadata dictionary.
+        home_player_name (str): Player 1 name.
+        home_team_id: Player 1 identifier.
+        away_player_name (str): Player 2 name.
+        away_team_id: Player 2 identifier.
+
+    Returns:
+        list: Formatted player statistics structure.
+    """
     players = match_data.get('player', [])
     if not isinstance(players, list) or len(players) < 2:
         return []
@@ -169,6 +208,18 @@ def _convert_tennis_stats(match_data, home_player_name, home_team_id, away_playe
 
 
 def _convert_generic_team_stats(team_stats, home_team_name, home_team_id, away_team_name, away_team_id):
+    """Recursively traverse key-value metric maps for generic sports (basketball, baseball, hockey, etc.).
+
+    Args:
+        team_stats (dict): Raw team statistics payload.
+        home_team_name (str): Home team name.
+        home_team_id: Home team identifier.
+        away_team_name (str): Away team name.
+        away_team_id: Away team identifier.
+
+    Returns:
+        list: Formatted team metric lists.
+    """
     if not team_stats or not isinstance(team_stats, dict):
         return []
 
@@ -205,6 +256,18 @@ def _convert_generic_team_stats(team_stats, home_team_name, home_team_id, away_t
 
 
 def _convert_statpal_events_to_api_sports(match_data, home_team_name, home_team_id, away_team_name, away_team_id):
+    """Normalize in-game timeline events (goals, cards, substitutions, VAR reviews) into API-Sports event format.
+
+    Args:
+        match_data (dict): Raw match event summary dictionary.
+        home_team_name (str): Home team name.
+        home_team_id: Home team identifier.
+        away_team_name (str): Away team name.
+        away_team_id: Away team identifier.
+
+    Returns:
+        list: Chronologically sorted list of match events.
+    """
     events = []
     summary = match_data.get("event_summary", {})
     subs = match_data.get("substitutions", {})
@@ -358,7 +421,16 @@ def _convert_statpal_events_to_api_sports(match_data, home_team_name, home_team_
     return events
 
 
-def _make_absolute(url, request=None):
+def _make_absolute(url: str, request=None) -> str:
+    """Resolve absolute URL for static images and logos across development and production environments.
+
+    Args:
+        url (str): Relative or absolute resource path.
+        request (optional): Django HTTP request object.
+
+    Returns:
+        str: Absolute URI.
+    """
     if not url:
         return ""
     if url.startswith("http://") or url.startswith("https://"):
@@ -376,9 +448,16 @@ def _make_absolute(url, request=None):
 
 
 def get_live_score_detail_data(score_id, request=None):
-    """
-    Extract and structure detailed data for a live score / match event.
-    Returns a dictionary of match details, or None if the game is not found.
+    """Extract and structure comprehensive real-time detail for a live score, fixture, or completed match.
+
+    Aggregates lineups, box score metrics, commentaries, and period statistics.
+
+    Args:
+        score_id: Primary key of LiveScore or Event model.
+        request (optional): Django HTTP request context.
+
+    Returns:
+        dict or None: Structured match detail payload, or None if match is not found.
     """
     game = None
     # 1. Try LiveScore ID

@@ -51,9 +51,11 @@ POPULAR_LEAGUES = [
 
 
 class Command(BaseCommand):
+    """Management command to populate and seed sports teams from TheSportsDB and StatPal into the database."""
     help = 'Populate all teams from TheSportsDB and StatPal into local DB'
 
     def handle(self, *args, **options):
+        """Execute the multi-league team discovery and seeding pipeline."""
         tsdb = TheSportsDBService()
         total_created = 0
         total_updated = 0

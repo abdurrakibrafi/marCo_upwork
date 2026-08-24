@@ -19,19 +19,16 @@ logger = logging.getLogger(__name__)
 
 
 class BraveNewsService:
-    """
-    Fetches real-time sports news using Brave Search News API.
-    
-    Brave news endpoint returns up to 50 fresh articles per query,
-    with title, URL, description, thumbnail, and published date.
-    """
+    """Service for querying real-time sports headlines and articles using the Brave News API."""
 
     NEWS_URL = "https://api.search.brave.com/res/v1/news/search"
 
     def __init__(self):
+        """Initialize Brave News client with API key."""
         self.api_key = getattr(settings, 'BRAVESEARCH_KEY', '')
 
     def _headers(self):
+        """Build request headers for the Brave API."""
         return {
             "Accept": "application/json",
             "Accept-Encoding": "gzip",
@@ -39,6 +36,16 @@ class BraveNewsService:
         }
 
     def fetch_news_for_entity(self, entity_name: str, entity_type: str, sport: str) -> list[dict]:
+        """Fetch, filter, and normalize fresh news articles for a target sports entity.
+
+        Args:
+            entity_name (str): Entity display name.
+            entity_type (str): Entity type category ('team', 'athlete', 'league').
+            sport (str): Associated sport name.
+
+        Returns:
+            list[dict]: List of normalized article dictionary objects.
+        """
         if not self.api_key:
             return []
 
@@ -79,14 +86,30 @@ class BraveNewsService:
         return articles
 
     def _build_queries(self, name: str, entity_type: str, sport: str) -> list[str]:
-        """Build search queries based on entity type and sport availability."""
+        """Construct targeted news query terms based on sport context.
+
+        Args:
+            name (str): Entity name.
+            entity_type (str): Entity type.
+            sport (str): Sport discipline.
+
+        Returns:
+            list[str]: Formatted query strings.
+        """
         sport_clean = (sport or '').strip()
         if sport_clean and sport_clean.lower() != 'none':
             return [f'"{name}" {sport_clean} news', f'"{name}" news']
         return [f'"{name}" news']
 
     def _search_news(self, query: str) -> list[dict]:
-        """Call Brave news search endpoint."""
+        """Execute HTTP request against the Brave News search endpoint.
+
+        Args:
+            query (str): Search term.
+
+        Returns:
+            list[dict]: Raw news search results.
+        """
         params = {
             "q": query,
             "count": 20,
@@ -108,7 +131,14 @@ class BraveNewsService:
             return []
 
     def _normalize(self, item: dict) -> dict | None:
-        """Normalize a Brave news result into our FeedItem format."""
+        """Convert a raw Brave News item dictionary into the standard FeedItem format.
+
+        Args:
+            item (dict): Raw news article record.
+
+        Returns:
+            dict or None: Normalized dictionary payload, or None if invalid.
+        """
         url = item.get('url', '')
         title = item.get('title', '').strip()
 

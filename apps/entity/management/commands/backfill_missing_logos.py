@@ -3,9 +3,11 @@ from apps.entity.models import Entity
 from apps.entity.utils.matcher import find_team_logo_by_name
 
 class Command(BaseCommand):
+    """Management command to backfill empty logo URLs for entities using database matching and external providers."""
     help = "Backfill empty logo URLs for entities by searching the database for matching names with logos."
 
     def add_arguments(self, parser):
+        """Define command-line arguments for dry-run simulation mode."""
         parser.add_argument(
             "--dry-run",
             action="store_true",
@@ -13,6 +15,7 @@ class Command(BaseCommand):
         )
 
     def handle(self, *args, **options):
+        """Execute the logo validation and backfill routines."""
         dry_run = options["dry_run"]
         if dry_run:
             self.stdout.write(self.style.WARNING("=== DRY RUN MODE: Database changes will not be saved ==="))

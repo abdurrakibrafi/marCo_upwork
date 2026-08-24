@@ -7,9 +7,11 @@ from django.core.management.base import BaseCommand
 from apps.entity.models import Entity, Athlete
 
 class Command(BaseCommand):
+    """Management command to scrape and seed professional horse racing jockey profiles from Wikipedia."""
     help = "Seed horse racing jockey profiles from Wikipedia List of jockeys"
 
     def add_arguments(self, parser):
+        """Register CLI options and limits."""
         parser.add_argument(
             '--dry-run',
             action='store_true',
@@ -23,6 +25,7 @@ class Command(BaseCommand):
         )
 
     def handle(self, *args, **options):
+        """Execute horse racing jockey scraping and create athlete entities."""
         dry_run = options['dry_run']
         limit = options['limit']
         if dry_run:

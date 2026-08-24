@@ -10,7 +10,22 @@ from django.conf import settings
 
 
 class UserManager(BaseUserManager):
+    """Custom manager for User model where email is the unique identifier for authentication."""
+
     def create_user(self, email, password=None, **extra_fields):
+        """Create and return a regular user with an email and password.
+
+        Args:
+            email (str): The email address of the user.
+            password (str, optional): The raw password for the user.
+            **extra_fields: Additional attributes to populate on the User model.
+
+        Returns:
+            User: The newly created User instance.
+
+        Raises:
+            ValueError: If the email address is not provided.
+        """
         if not email:
             raise ValueError("Email is required")
         email = self.normalize_email(email)
@@ -20,6 +35,16 @@ class UserManager(BaseUserManager):
         return user
 
     def create_superuser(self, email, password=None, **extra_fields):
+        """Create and return a superuser with staff and superuser privileges.
+
+        Args:
+            email (str): The email address of the superuser.
+            password (str, optional): The raw password for the superuser.
+            **extra_fields: Additional attributes to populate on the User model.
+
+        Returns:
+            User: The newly created superuser instance.
+        """
         extra_fields.setdefault("is_staff", True)
         extra_fields.setdefault("is_superuser", True)
         return self.create_user(email, password, **extra_fields)
@@ -50,6 +75,8 @@ SOCIAL_AUTH_PROVIDERS = (
 
 
 class User(AbstractUser):
+    """Custom User model using email for authentication with soft-delete and social auth support."""
+
     email = models.EmailField(unique=True)
     username = models.CharField(max_length=150, unique=False, blank=True, null=True)
 
@@ -73,14 +100,14 @@ class User(AbstractUser):
         return self.email
 
     def soft_delete(self):
-        """Mark the user as deleted."""
+        """Mark the user as deleted and deactivate account access."""
         self.is_deleted = True
         self.deleted_at = timezone.now()
         self.is_active = False
         self.save()
 
     def restore(self):
-        """Restore a soft-deleted user."""
+        """Restore a soft-deleted user account and reactivate access."""
         self.is_deleted = False
         self.deleted_at = None
         self.is_active = True
@@ -93,6 +120,8 @@ class User(AbstractUser):
 
 
 class OTP(models.Model):
+    """One-Time Password (OTP) model for email verification, password resets, and changes."""
+
     PURPOSE_STATUS = [
         ("verification", "Email Verification"),
         ("password_reset", "Password Reset"),
@@ -113,6 +142,11 @@ class OTP(models.Model):
         return f"{self.user.email} - {self.purpose} OTP"
 
     def is_valid(self):
+        """Check whether the OTP is unused and has not expired.
+
+        Returns:
+            bool: True if OTP is active and valid, False otherwise.
+        """
         return not self.is_used and self.expires_at > timezone.now()
 
     class Meta:
@@ -121,6 +155,8 @@ class OTP(models.Model):
 
 
 class UserProfile(models.Model):
+    """Extended user profile storing demographic, onboarding, and bio details."""
+
     GENDER_CHOICES = (
         ("male", "Male"),
         ("female", "Female"),
@@ -158,16 +194,31 @@ class UserProfile(models.Model):
 
 @receiver(post_save, sender=settings.AUTH_USER_MODEL)
 def create_user_profile(sender, instance, created, **kwargs):
+    """Signal receiver to automatically create a UserProfile whenever a new User is registered.
+
+    Args:
+        sender (class): The model class sending the signal.
+        instance (User): The actual User instance that was saved.
+        created (bool): Flag indicating if a new record was created.
+        **kwargs: Additional keyword arguments from the signal.
+    """
     if created:
         UserProfile.objects.get_or_create(user=instance)
 
 
 class DailyStreak(models.Model):
+    """Tracks daily consecutive active usage streaks for a user."""
+
     user = models.OneToOneField(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='streak')
     current_streak = models.IntegerField(default=0)
     last_active_date = models.DateField(null=True, blank=True)
 
     def update_streak(self):
+        """Update the user's daily activity streak.
+
+        Increments streak if active on consecutive days, resets to 1 if a day was skipped,
+        or does nothing if already updated for today.
+        """
         today = timezone.now().date()
         if self.last_active_date == today:
             return
@@ -181,5 +232,13 @@ class DailyStreak(models.Model):
 
 @receiver(post_save, sender=settings.AUTH_USER_MODEL)
 def create_user_streak(sender, instance, created, **kwargs):
+    """Signal receiver to initialize DailyStreak tracking for newly registered users.
+
+    Args:
+        sender (class): The model class sending the signal.
+        instance (User): The actual User instance that was saved.
+        created (bool): Flag indicating if a new record was created.
+        **kwargs: Additional keyword arguments from the signal.
+    """
     if created:
         DailyStreak.objects.create(user=instance)

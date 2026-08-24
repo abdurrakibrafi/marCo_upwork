@@ -21,16 +21,19 @@ logger = logging.getLogger(__name__)
 
 
 class BaseResponseMixin:
+    """Mixin providing standardized API response formatting, error mapping, and helper methods."""
     
     def success_response(self, data=None, message="Success", status_code=status.HTTP_200_OK, **kwargs):
-        """
-        Generate a standardized success response.
+        """Generate a standardized success API response payload.
         
         Args:
-            data: Response data (optional)
-            message: Success message
-            status_code: HTTP status code
-            **kwargs: Additional fields to include in response
+            data (Any, optional): Serialized payload or data dictionary. Defaults to None.
+            message (str): Human-readable success message. Defaults to "Success".
+            status_code (int): HTTP response code. Defaults to 200 OK.
+            **kwargs: Extra fields to merge into top-level response payload.
+
+        Returns:
+            Response: DRF Response with standardized JSON schema.
         """
         response_data = {
             "success": True,
@@ -49,15 +52,17 @@ class BaseResponseMixin:
 
     def error_response(self, message="Error", error_code=None, errors=None, 
                       status_code=status.HTTP_400_BAD_REQUEST, **kwargs):
-        """
-        Generate a standardized error response.
+        """Generate a standardized error API response payload.
         
         Args:
-            message: Error message
-            error_code: Specific error code for frontend handling
-            errors: Detailed error information (for validation errors)
-            status_code: HTTP status code
-            **kwargs: Additional fields to include in response
+            message (str): Error message description. Defaults to "Error".
+            error_code (str, optional): Custom machine-readable error token (e.g., 'INVALID_CREDENTIALS').
+            errors (dict or list, optional): Detailed validation error messages.
+            status_code (int): HTTP status code. Defaults to 400 Bad Request.
+            **kwargs: Extra fields to merge into top-level response payload.
+
+        Returns:
+            Response: DRF Response with standardized error JSON schema.
         """
         response_data = {
             "success": False,
@@ -78,8 +83,13 @@ class BaseResponseMixin:
         return Response(response_data, status=status_code)
 
     def handle_exception(self, exc):
-        """
-        Handle exceptions and return consistent error responses.
+        """Map backend and framework exceptions to standardized error responses.
+
+        Args:
+            exc (Exception): Exception caught during request lifecycle.
+
+        Returns:
+            Response: Standardized DRF Response with appropriate HTTP status code and details.
         """
         # Log the exception for debugging
         logger.error(f"API Exception: {type(exc).__name__}: {str(exc)}")
@@ -184,7 +194,7 @@ class BaseResponseMixin:
 
     # Convenience methods for common responses
     def created_response(self, data=None, message="Resource created successfully"):
-        """Convenience method for 201 Created responses"""
+        """Convenience method returning a 201 Created success response."""
         return self.success_response(
             data=data, 
             message=message, 
@@ -192,7 +202,7 @@ class BaseResponseMixin:
         )
     
     def updated_response(self, data=None, message="Resource updated successfully"):
-        """Convenience method for update responses"""
+        """Convenience method returning a 200 OK update success response."""
         return self.success_response(
             data=data, 
             message=message, 
@@ -200,14 +210,14 @@ class BaseResponseMixin:
         )
     
     def deleted_response(self, message="Resource deleted successfully"):
-        """Convenience method for delete responses"""
+        """Convenience method returning a 204 No Content success response."""
         return self.success_response(
             message=message, 
             status_code=status.HTTP_204_NO_CONTENT
         )
     
     def not_found_response(self, message="Resource not found"):
-        """Convenience method for 404 responses"""
+        """Convenience method returning a 404 Not Found error response."""
         return self.error_response(
             message=message,
             error_code="RESOURCE_NOT_FOUND",
@@ -215,7 +225,7 @@ class BaseResponseMixin:
         )
     
     def bad_request_response(self, message="Bad request", errors=None):
-        """Convenience method for 400 responses"""
+        """Convenience method returning a 400 Bad Request error response."""
         return self.error_response(
             message=message,
             error_code="BAD_REQUEST",

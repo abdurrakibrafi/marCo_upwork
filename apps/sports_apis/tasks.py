@@ -15,7 +15,11 @@ logger = logging.getLogger(__name__)
 
 
 def _publish(live_score_obj):
-    """Push live score updates to WebSocket consumers (both list and detail)"""
+    """Broadcast serialized live score update to WebSocket consumer channels and detail groups.
+
+    Args:
+        live_score_obj: LiveScore model instance.
+    """
     try:
         channel_layer = get_channel_layer()
         data = dict(LiveScoreSerializer(live_score_obj).data)
@@ -65,7 +69,7 @@ def _publish(live_score_obj):
 
 @shared_task
 def update_nfl_live_scores():
-    """Delegated to StatPal sync"""
+    """Trigger background synchronization of StatPal sports live scores."""
     from apps.event.tasks import sync_statpal_data
     sync_statpal_data.delay()
     return "Delegated to sync_statpal_data"
@@ -73,7 +77,15 @@ def update_nfl_live_scores():
 
 
 def _name_similarity(a: str, b: str) -> float:
-    """Simple word overlap similarity 0.0-1.0."""
+    """Calculate token overlap ratio between two strings.
+
+    Args:
+        a (str): First string.
+        b (str): Second string.
+
+    Returns:
+        float: Overlap score between 0.0 and 1.0.
+    """
     a_words = set(a.lower().split())
     b_words = set(b.lower().split())
     if not a_words or not b_words:
@@ -84,11 +96,14 @@ def _name_similarity(a: str, b: str) -> float:
 
 @shared_task
 def enrich_missing_logos(dry_run: bool = False, limit: int = 100):
-    """
-    Find all entities with no logo_url and try to fill from TheSportsDB.
-    Focuses on: cricket teams, cricket leagues (major ones only), NBA teams.
+    """Enrich entities lacking a logo URL by looking up team crests and player headshots from TheSportsDB.
 
-    Rate limit: free key = 30 req/min, so we sleep 2s between calls.
+    Args:
+        dry_run (bool, optional): If True, log matches without writing to DB. Defaults to False.
+        limit (int, optional): Max number of entities to process per execution. Defaults to 100.
+
+    Returns:
+        str: Summary execution statistics.
     """
     from apps.entity.models import Entity
     from apps.sports_apis.services.thesportsdb import thesportsdb_service
@@ -164,9 +179,13 @@ def enrich_missing_logos(dry_run: bool = False, limit: int = 100):
 
 @shared_task
 def enrich_entity_logo(entity_id: int):
-    """
-    Enrich logo for a single entity. Call this when a new entity is created
-    and has no logo. Can be triggered from _get_or_create_team_entity.
+    """Enrich logo image for a specific sports entity on-demand.
+
+    Args:
+        entity_id (int): Primary key of target Entity.
+
+    Returns:
+        str: Status message.
     """
     from apps.entity.models import Entity
     from apps.sports_apis.services.thesportsdb import thesportsdb_service
@@ -198,14 +217,10 @@ def enrich_entity_logo(entity_id: int):
 
 @shared_task
 def enrich_event_highlights_today():
-    """
-    Fetch YouTube highlights from TheSportsDB for completed events
-    and store them in EventHighlight + event.metadata.
+    """Fetch YouTube video highlights from TheSportsDB for games completed today and yesterday.
 
-    TheSportsDB returns highlights with empty home_team/away_team fields.
-    We parse the event_name string ("Team A vs Team B") instead.
-
-    Runs daily at 11:30pm. Also checks yesterday in case of delays.
+    Returns:
+        str: Summary report of enriched event count.
     """
     from apps.event.models import Event, EventHighlight
     from apps.sports_apis.services.thesportsdb import thesportsdb_service
@@ -305,10 +320,13 @@ def enrich_event_highlights_today():
 
 @shared_task(bind=True, max_retries=3, default_retry_delay=900)
 def fetch_highlight_for_event(self, event_id: int):
-    """
-    Search for a highlight video (YouTube) for a given Event.
-    Tries TheSportsDB first, then falls back to Brave Search.
-    Retries up to 3 times (every 15 minutes) if not found.
+    """Search and link YouTube highlights for a single event using TheSportsDB and Brave Search.
+
+    Args:
+        event_id (int): Primary key of target Event.
+
+    Returns:
+        str: Outcome confirmation status.
     """
     from apps.event.models import Event, EventHighlight
     from apps.sports_apis.services.thesportsdb import thesportsdb_service
@@ -445,9 +463,10 @@ def fetch_highlight_for_event(self, event_id: int):
 
 @shared_task
 def fetch_highlights_for_recently_completed_events():
-    """
-    Scans for events completed in the last 24 hours that do not have highlights
-    and triggers a fetch task for each of them.
+    """Scan and dispatch highlight search tasks for matches completed within the last 24 hours.
+
+    Returns:
+        str: Dispatched task count summary.
     """
     from apps.event.models import Event, EventHighlight
     from django.utils import timezone
@@ -476,7 +495,15 @@ def fetch_highlights_for_recently_completed_events():
 
 
 def _is_sport_in_season(sports: list, lookaround_days: int = 21) -> bool:
-    """Check if any active/upcoming events exist for given sport(s) in DB within lookaround window."""
+    """Verify whether scheduled or recent events exist in the database for the given sport(s).
+
+    Args:
+        sports (list[str]): List of sport identifiers.
+        lookaround_days (int, optional): Window size in days before/after today. Defaults to 21.
+
+    Returns:
+        bool: True if fixtures exist in window or check errors out, False if off-season.
+    """
     try:
         from apps.event.models import Event
         now = timezone.now()
@@ -492,7 +519,7 @@ def _is_sport_in_season(sports: list, lookaround_days: int = 21) -> bool:
 
 @shared_task(bind=True, max_retries=3, default_retry_delay=600)
 def backfill_mlb_nhl_rosters_task(self, force: bool = False):
-    """Weekly in-season task to backfill MLB and NHL rosters using official free APIs"""
+    """Weekly in-season Celery task to backfill MLB and NHL rosters using official free APIs."""
     from django.core.management import call_command
     try:
         if not force and not _is_sport_in_season(['baseball', 'hockey']):
@@ -508,7 +535,7 @@ def backfill_mlb_nhl_rosters_task(self, force: bool = False):
 
 @shared_task(bind=True, max_retries=3, default_retry_delay=600)
 def backfill_basketball_players_task(self, force: bool = False):
-    """Weekly in-season task to backfill NBA basketball rosters using StatPal API"""
+    """Weekly in-season Celery task to backfill NBA basketball rosters using StatPal API."""
     from django.core.management import call_command
     try:
         if not force and not _is_sport_in_season(['basketball', 'nba']):
@@ -524,7 +551,7 @@ def backfill_basketball_players_task(self, force: bool = False):
 
 @shared_task(bind=True, max_retries=3, default_retry_delay=600)
 def backfill_cricket_players_task(self, force: bool = False):
-    """Weekly in-season task to backfill cricket rosters using StatPal + Wikipedia"""
+    """Weekly in-season Celery task to backfill cricket rosters using StatPal and Wikipedia."""
     from django.core.management import call_command
     try:
         if not force and not _is_sport_in_season(['cricket']):
@@ -540,7 +567,7 @@ def backfill_cricket_players_task(self, force: bool = False):
 
 @shared_task(bind=True, max_retries=3, default_retry_delay=600)
 def backfill_soccer_players_task(self, force: bool = False):
-    """Weekly in-season task to backfill soccer rosters using StatPal API"""
+    """Weekly in-season Celery task to backfill soccer rosters using StatPal API."""
     from django.core.management import call_command
     try:
         if not force and not _is_sport_in_season(['soccer']):
@@ -556,7 +583,7 @@ def backfill_soccer_players_task(self, force: bool = False):
 
 @shared_task(bind=True, max_retries=3, default_retry_delay=600)
 def backfill_tennis_players_task(self, force: bool = False):
-    """Weekly in-season task to backfill tennis players using StatPal API"""
+    """Weekly in-season Celery task to backfill tennis players using StatPal API."""
     from django.core.management import call_command
     try:
         logger.info("Starting tennis players backfill task...")
@@ -569,7 +596,7 @@ def backfill_tennis_players_task(self, force: bool = False):
 
 @shared_task(bind=True, max_retries=3, default_retry_delay=600)
 def backfill_golf_players_task(self, force: bool = False):
-    """Weekly in-season task to backfill golf players using StatPal API"""
+    """Weekly in-season Celery task to backfill golf players using StatPal API."""
     from django.core.management import call_command
     try:
         logger.info("Starting golf players backfill task...")
@@ -582,7 +609,7 @@ def backfill_golf_players_task(self, force: bool = False):
 
 @shared_task(bind=True, max_retries=3, default_retry_delay=600)
 def backfill_handball_players_task(self, force: bool = False):
-    """Weekly in-season task to backfill handball players using StatPal API"""
+    """Weekly in-season Celery task to backfill handball players using StatPal API."""
     from django.core.management import call_command
     try:
         if not force and not _is_sport_in_season(['handball']):
@@ -598,7 +625,7 @@ def backfill_handball_players_task(self, force: bool = False):
 
 @shared_task(bind=True, max_retries=3, default_retry_delay=600)
 def backfill_volleyball_players_task(self, force: bool = False):
-    """Weekly in-season task to backfill volleyball players using StatPal API"""
+    """Weekly in-season Celery task to backfill volleyball players using StatPal API."""
     from django.core.management import call_command
     try:
         if not force and not _is_sport_in_season(['volleyball']):
@@ -614,7 +641,7 @@ def backfill_volleyball_players_task(self, force: bool = False):
 
 @shared_task(bind=True, max_retries=3, default_retry_delay=600)
 def cleanup_broken_logos_task(self):
-    """Periodic task to clear broken StatPal logo URLs from non-soccer teams"""
+    """Periodic Celery task to clear broken StatPal logo URLs from non-soccer teams."""
     from django.core.management import call_command
     try:
         logger.info("Starting broken logos cleanup task...")
@@ -627,7 +654,7 @@ def cleanup_broken_logos_task(self):
 
 @shared_task(bind=True, max_retries=3, default_retry_delay=600)
 def enrich_team_rosters_thesportsdb_task(self, limit: int = None, sport: str = None):
-    """Season-start / batch task to enrich team rosters and player headshots using TheSportsDB API"""
+    """Celery task to enrich team rosters and player headshots using TheSportsDB API."""
     from django.core.management import call_command
     try:
         logger.info("Starting TheSportsDB roster enrichment task...")

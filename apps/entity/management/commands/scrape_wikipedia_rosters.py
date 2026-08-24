@@ -10,9 +10,11 @@ from apps.sports_apis.services.wikipedia import wikipedia_service
 INDIVIDUAL_SPORTS = ['tennis', 'golf', 'mma', 'boxing', 'combat_sports', 'motorsport', 'formula1', 'f1']
 
 class Command(BaseCommand):
+    """Management command to scrape squad rosters from Wikipedia pages for teams lacking API data."""
     help = 'Scrape team rosters from Wikipedia for teams with missing roster data'
 
     def add_arguments(self, parser):
+        """Configure command line arguments including sport, team name, and force flags."""
         parser.add_argument(
             '--limit',
             type=int,
@@ -38,6 +40,7 @@ class Command(BaseCommand):
         )
 
     def handle(self, *args, **options):
+        """Execute Wikipedia squad roster scraping and player creation."""
         limit = options['limit']
         sport = options['sport']
         team_name = options['team_name']

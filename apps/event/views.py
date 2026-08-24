@@ -12,86 +12,16 @@ from apps.core.utils.mixins import BaseResponseMixin
 from apps.nest.models import UserNest
 
 
-# @api_view(['GET'])
-# @permission_classes([IsAuthenticated])
-# def get_nest_calendar(request):
-#     """
-#     Get calendar events for user's nest entities
-#     GET /api/calendar/nest?start_date=2026-03-14&end_date=2026-03-21
-#     """
-#     mixin = BaseResponseMixin()
-#     try:
-#         nest_entities = UserNest.objects.filter(
-#             user=request.user
-#         ).values_list('entity_id', flat=True)
+def _deduplicate_events(events_list: list) -> list:
+    """Deduplicate a list of Event objects by (home_team, away_team, start_time_date).
 
-#         if not nest_entities:
-#             return mixin.success_response(
-#                 data={'events': []},
-#                 message='No entities in your nest'
-#             )
+    Prefers 'statpal' api source over other providers when duplicate fixture records exist.
 
-#         # Date range — default to current week
-#         start_date_str = request.GET.get('start_date')
-#         end_date_str = request.GET.get('end_date')
+    Args:
+        events_list (list): List of Event model instances.
 
-#         try:
-#             start_date = datetime.fromisoformat(start_date_str).date() if start_date_str else timezone.now().date()
-#             end_date = datetime.fromisoformat(end_date_str).date() if end_date_str else start_date + timedelta(days=7)
-#         except ValueError:
-#             return mixin.error_response(
-#                 message='Invalid date format. Use YYYY-MM-DD',
-#                 status_code=status.HTTP_400_BAD_REQUEST
-#             )
-
-#         events = Event.objects.filter(
-#             start_time__date__gte=start_date,
-#             start_time__date__lte=end_date,
-#         ).filter(
-#             Q(home_entity_id__in=nest_entities) |
-#             Q(away_entity_id__in=nest_entities)
-#         ).select_related(
-#             'home_entity', 'away_entity', 'league'
-#         ).order_by('start_time')
-
-#         # Materialize queryset once to avoid duplicate serialization work
-#         events_list = list(events)
-#         serialized_events = EventSerializer(events_list, many=True).data
-
-#         grouped = {}
-#         for i, event in enumerate(events_list):
-#             date_key = event.start_time.date().isoformat()
-#             if date_key not in grouped:
-#                 grouped[date_key] = []
-#             grouped[date_key].append(serialized_events[i])
-
-#         data = {
-#             'start_date': start_date.isoformat(),
-#             'end_date': end_date.isoformat(),
-#             'total_count': len(events_list),
-#             'events_by_date': grouped,  # for calendar grid
-#             'events': serialized_events,
-#         }
-#         return mixin.success_response(data=data)
-#     except Exception as exc:
-#         return mixin.handle_exception(exc)
-
-
-"""
-apps/event/views.py — get_nest_calendar and get_event_detail
-"""
-from django.db.models import Q
-from django.utils import timezone
-from rest_framework.decorators import api_view, permission_classes
-from rest_framework.permissions import IsAuthenticated
-
-from apps.core.utils.mixins import BaseResponseMixin
-from apps.event.models import Event
-from apps.event.serializers import EventSerializer
-def _deduplicate_events(events_list):
-    """
-    Deduplicate a list of Event objects by (home_team, away_team, start_time_date).
-    If duplicate found, prefer 'statpal' api source.
+    Returns:
+        list: Deduplicated list of Event instances.
     """
     seen_matches = {}
     unique_events = []
@@ -115,25 +45,15 @@ def _deduplicate_events(events_list):
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def get_nest_calendar(request):
-    """
-    Query params (optional):
-      sport  — 'soccer' | 'nba' | 'cricket'
-      status — 'live' | 'upcoming'
-      days   — upcoming (default 7)
+    """Retrieve scheduled, live, and recent events for entities in the authenticated user's Nest.
 
-    Response:
-    {
-      "Success": true,
-      "Data": {
-        "start_date": "YYYY-MM-DD",
-        "total_count": 12,
-        "events_by_date": {
-          "2025-12-15": [ {...}, ... ],
-          "2025-12-16": [ {...}, ... ]
-        },
-        "events": [ flat list ]
-      }
-    }
+    Supports date range filtering, single entity scoping, and automatic cross-source entity resolution.
+
+    Args:
+        request (Request): HTTP GET request with optional query params 'start_date', 'end_date', 'entity_id', 'sport'.
+
+    Returns:
+        Response: Structured calendar payload grouped by date with followed nest entity highlights.
     """
     mixin = BaseResponseMixin()
     try:
@@ -293,14 +213,16 @@ def get_nest_calendar(request):
 @api_view(["GET"])
 @permission_classes([AllowAny])
 def get_event_detail(request, event_id: int):
-    """
-    Full detail for a single event including metadata (lineups, etc.)
+    """Retrieve comprehensive event detail including lineups, timeline, statistics, and highlights.
 
-    Response shape:
-    {
-        "Success": true,
-        "Data": { <EventSerializer with metadata> }
-    }
+    Performs on-the-fly live provider data enrichment and fallback statistic generation when required.
+
+    Args:
+        request (Request): HTTP GET request.
+        event_id (int): Primary key ID of the Event fixture.
+
+    Returns:
+        Response: Serialized EventDetailSerializer payload.
     """
     mixin = BaseResponseMixin()
     try:
@@ -375,11 +297,15 @@ def get_event_detail(request, event_id: int):
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def get_matches_of_day(request):
-    """
-    Get matches of the day for user's nest entities
-    GET /api/calendar/matches-of-day?date=2026-03-14
-    
-    Used for the 'Matches of the Day' card on the Nest Calendar screen.
+    """Retrieve featured 'Matches of the Day' involving the user's followed Nest entities for a given date.
+
+    Falls back to global popular matches if no followed nest fixtures take place on the requested date.
+
+    Args:
+        request (Request): HTTP GET request with optional query param 'date' (YYYY-MM-DD).
+
+    Returns:
+        Response: Structured payload separating live, upcoming, and completed matches of the day.
     """
     mixin = BaseResponseMixin()
     try:
@@ -477,9 +403,14 @@ def get_matches_of_day(request):
 @api_view(['GET'])
 @permission_classes([AllowAny])
 def get_entity_calendar(request, entity_id):
-    """
-    Get calendar events for a specific entity
-    GET /api/calendar/entity/{entity_id}?start_date=2026-03-14
+    """Retrieve schedule of upcoming, live, and recent events for a specific sports team or league.
+
+    Args:
+        request (Request): HTTP GET request with optional query params 'start_date' and 'end_date'.
+        entity_id (int): Primary key ID of the Entity (team or league).
+
+    Returns:
+        Response: Structured payload separating upcoming, live, and recent events.
     """
     mixin = BaseResponseMixin()
     try:
@@ -548,14 +479,16 @@ def get_entity_calendar(request, entity_id):
         return mixin.handle_exception(exc)
 
 
-
-
-
 @api_view(['GET'])
 @permission_classes([AllowAny])
 def get_live_events(request):
-    """
-    GET /api/events/live?sport=soccer
+    """Retrieve all currently active live sports events across all supported sports.
+
+    Args:
+        request (Request): HTTP GET request with optional 'sport' filter.
+
+    Returns:
+        Response: List of ongoing live match fixtures.
     """
     mixin = BaseResponseMixin()
     try:
@@ -579,8 +512,13 @@ def get_live_events(request):
 @api_view(['GET'])
 @permission_classes([AllowAny])
 def get_upcoming_events(request):
-    """
-    GET /api/events/upcoming?days=7&sport=soccer
+    """Retrieve scheduled upcoming sporting events within a specified day horizon.
+
+    Args:
+        request (Request): HTTP GET request with optional query params 'days' (default 7) and 'sport'.
+
+    Returns:
+        Response: List of scheduled upcoming fixtures.
     """
     mixin = BaseResponseMixin()
     try:
@@ -610,8 +548,14 @@ def get_upcoming_events(request):
 @api_view(['GET'])
 @permission_classes([AllowAny])
 def get_events_by_date(request, date):
-    """
-    GET /api/events/date/2026-03-14
+    """Retrieve all sporting events scheduled on a specific calendar date, grouped by sport.
+
+    Args:
+        request (Request): HTTP GET request with optional 'sport' filter.
+        date (str): Date string in YYYY-MM-DD format.
+
+    Returns:
+        Response: Fixtures grouped by sport for the requested date.
     """
     mixin = BaseResponseMixin()
     try:
@@ -647,16 +591,19 @@ def get_events_by_date(request, date):
         return mixin.success_response(data=data)
     except Exception as exc:
         return mixin.handle_exception(exc)
- 
+
+
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 def trigger_event_detail_fetch(request, event_id):
-    """
-    Manually trigger stats + lineups + player stats fetch for an event.
-    POST /api/events/{event_id}/fetch-details/
- 
-    Use this in Postman to populate a completed event for testing.
-    Example: find a completed soccer event id in your DB, then call this.
+    """Manually dispatch background Celery task to fetch detailed match statistics, lineups, and timeline.
+
+    Args:
+        request (Request): HTTP POST request.
+        event_id (int): Primary key ID of the Event fixture.
+
+    Returns:
+        Response: Task dispatch confirmation payload.
     """
     mixin = BaseResponseMixin()
     try:

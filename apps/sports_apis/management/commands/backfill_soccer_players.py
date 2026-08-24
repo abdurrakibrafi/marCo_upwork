@@ -6,9 +6,11 @@ from apps.entity.models import Entity, Athlete
 from apps.sports_apis.services.statpal import statpal_service
 
 class Command(BaseCommand):
+    """Management command to backfill and synchronize soccer club squads and player entities from StatPal."""
     help = "Backfill roster/athlete entities for soccer teams using StatPal API"
 
     def add_arguments(self, parser):
+        """Register CLI options."""
         parser.add_argument(
             '--dry-run',
             action='store_true',
@@ -16,6 +18,7 @@ class Command(BaseCommand):
         )
 
     def handle(self, *args, **options):
+        """Execute soccer roster synchronization for all active soccer teams in the database."""
         dry_run = options['dry_run']
         if dry_run:
             self.stdout.write(self.style.WARNING("=== DRY RUN MODE: Database changes will not be saved ==="))

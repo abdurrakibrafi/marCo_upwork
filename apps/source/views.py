@@ -22,6 +22,7 @@ logger = logging.getLogger(__name__)
 
 
 class SourceFeedPagination(PageNumberPagination):
+    """Pagination controller for source-specific article listings."""
     page_size = 20
     page_size_query_param = 'limit'
     max_page_size = 50
@@ -34,11 +35,15 @@ class SourceFeedPagination(PageNumberPagination):
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def search_sources(request):
-    """
-    GET /api/source/search/?q=ESPN football
+    """Search for sports news publications and auto-discover RSS feeds using AI suggestions.
 
-    Synchronously calls AI to suggest sources and returns results immediately.
-    Results are cached for 6 hours per query to save API costs.
+    Rate-limited to 5 requests per minute with a 6-hour cache for query outputs.
+
+    Args:
+        request: Django HTTP request with query parameter `q`.
+
+    Returns:
+        Response: List of suggested publisher sources with existing subscription status.
     """
     query = request.GET.get('q', '').strip()
     if not query:
@@ -106,20 +111,15 @@ def search_sources(request):
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 def add_source(request):
-    """
-    POST /api/source/add/
-    Body: {
-        "domain": "https://www.espn.com",
-        "name": "ESPN",                     (optional)
-        "rss_url": "https://...",           (optional, if client already knows it)
-        "favicon_url": "https://...",       (optional)
-        "search_query": "ESPN football"     (optional, for analytics)
-    }
-    
-    OR if source is already in DB:
-    Body: {"source_id": 123, "search_query": "ESPN football"}
-    
-    Creates UserCustomSource. Triggers async RSS discovery + polling.
+    """Add a custom publisher source to the authenticated user's active feed subscriptions.
+
+    Triggers asynchronous RSS endpoint discovery and immediate article fetching.
+
+    Args:
+        request: Django HTTP request with payload containing domain/rss_url or source_id.
+
+    Returns:
+        Response: Created UserCustomSource instance and confirmation message.
     """
     source_id = request.data.get('source_id')
     domain = request.data.get('domain', '').strip()
@@ -234,11 +234,13 @@ def add_source(request):
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def list_my_sources(request):
-    """
-    GET /api/source/my/
-    
-    Returns all sources the user has manually added.
-    Includes health status, last polled time, and failure count.
+    """Retrieve all custom publication feeds manually followed by the authenticated user.
+
+    Args:
+        request: Django HTTP request.
+
+    Returns:
+        Response: List of user-followed custom sources and health metrics.
     """
     custom_sources = UserCustomSource.objects.filter(
         user=request.user,
@@ -258,13 +260,15 @@ def list_my_sources(request):
 
 @api_view(['DELETE'])
 @permission_classes([IsAuthenticated])
-def remove_source(request, source_id):
-    """
-    DELETE /api/source/<source_id>/remove/
-    
-    Removes the source from the user's custom sources.
-    Does NOT delete the Source object itself (other users may use it).
-    The source's items will no longer appear in this user's nest feed.
+def remove_source(request, source_id: int):
+    """Unfollow and remove a custom publication source from the authenticated user's Nest feed.
+
+    Args:
+        request: Django HTTP request.
+        source_id (int): Primary key of target Source.
+
+    Returns:
+        Response: Removal confirmation status.
     """
     deleted, _ = UserCustomSource.objects.filter(
         user=request.user,
@@ -286,13 +290,15 @@ def remove_source(request, source_id):
 
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
-def refresh_source(request, source_id):
-    """
-    POST /api/source/<source_id>/refresh/
-    
-    Force re-polls the RSS feed for this source.
-    Useful if user wants to manually refresh a source.
-    Rate-limited: 1 refresh per source per 5 minutes.
+def refresh_source(request, source_id: int):
+    """Trigger an immediate background poll of an RSS feed. Rate-limited to once per 5 minutes.
+
+    Args:
+        request: Django HTTP request.
+        source_id (int): Primary key of target Source.
+
+    Returns:
+        Response: Task execution confirmation or rate-limiting error.
     """
     # Check user owns this source
     user_source = get_object_or_404(
@@ -327,21 +333,15 @@ def refresh_source(request, source_id):
 
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
-def get_source_feed(request, source_id):
-    """
-    GET /api/source/<source_id>/feed/
-    
-    Returns feed items from a specific source the user has added.
-    FILTERS items to only show articles about entities in the user's nest.
-    Example: If user has [Ronaldo, Manchester United] in nest, only shows
-    articles about those entities from the source.
-    
-    Supports pagination: ?page=1&limit=20
-    
-    Response includes:
-    - Feed items with titles, summaries, URLs
-    - Matching entities for each item (why user is seeing it)
-    - Source info
+def get_source_feed(request, source_id: int):
+    """Retrieve news articles from a specific source, filtered to match entities followed in user's Nest.
+
+    Args:
+        request: Django HTTP request with pagination parameters (?page=1&limit=20).
+        source_id (int): Primary key of target Source.
+
+    Returns:
+        Response: Paginated feed item list with contextual entity tagging.
     """
     # Verify user has this source
     user_source = get_object_or_404(
@@ -398,6 +398,14 @@ def get_source_feed(request, source_id):
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 def preview_source(request):
+    """Validate a candidate publisher URL/name via AI discovery and return sample headlines and metadata.
+
+    Args:
+        request: Django HTTP request with JSON body `{"query": "espn.com"}`.
+
+    Returns:
+        Response: Preview metadata dictionary with recent headlines.
+    """
     query = request.data.get('query', '').strip()
     if not query:
         return Response({'error': 'query is required'}, status=status.HTTP_400_BAD_REQUEST)

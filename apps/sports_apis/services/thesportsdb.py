@@ -34,7 +34,15 @@ _leagues_cache: dict = {}  # sport_str -> list[dict]
 
 
 def _name_similarity(a: str, b: str) -> float:
-    """Simple word overlap similarity 0.0–1.0."""
+    """Calculate word overlap similarity ratio between two name strings.
+
+    Args:
+        a (str): First string.
+        b (str): Second string.
+
+    Returns:
+        float: Overlap score between 0.0 and 1.0.
+    """
     a_words = set(a.lower().split())
     b_words = set(b.lower().split())
     if not a_words or not b_words:
@@ -43,6 +51,7 @@ def _name_similarity(a: str, b: str) -> float:
 
 
 class TheSportsDBService:
+    """Service client for TheSportsDB API used for sports metadata, team badges, rosters, and highlights."""
 
     BASE_URL = "https://www.thesportsdb.com/api/v1/json"
 
@@ -57,9 +66,21 @@ class TheSportsDBService:
     }
 
     def __init__(self):
+        """Initialize TheSportsDB service client with API access key."""
         self.api_key = getattr(settings, 'THESPORTSDB_KEY', None) or '3'
 
     def _get(self, endpoint: str, params: dict = None, timeout: int = 15, max_retries: int = 3) -> dict:
+        """Execute GET request against TheSportsDB with rate-limit pacing and automatic retries.
+
+        Args:
+            endpoint (str): API action name (e.g., 'searchteams.php').
+            params (dict, optional): URL query parameters.
+            timeout (int, optional): Request timeout in seconds.
+            max_retries (int, optional): Max attempt count on rate limit / transient errors.
+
+        Returns:
+            dict: Parsed JSON response payload.
+        """
         key = getattr(settings, 'THESPORTSDB_KEY', None) or self.api_key or '3'
         url = f"{self.BASE_URL}/{key}/{endpoint}"
 
@@ -99,7 +120,15 @@ class TheSportsDBService:
     # ── TEAM ────────────────────────────────────────────────────────────
 
     def search_team(self, team_name: str, sport: str = None) -> dict | None:
-        """Search for a team by name and optional sport. Returns best match or None."""
+        """Search for a sports team by name and optional sport category filter.
+
+        Args:
+            team_name (str): Team name.
+            sport (str, optional): Sport filter.
+
+        Returns:
+            dict or None: Best matching team dictionary record.
+        """
         data = self._get('searchteams.php', {'t': team_name})
         teams = data.get('teams')
         if not teams:
@@ -117,8 +146,14 @@ class TheSportsDBService:
         return teams[0]
 
     def get_team_badge(self, team_name: str, sport: str = None) -> str:
-        """
-        Return badge URL for a team matching sport, or empty string if not found.
+        """Fetch high-resolution crest/badge URL for a team.
+
+        Args:
+            team_name (str): Team name.
+            sport (str, optional): Sport category.
+
+        Returns:
+            str: Badge image URL or empty string.
         """
         team = self.search_team(team_name, sport=sport)
         if not team:
@@ -128,12 +163,14 @@ class TheSportsDBService:
     # ── LEAGUE ──────────────────────────────────────────────────────────
 
     def search_league(self, league_name: str, sport: str = None) -> dict | None:
-        """
-        Search for a league by name.
+        """Search for a sports league with caching and local string similarity matching.
 
-        FIX: The free API rejects ?l=<league name> with 'Invalid name passed'
-        for most non-exact matches. Instead we fetch all leagues for the sport
-        (once, then cache in memory) and filter locally by name similarity.
+        Args:
+            league_name (str): League title.
+            sport (str, optional): Sport name.
+
+        Returns:
+            dict or None: League metadata object.
         """
         sport_str = self.SPORT_MAP.get(sport, '') if sport else ''
 
@@ -173,7 +210,15 @@ class TheSportsDBService:
             return leagues[0]
 
     def get_league_badge(self, league_name: str, sport: str = None) -> str:
-        """Return badge/logo URL for a league."""
+        """Fetch logo/badge URL for a league.
+
+        Args:
+            league_name (str): League name.
+            sport (str, optional): Associated sport.
+
+        Returns:
+            str: Badge/logo URL.
+        """
         league = self.search_league(league_name, sport)
         if not league:
             return ''
@@ -187,12 +232,14 @@ class TheSportsDBService:
     # ── EVENT HIGHLIGHTS ────────────────────────────────────────────────
 
     def get_event_highlights(self, date: str, league_id: str = None) -> list[dict]:
-        """
-        Get YouTube highlight links for events on a given date.
-        date format: YYYY-MM-DD
+        """Fetch YouTube highlights and video summaries for matches played on a given date.
 
-        FIX: Response key is 'tvhighlights' not 'event'.
-        Returns list of {event_name, home_team, away_team, highlight_url, thumbnail}
+        Args:
+            date (str): Date formatted as 'YYYY-MM-DD'.
+            league_id (str, optional): TheSportsDB league identifier.
+
+        Returns:
+            list[dict]: List of highlight records.
         """
         params = {'d': date}
         if league_id:
@@ -222,6 +269,14 @@ class TheSportsDBService:
     # ── VENUE ────────────────────────────────────────────────────────────
 
     def search_venue(self, venue_name: str) -> dict | None:
+        """Search stadium/arena metadata by venue name.
+
+        Args:
+            venue_name (str): Venue name.
+
+        Returns:
+            dict or None: Venue record.
+        """
         data = self._get('searchvenues.php', {'v': venue_name})
         venues = data.get('venues')
         if not venues:
@@ -229,6 +284,14 @@ class TheSportsDBService:
         return venues[0]
 
     def get_venue_thumb(self, venue_name: str) -> str:
+        """Fetch preview photograph URL for a sports venue.
+
+        Args:
+            venue_name (str): Venue name.
+
+        Returns:
+            str: Thumbnail image URL or empty string.
+        """
         venue = self.search_venue(venue_name)
         if not venue:
             return ''
@@ -237,9 +300,15 @@ class TheSportsDBService:
     # ── SCHEDULE ────────────────────────────────────────────────────────
 
     def get_events_on_day(self, date: str, sport: str = None, league: str = None) -> list[dict]:
-        """
-        Get all events on a specific date.
-        Useful for enriching our Event model with thumbnails.
+        """Fetch sports events and fixtures scheduled for a specific calendar date.
+
+        Args:
+            date (str): Date formatted as 'YYYY-MM-DD'.
+            sport (str, optional): Sport filter.
+            league (str, optional): League filter.
+
+        Returns:
+            list[dict]: List of event dictionary objects.
         """
         params = {'d': date}
         if sport:
@@ -251,11 +320,13 @@ class TheSportsDBService:
         return data.get('events') or []
 
     def get_soccer_fixtures_for_date(self, date_str: str) -> list[dict]:
-        """
-        Fetch all soccer events on a given date from TheSportsDB.
-        date_str: 'YYYY-MM-DD' format.
-        Returns a list of raw event dicts from TheSportsDB.
-        Free API (key=3) returns upcoming fixtures for the next ~30 days.
+        """Fetch soccer matches scheduled for a specific date.
+
+        Args:
+            date_str (str): Date formatted as 'YYYY-MM-DD'.
+
+        Returns:
+            list[dict]: List of raw soccer match fixtures.
         """
         data = self._get('eventsday.php', {'d': date_str, 's': 'Soccer'})
         return data.get('events') or []
@@ -263,7 +334,14 @@ class TheSportsDBService:
     # ── PLAYER ──────────────────────────────────────────────────────────
 
     def search_player(self, player_name: str) -> dict | None:
-        """Search for a player by name. Returns best match or None."""
+        """Search player bio and profile records by athlete name.
+
+        Args:
+            player_name (str): Athlete full name.
+
+        Returns:
+            dict or None: Player record.
+        """
         data = self._get('searchplayers.php', {'p': player_name})
         players = data.get('player') or data.get('players') or []
         if not players:
@@ -271,9 +349,13 @@ class TheSportsDBService:
         return players[0]
 
     def get_player_headshot(self, player_name: str) -> str:
-        """
-        Return transparent cutout/headshot URL for a player, or empty string.
-        Optimized with query variations and name validation to prevent false matches.
+        """Fetch transparent cutout photo or headshot image URL for an athlete.
+
+        Args:
+            player_name (str): Athlete full name.
+
+        Returns:
+            str: Headshot photo URL.
         """
         # Generate variations for initials/spaces
         variations = [
@@ -305,9 +387,14 @@ class TheSportsDBService:
         return ''
 
     def get_team_roster(self, team_name: str = None, team_id: str = None) -> list[dict]:
-        """
-        Get all players for a team by team name or team ID.
-        Returns list of player dictionaries containing name, position, headshot, DOB, nationality, height, weight.
+        """Fetch normalized squad player roster for a team by name or ID.
+
+        Args:
+            team_name (str, optional): Team name.
+            team_id (str, optional): TheSportsDB team ID.
+
+        Returns:
+            list[dict]: List of athlete player records.
         """
         players = []
         target_id = team_id
@@ -347,8 +434,14 @@ class TheSportsDBService:
         return results
 
     def get_player_details(self, player_name: str, player_id: str = None) -> dict | None:
-        """
-        Get detailed profile for a player.
+        """Fetch detailed bio and profile metadata for an athlete.
+
+        Args:
+            player_name (str): Athlete name.
+            player_id (str, optional): TheSportsDB player identifier.
+
+        Returns:
+            dict or None: Detailed player profile.
         """
         player = None
         if player_id:
@@ -379,8 +472,14 @@ class TheSportsDBService:
     # ── LEAGUE STANDINGS ──────────────────────────────────────────────────
 
     def get_league_table(self, league_id: str, season: str = None) -> list[dict]:
-        """
-        Get standings table for a league and season from TheSportsDB.
+        """Fetch standings table for a league and season from TheSportsDB.
+
+        Args:
+            league_id (str): TheSportsDB league identifier.
+            season (str, optional): Season string (e.g., '2023-2024').
+
+        Returns:
+            list[dict]: List of league ranking rows.
         """
         params = {'l': str(league_id)}
         if season:

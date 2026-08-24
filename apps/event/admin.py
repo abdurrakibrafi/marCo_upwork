@@ -6,6 +6,7 @@ from apps.event.models import (
 
 @admin.register(Event)
 class EventAdmin(admin.ModelAdmin):
+    """Django Admin interface configuration for sports Event fixtures."""
     list_display = [
         'id', 'sport', 'home_entity', 'away_entity',
         'start_time', 'status', 'home_score', 'away_score'
@@ -18,6 +19,7 @@ class EventAdmin(admin.ModelAdmin):
 
 @admin.register(EventTimeline)
 class EventTimelineAdmin(admin.ModelAdmin):
+    """Django Admin interface configuration for in-game EventTimeline occurrences."""
     list_display = ['event', 'event_type', 'minute', 'team', 'player']
     list_filter = ['event_type']
     search_fields = ['event__home_entity__name', 'player__name']
@@ -26,6 +28,7 @@ class EventTimelineAdmin(admin.ModelAdmin):
 
 @admin.register(EventLineup)
 class EventLineupAdmin(admin.ModelAdmin):
+    """Django Admin interface configuration for starting and substitute squad EventLineups."""
     list_display = ['event', 'team', 'player', 'position_type', 'jersey_number']
     list_filter = ['position_type']
     search_fields = ['player__name', 'team__name']
@@ -34,6 +37,7 @@ class EventLineupAdmin(admin.ModelAdmin):
 
 @admin.register(EventStatistics)
 class EventStatisticsAdmin(admin.ModelAdmin):
+    """Django Admin interface configuration for match EventStatistics."""
     list_display = ['event', 'team', 'updated_at']
     search_fields = ['event__home_entity__name', 'team__name']
     list_select_related = ['event', 'team']
@@ -41,6 +45,7 @@ class EventStatisticsAdmin(admin.ModelAdmin):
 
 @admin.register(EventPlayerStats)
 class EventPlayerStatsAdmin(admin.ModelAdmin):
+    """Django Admin interface configuration for individual EventPlayerStats."""
     list_display = ['event', 'player', 'team', 'points_or_goals']
     search_fields = ['player__name']
     list_select_related = ['event', 'player', 'team']
@@ -48,6 +53,7 @@ class EventPlayerStatsAdmin(admin.ModelAdmin):
 
 @admin.register(EventHighlight)
 class EventHighlightAdmin(admin.ModelAdmin):
+    """Django Admin interface configuration for EventHighlight videos."""
     list_display = ['event', 'title', 'source', 'views', 'created_at']
     list_filter = ['source', 'created_at']
     search_fields = ['title', 'event__home_entity__name']

@@ -4,9 +4,18 @@ import logging
 logger = logging.getLogger(__name__)
 
 class MLBStatsService:
+    """Client for fetching MLB team rosters and player metadata from the official MLB Stats API."""
     BASE_URL = "https://statsapi.mlb.com/api/v1"
 
     def get_team_roster(self, team_id: int) -> list[dict]:
+        """Fetch active baseball player roster for a specific MLB team ID.
+
+        Args:
+            team_id (int): Official MLB team identifier.
+
+        Returns:
+            list[dict]: List of athlete player roster entries.
+        """
         url = f"{self.BASE_URL}/teams/{team_id}/roster"
         headers = {
             "Accept": "application/json",

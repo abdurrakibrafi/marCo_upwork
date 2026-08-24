@@ -59,6 +59,14 @@ def _extract_publisher(html: str) -> str:
 
 
 def _extract_domain(url: str) -> str | None:
+    """Extract scheme and netloc (e.g., https://espn.com) from a raw URL.
+
+    Args:
+        url (str): Target web URL.
+
+    Returns:
+        str or None: Extracted domain string or None.
+    """
     try:
         parsed = urlparse(url)
         if not parsed.scheme:
@@ -73,6 +81,15 @@ def _extract_domain(url: str) -> str | None:
 
 @shared_task(bind=True, max_retries=1)
 def discover_rss_feeds_for_entity(self, entity_id: int):
+    """Discover official and news publisher domains for an entity using Brave Search and extract RSS feeds.
+
+    Args:
+        self: Bound Celery task.
+        entity_id (int): Primary key of the Entity.
+
+    Returns:
+        str: Task execution summary message.
+    """
     try:
         entity = Entity.objects.get(id=entity_id, is_active=True)
     except Entity.DoesNotExist:
@@ -92,6 +109,16 @@ def discover_rss_feeds_for_entity(self, entity_id: int):
 
 @shared_task(bind=True, max_retries=1)
 def extract_rss_from_domain(self, entity_id: int, domain: str):
+    """Scrape and discover RSS/Atom feed URLs associated with a domain.
+
+    Args:
+        self: Bound Celery task.
+        entity_id (int): Primary key of the Entity.
+        domain (str): Web domain to inspect for feeds.
+
+    Returns:
+        str: Discovery summary message.
+    """
     feeds = rss_discovery_service.discover_feeds_for_domain(domain)
     for feed_url in feeds:
         store_validated_feed.delay(entity_id, feed_url, discovery_source='brave')
@@ -100,6 +127,17 @@ def extract_rss_from_domain(self, entity_id: int, domain: str):
 
 @shared_task(bind=True, max_retries=1)
 def store_validated_feed(self, entity_id: int, feed_url: str, discovery_source: str = 'brave'):
+    """Validate discovered RSS feed URL and link it to the target entity in the database.
+
+    Args:
+        self: Bound Celery task.
+        entity_id (int): Primary key of the Entity.
+        feed_url (str): Discovered RSS feed URL.
+        discovery_source (str, optional): Discovery origin tag. Defaults to 'brave'.
+
+    Returns:
+        str: Persisted source status.
+    """
     try:
         entity = Entity.objects.get(id=entity_id, is_active=True)
     except Entity.DoesNotExist:
@@ -126,11 +164,24 @@ def store_validated_feed(self, entity_id: int, feed_url: str, discovery_source: 
 
 @shared_task
 def update_all_entity_feeds(entity_id: int):
+    """Trigger asynchronous RSS feed discovery task for a specific entity.
+
+    Args:
+        entity_id (int): Primary key of the Entity.
+    """
     return discover_rss_feeds_for_entity.delay(entity_id)
 
 
 @shared_task
 def update_user_nest_feeds(user_id: int):
+    """Trigger feed updates for all entities saved in a specific user's Nest.
+
+    Args:
+        user_id (int): Primary key of the User.
+
+    Returns:
+        str: Task dispatch summary.
+    """
     from apps.nest.models import UserNest
     nest_entity_ids = list(
         UserNest.objects.filter(user_id=user_id).values_list('entity_id', flat=True)
@@ -142,6 +193,11 @@ def update_user_nest_feeds(user_id: int):
 
 @shared_task
 def update_trending_entities_feeds():
+    """Trigger feed discovery and polling for the top 50 followed entities.
+
+    Returns:
+        str: Task dispatch summary.
+    """
     trending = Entity.objects.filter(is_active=True).order_by('-follower_count')[:50]
     for entity in trending:
         update_all_entity_feeds.delay(entity.id)
@@ -150,7 +206,13 @@ def update_trending_entities_feeds():
 
 @shared_task
 def poll_all_active_sources():
-    """Poll all RSS sources that are due, staggered to avoid burst."""
+    """Poll all active RSS sources that are due based on their individual polling intervals.
+
+    Staggers polling tasks to prevent CPU and network spikes.
+
+    Returns:
+        str: Polling queue execution report.
+    """
     now = timezone.now()
     due_sources = Source.objects.filter(
         is_active=True,
@@ -183,13 +245,17 @@ def poll_all_active_sources():
 
 
 def _entity_matches_text(entity: Entity, text: str) -> bool:
-    """
-    Check if a feed article text (title/summary) matches a specific Entity.
-    
-    Logic:
-    1. Exact phrase/name match (with word boundaries).
-    2. Common variations/aliases (e.g. "Man Utd" matches "Manchester United", "PSG" matches "Paris Saint-Germain").
-    3. Individual word matching for non-generic words (e.g. "Saka" matches "Bukayo Saka", but "Miami" alone does NOT match "Inter Miami" to avoid Dolphins matches).
+    """Check if a feed article text (title/summary) matches a specific Entity.
+
+    Matches based on exact phrases, common team aliases, and non-generic individual keywords.
+    Enforces sports domain keyword filtering for national team entities.
+
+    Args:
+        entity (Entity): Sports entity to match against.
+        text (str): Combined article title and summary string.
+
+    Returns:
+        bool: True if article pertains to the entity, otherwise False.
     """
     from apps.entity.utils.normalizers import normalize_entity_name
 
@@ -249,10 +315,14 @@ def _entity_matches_text(entity: Entity, text: str) -> bool:
 
 
 def _resolve_thumbnail_for_article(title: str, entities: list) -> str:
-    """
-    Finds a thumbnail for an article using:
-    Brave Search API (if BRAVESEARCH_KEY is configured and not rate-limited).
-    Returns empty string if not found.
+    """Find and resolve a relevant image thumbnail for an article via Brave Search API.
+
+    Args:
+        title (str): News article title.
+        entities (list): List of linked Entity instances.
+
+    Returns:
+        str: Resolved image URL or empty string.
     """
     from django.conf import settings
     import requests
@@ -284,6 +354,17 @@ def _resolve_thumbnail_for_article(title: str, entities: list) -> str:
 
 @shared_task(bind=True, max_retries=2)
 def poll_single_source(self, source_id: int):
+    """Fetch and parse new RSS articles from a single configured Source feed.
+
+    Extracts publishers, matches articles against candidate entities, and persists unique items.
+
+    Args:
+        self: Bound Celery task.
+        source_id (int): Primary key of the Source.
+
+    Returns:
+        str: Polling status and count of newly ingested items.
+    """
     try:
         source = Source.objects.get(id=source_id, is_active=True)
     except Source.DoesNotExist:
@@ -394,6 +475,11 @@ def poll_single_source(self, source_id: int):
 
 @shared_task
 def cleanup_old_feed_items():
+    """Delete feed articles published more than 30 days ago to conserve database storage.
+
+    Returns:
+        str: Deletion count report.
+    """
     cutoff_date = timezone.now() - timedelta(days=30)
     deleted_count = FeedItem.objects.filter(published_at__lt=cutoff_date).delete()[0]
     logger.info(f"Deleted {deleted_count} old feed items")
@@ -402,6 +488,11 @@ def cleanup_old_feed_items():
 
 @shared_task
 def mark_trending_items():
+    """Recalculate trending status on recent articles based on rolling 24-hour page views.
+
+    Returns:
+        str: Count of items marked trending.
+    """
     FeedItem.objects.update(is_trending=False)
     last_24h = timezone.now() - timedelta(hours=24)
     trending_ids = list(
@@ -415,10 +506,13 @@ def mark_trending_items():
 
 @shared_task
 def fetch_brave_news_for_entity(entity_id: int):
-    """
-    Brave Search Policy (agent_task.md Sections 2, 5, 6, 18):
-    Brave Search is used for source discovery (finding RSS feeds for an entity),
-    NOT for continuous article searching.
+    """Trigger Brave RSS feed discovery for an entity if discovery hasn't been performed yet.
+
+    Args:
+        entity_id (int): Primary key of the Entity.
+
+    Returns:
+        str: Task execution summary message.
     """
     try:
         entity = Entity.objects.get(id=entity_id, is_active=True)
@@ -434,6 +528,11 @@ def fetch_brave_news_for_entity(entity_id: int):
 
 @shared_task
 def fetch_brave_news_for_all_nest_entities():
+    """Trigger Brave news source discovery across all unique entities followed in user nests.
+
+    Returns:
+        str: Task dispatch summary.
+    """
     from apps.nest.models import UserNest
     entity_ids = list(
         UserNest.objects.values_list('entity_id', flat=True).distinct()
@@ -445,6 +544,11 @@ def fetch_brave_news_for_all_nest_entities():
 
 @shared_task
 def fetch_brave_news_for_trending():
+    """Trigger Brave news discovery for the top 20 most-followed entities.
+
+    Returns:
+        str: Task dispatch summary.
+    """
     entities = Entity.objects.filter(is_active=True).order_by('-follower_count')[:20]
     for entity in entities:
         fetch_brave_news_for_entity.delay(entity.id)
@@ -453,11 +557,10 @@ def fetch_brave_news_for_trending():
 
 @shared_task
 def fetch_brave_news_for_all_entities():
-    """
-    Fetch fresh news for active entities in the database that are followed by users.
-    Filters out unfollowed entities to conserve Brave Search API key quota.
-    
-    Staggered 2 seconds apart to avoid rate limiting.
+    """Staggered trigger of Brave news discovery for all active entities with followers.
+
+    Returns:
+        str: Task dispatch summary.
     """
     entities = Entity.objects.filter(is_active=True, follower_count__gt=0)
     count = entities.count()
@@ -474,10 +577,15 @@ def fetch_brave_news_for_all_entities():
 
 @shared_task
 def ensure_entity_has_rss_source(entity_id: int):
-    """
-    Guaranteed fallback: targeted Google News RSS per entity.
-    No API key needed. Fires every time user adds entity to nest.
-    Also backfills orphan FeedItems by title matching.
+    """Ensure that an entity has guaranteed fallback Google News and YouTube RSS sources created and polled.
+
+    Also backfills any existing unlinked orphan feed items matching the entity.
+
+    Args:
+        entity_id (int): Primary key of the Entity.
+
+    Returns:
+        str: Status report on source creation and orphan item linking.
     """
     import urllib.parse
 
@@ -583,12 +691,15 @@ def ensure_entity_has_rss_source(entity_id: int):
 
 @shared_task(max_retries=2, default_retry_delay=10)
 def fetch_article_content(feed_item_id: int):
-    """
-    Lazily fetches full article content for a FeedItem using Jina AI Reader,
-    then generates a summary.
+    """Lazily fetch and parse full article body for a FeedItem using direct HTML scraping and Jina Reader fallback.
 
-    Called on-demand when a user requests full article details.
-    Result is cached in the DB — subsequent calls return instantly.
+    Extracts text, strips ad/sportsbook clutter, and generates a preview summary.
+
+    Args:
+        feed_item_id (int): Primary key of the FeedItem.
+
+    Returns:
+        str: Extraction execution summary.
     """
     try:
         item = FeedItem.objects.get(id=feed_item_id)
@@ -673,7 +784,15 @@ def fetch_article_content(feed_item_id: int):
 
 
 def _clean_fallback_summary(content: str, title: str) -> str:
-    """Helper to generate a clean preview summary from raw/Jina markdown content."""
+    """Generate a clean 1-2 paragraph preview summary from extracted article text.
+
+    Args:
+        content (str): Scraped markdown or plain text body.
+        title (str): Article title for contextual sentence scoring.
+
+    Returns:
+        str: Formatted clean summary snippet.
+    """
     if not content:
         return ""
     # Strip Jina headers if present
@@ -737,9 +856,14 @@ def _clean_fallback_summary(content: str, title: str) -> str:
 
 
 def _is_junk_page(url: str, content: str) -> bool:
-    """
-    Identify if the page content is a sportsbook promotion, terms/privacy policy,
-    or other junk boilerplate page instead of a real sports news article.
+    """Identify if extracted page text represents sportsbook marketing, terms, or non-article boilerplate.
+
+    Args:
+        url (str): Target web URL.
+        content (str): Scraped body text.
+
+    Returns:
+        bool: True if identified as junk or promo page, else False.
     """
     if not content:
         return True
@@ -796,10 +920,16 @@ def _is_junk_page(url: str, content: str) -> bool:
 
 
 def extract_clean_article(html_or_markdown: str, url: str) -> str | None:
-    """
-    Extract clean article content, stripping boilerplate (nav/footer/headers/ads).
-    Supports HTML (uses trafilatura / readability / BeautifulSoup fallback)
-    and markdown (cleans up lines/blocks).
+    """Extract clean news article body text by stripping headers, navigation, footers, and advertisement blocks.
+
+    Employs a tiered pipeline: Trafilatura -> Readability-lxml -> BeautifulSoup fallback.
+
+    Args:
+        html_or_markdown (str): Raw HTML or Jina Markdown string.
+        url (str): Source web page URL.
+
+    Returns:
+        str or None: Extracted readable body text, or None if extraction fails.
     """
     if not html_or_markdown:
         return None

@@ -17,12 +17,14 @@ from apps.entity.models import Entity
 
 
 class EntityMinimalSerializer(serializers.ModelSerializer):
+    """Minimal entity serializer for lightweight embedding within event participant responses."""
     class Meta:
         model = Entity
         fields = ['id', 'name', 'logo_url', 'type', 'sport']
 
 
 class EventTimelineSerializer(serializers.ModelSerializer):
+    """Serializer for in-game timeline incidents (goals, cards, substitutions)."""
     team   = EntityMinimalSerializer(read_only=True)
     player = EntityMinimalSerializer(read_only=True)
 
@@ -35,6 +37,7 @@ class EventTimelineSerializer(serializers.ModelSerializer):
 
 
 class EventLineupSerializer(serializers.ModelSerializer):
+    """Serializer for starting XI, substitute bench, and formation positions."""
     player = EntityMinimalSerializer(read_only=True)
     team   = EntityMinimalSerializer(read_only=True)
 
@@ -47,6 +50,7 @@ class EventLineupSerializer(serializers.ModelSerializer):
 
 
 class EventStatisticsSerializer(serializers.ModelSerializer):
+    """Serializer for aggregated team match performance statistics with schema normalization."""
     team = EntityMinimalSerializer(read_only=True)
     stats = serializers.SerializerMethodField()
 
@@ -55,11 +59,20 @@ class EventStatisticsSerializer(serializers.ModelSerializer):
         fields = ['team', 'stats']
 
     def get_stats(self, obj):
+        """Retrieve and normalize match statistics according to the unified metric schema.
+
+        Args:
+            obj (EventStatistics): EventStatistics instance.
+
+        Returns:
+            dict: Normalized team stats mapping.
+        """
         from apps.event.utils_stats import normalize_event_stats
         return normalize_event_stats(obj.stats)
 
 
 class EventPlayerStatsSerializer(serializers.ModelSerializer):
+    """Serializer for individual player match metrics and scores."""
     player = EntityMinimalSerializer(read_only=True)
     team   = EntityMinimalSerializer(read_only=True)
 
@@ -69,17 +82,21 @@ class EventPlayerStatsSerializer(serializers.ModelSerializer):
 
 
 class EventHighlightSerializer(serializers.ModelSerializer):
+    """Serializer for video highlights and replay clips."""
     class Meta:
         model = EventHighlight
         fields = ['id', 'title', 'video_url', 'thumbnail_url', 'duration_seconds', 'views']
 
 
-def _extract_event_venue_info(instance, data):
-    """
-    Extract venue_name, venue_city, venue_country with comprehensive fallbacks:
-    1. Direct fields in data / instance (venue_name, venue_city, venue_country)
-    2. Event metadata (e.g. cricket matchinfo.info, soccer match_info, venue, stadium, etc.)
-    3. Home team venue resolution from local DB / TheSportsDB
+def _extract_event_venue_info(instance, data) -> dict:
+    """Extract venue_name, venue_city, venue_country with metadata and home-team fallbacks.
+
+    Args:
+        instance (Event): Event instance.
+        data (dict): Serialized event dictionary.
+
+    Returns:
+        dict: Updated data dictionary with guaranteed venue attributes.
     """
     v_name = data.get('venue_name') or getattr(instance, 'venue_name', '') or ''
     v_city = data.get('venue_city') or getattr(instance, 'venue_city', '') or ''
@@ -157,6 +174,7 @@ def _extract_event_venue_info(instance, data):
 # ── Lean serializer for list views (feed, calendar, ticker) ──────────────────
 
 class EventSerializer(serializers.ModelSerializer):
+    """Lean sporting fixture serializer designed for fast list rendering across feeds, calendars, and tickers."""
     home_entity = EntityMinimalSerializer(read_only=True)
     away_entity = EntityMinimalSerializer(read_only=True)
     league      = EntityMinimalSerializer(read_only=True)
@@ -172,6 +190,14 @@ class EventSerializer(serializers.ModelSerializer):
         ]
 
     def to_representation(self, instance):
+        """Format serialized event dictionary with followed nest highlights and venue enrichment.
+
+        Args:
+            instance (Event): Event instance.
+
+        Returns:
+            dict: Serialized event dictionary representation.
+        """
         data = super().to_representation(instance)
         from django.utils import timezone
         if instance.status == 'upcoming' and instance.start_time and instance.start_time < timezone.now():
@@ -226,6 +252,7 @@ class EventSerializer(serializers.ModelSerializer):
 # ── Full serializer for event detail screen ───────────────────────────────────
 
 class EventDetailSerializer(serializers.ModelSerializer):
+    """Detailed event match serializer including lineups, timeline, statistics, and top key players."""
     home_entity  = EntityMinimalSerializer(read_only=True)
     away_entity  = EntityMinimalSerializer(read_only=True)
     league       = EntityMinimalSerializer(read_only=True)
@@ -258,6 +285,14 @@ class EventDetailSerializer(serializers.ModelSerializer):
         ]
 
     def to_representation(self, instance):
+        """Format detailed event dictionary with real-time statistics availability and venue metadata.
+
+        Args:
+            instance (Event): Event instance.
+
+        Returns:
+            dict: Serialized event detail dictionary.
+        """
         data = super().to_representation(instance)
         from django.utils import timezone
         if instance.status == 'upcoming' and instance.start_time and instance.start_time < timezone.now():
@@ -280,16 +315,36 @@ class EventDetailSerializer(serializers.ModelSerializer):
         return data
 
     def get_has_stats(self, obj):
+        """Determine if valid normalized match statistics are available.
+
+        Args:
+            obj (Event): Event instance.
+
+        Returns:
+            bool: True if event has statistics.
+        """
         from apps.event.utils_stats import normalize_event_stats
         return any(normalize_event_stats(s.stats) for s in obj.statistics.all() if s.stats)
 
     def get_has_lineups(self, obj):
+        """Check if starting lineups have been submitted for this event.
+
+        Args:
+            obj (Event): Event instance.
+
+        Returns:
+            bool: True if lineups exist.
+        """
         return obj.lineups.exists()
 
     def get_key_players(self, obj):
-        """
-        Top 3 performers by goals/points in this match.
-        Shown on the event detail Stats tab as 'Key Player Stats'.
+        """Extract top 3 player performers by goals/points in this match.
+
+        Args:
+            obj (Event): Event instance.
+
+        Returns:
+            list: Top performing player statistics dictionaries.
         """
         top = (
             obj.player_stats

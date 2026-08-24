@@ -1,13 +1,15 @@
-﻿import requests
+import requests
 import time
 from django.core.management.base import BaseCommand
 from apps.entity.models import Entity, Athlete
 
 
 class Command(BaseCommand):
+    """Management command to seed top golf players from the official OWGR (Official World Golf Ranking) API."""
     help = "Seed top 100 golf players from the official OWGR JSON API"
 
     def add_arguments(self, parser):
+        """Register CLI options."""
         parser.add_argument(
             '--dry-run',
             action='store_true',
@@ -15,6 +17,7 @@ class Command(BaseCommand):
         )
 
     def handle(self, *args, **options):
+        """Execute OWGR rankings fetch and create golfer athlete entities."""
         dry_run = options['dry_run']
         if dry_run:
             self.stdout.write(self.style.WARNING("=== DRY RUN MODE: Database changes will not be saved ==="))

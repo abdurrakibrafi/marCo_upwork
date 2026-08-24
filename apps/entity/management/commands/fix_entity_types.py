@@ -4,9 +4,11 @@ from apps.entity.models import Entity, Team, Athlete
 from apps.entity.utils.normalizers import similarity_ratio
 
 class Command(BaseCommand):
+    """Management command to resolve entity type collisions between athlete and team records."""
     help = "Fix entity type collisions (resolving player vs team ID collisions safely)"
 
     def add_arguments(self, parser):
+        """Configure command line arguments including dry-run simulation mode."""
         parser.add_argument(
             '--dry-run',
             action='store_true',
@@ -14,6 +16,7 @@ class Command(BaseCommand):
         )
 
     def handle(self, *args, **options):
+        """Execute the entity collision resolution and type alignment."""
         dry_run = options['dry_run']
         if dry_run:
             self.stdout.write(self.style.WARNING("=== DRY RUN MODE: Database changes will not be saved ==="))

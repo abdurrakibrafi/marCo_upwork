@@ -4,6 +4,7 @@ from apps.feed.models import Source, FeedItem, UserSource, HiddenSource, RSSSour
 
 @admin.register(Source)
 class SourceAdmin(admin.ModelAdmin):
+    """Admin interface configuration for RSS/Atom Source models."""
     list_display = ['name', 'domain', 'discovery_source', 'is_verified', 'is_active', 'poll_failures']
     list_filter = ['discovery_source', 'is_verified', 'is_active']
     search_fields = ['name', 'rss_url', 'domain']
@@ -11,6 +12,7 @@ class SourceAdmin(admin.ModelAdmin):
 
 @admin.register(RSSSource)
 class RSSSourceAdmin(admin.ModelAdmin):
+    """Admin management panel for platform-wide configured RSS feeds."""
     list_display = ['name', 'sport', 'is_active', 'is_verified', 'estimated_quality', 'fetch_failures', 'last_fetched_at']
     list_filter = ['sport', 'is_active', 'is_verified', 'estimated_quality']
     search_fields = ['name', 'url']
@@ -34,6 +36,7 @@ class RSSSourceAdmin(admin.ModelAdmin):
 
 @admin.register(EntitySource)
 class EntitySourceAdmin(admin.ModelAdmin):
+    """Admin configuration for UserNest entity and source links."""
     list_display = ['user_nest', 'source', 'priority', 'added_at']
     list_filter = ['priority', 'added_at']
     search_fields = ['user_nest__user__email', 'source__name']
@@ -43,6 +46,7 @@ class EntitySourceAdmin(admin.ModelAdmin):
 
 @admin.register(FeedItem)
 class FeedItemAdmin(admin.ModelAdmin):
+    """Admin management panel for ingested sports news feed articles."""
     list_display = [
         'title', 'source', 'published_at', 'views', 'is_breaking', 'is_trending'
     ]
@@ -55,6 +59,7 @@ class FeedItemAdmin(admin.ModelAdmin):
 
 @admin.register(UserSource)
 class UserSourceAdmin(admin.ModelAdmin):
+    """Admin interface for user followed publication source relations."""
     list_display = ['user', 'source', 'created_at']
     list_filter = ['created_at']
     search_fields = ['user__username', 'source__name']
@@ -64,6 +69,7 @@ class UserSourceAdmin(admin.ModelAdmin):
 
 @admin.register(HiddenSource)
 class HiddenSourceAdmin(admin.ModelAdmin):
+    """Admin interface for muted sources and publisher preferences."""
     list_display = ['user', 'source', 'created_at']
     search_fields = ['user__username', 'source__name']
     list_select_related = ['user', 'source']

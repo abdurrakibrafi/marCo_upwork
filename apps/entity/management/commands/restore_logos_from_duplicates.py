@@ -4,9 +4,11 @@ from apps.entity.models import Entity
 from apps.entity.utils.normalizers import similarity_ratio
 
 class Command(BaseCommand):
+    """Management command to restore missing team logos by cross-referencing duplicate records in the database."""
     help = "Restore team logos from duplicate entities or different api_sources in the database"
 
     def add_arguments(self, parser):
+        """Configure command line arguments including dry-run simulation mode."""
         parser.add_argument(
             '--dry-run',
             action='store_true',
@@ -14,6 +16,7 @@ class Command(BaseCommand):
         )
 
     def handle(self, *args, **options):
+        """Execute cross-record duplicate logo discovery and restoration."""
         dry_run = options['dry_run']
         if dry_run:
             self.stdout.write(self.style.WARNING("=== DRY RUN MODE: Database changes will not be saved ==="))

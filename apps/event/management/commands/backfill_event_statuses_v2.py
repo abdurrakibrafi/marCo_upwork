@@ -3,9 +3,11 @@ from apps.event.models import Event
 from apps.event.tasks import _map_status, _populate_statpal_event_details
 
 class Command(BaseCommand):
+    """Management command to re-evaluate and backfill event statuses according to updated v2 mapping rules."""
     help = "Backfill status changes to events stuck as upcoming under the new normalized status mapping logic"
 
     def add_arguments(self, parser):
+        """Configure command line arguments including database commit flag."""
         parser.add_argument(
             '--commit',
             action='store_true',
@@ -13,6 +15,7 @@ class Command(BaseCommand):
         )
 
     def handle(self, *args, **options):
+        """Scan upcoming events and apply v2 status mapping transitions."""
         commit = options['commit']
         dry_run = not commit
 

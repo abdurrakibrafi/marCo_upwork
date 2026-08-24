@@ -16,9 +16,15 @@ logger = logging.getLogger(__name__)
 
 @shared_task(bind=True, max_retries=1)
 def generate_source_suggestions(self, query: str, cache_key: str):
-    """
-    Generate AI-powered source suggestions asynchronously.
-    Stores results in cache with the given key.
+    """Generate AI-powered publication source suggestions asynchronously and cache results.
+
+    Args:
+        self: Bound Celery task instance.
+        query (str): User search keyword or domain.
+        cache_key (str): Redis cache key for output suggestions.
+
+    Returns:
+        str: Task execution summary message.
     """
     try:
         from apps.sports_apis.services.ai_service import source_ai_service
@@ -47,11 +53,14 @@ def generate_source_suggestions(self, query: str, cache_key: str):
 
 @shared_task(bind=True, max_retries=2)
 def discover_and_poll_user_source(self, source_id: int):
-    """
-    Called right after a user adds a custom source.
-    1. If source has no rss_url, run discovery on its domain
-    2. Poll the feed to populate initial articles
-    3. Update the Source record with the found rss_url
+    """Discover RSS feeds on domain for newly followed custom source and trigger initial article ingestion.
+
+    Args:
+        self: Bound Celery task instance.
+        source_id (int): Primary key of the Source model.
+
+    Returns:
+        str: Execution status message.
     """
     from apps.feed.models import Source
 
@@ -83,9 +92,13 @@ def discover_and_poll_user_source(self, source_id: int):
 
 @shared_task
 def poll_user_custom_sources(user_id: int):
-    """
-    Force-poll all sources a specific user has added.
-    Can be called when user opens the Source screen to get fresh data.
+    """Trigger background polling across all custom publication feeds followed by a user.
+
+    Args:
+        user_id (int): Primary key of target User.
+
+    Returns:
+        str: Count of scheduled poll tasks.
     """
     from .models import UserCustomSource
     from apps.feed.tasks import poll_single_source

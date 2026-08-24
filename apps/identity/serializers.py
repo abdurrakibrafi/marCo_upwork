@@ -15,10 +15,14 @@ from apps.identity.utils.mail_service import send_otp_email
 User = get_user_model()
 
 class LoginSerializer(serializers.Serializer):
+    """Serializer for authenticating users via email and password credentials."""
+
     email = serializers.EmailField(required=True)
     password = serializers.CharField(required=True, style={'input_type': 'password'})
 
 class RegisterSerializer(serializers.ModelSerializer):
+    """Serializer for user registration, profile initialization, and verification OTP generation."""
+
     full_name = serializers.CharField(required=True)
     password = serializers.CharField(
         write_only=True, required=True, validators=[validate_password]
@@ -30,6 +34,17 @@ class RegisterSerializer(serializers.ModelSerializer):
         fields = ("email", "password", "password2", "full_name")
 
     def validate(self, attrs):
+        """Validate that password and password confirmation match.
+
+        Args:
+            attrs (dict): Input attributes.
+
+        Returns:
+            dict: Validated attributes.
+
+        Raises:
+            serializers.ValidationError: If passwords do not match.
+        """
         if attrs["password"] != attrs["password2"]:
             raise serializers.ValidationError(
                 {"password": "Password fields didn't match."}
@@ -37,6 +52,14 @@ class RegisterSerializer(serializers.ModelSerializer):
         return attrs
 
     def create(self, validated_data):
+        """Create an inactive user instance, initialize profile, and send verification OTP.
+
+        Args:
+            validated_data (dict): Validated input data.
+
+        Returns:
+            User: The newly created inactive User instance.
+        """
         validated_data.pop("password2")
         full_name = validated_data.pop("full_name", "")
         
@@ -56,6 +79,14 @@ class RegisterSerializer(serializers.ModelSerializer):
         return user
 
     def send_verification_otp(self, user):
+        """Generate and email a 4-digit verification OTP to the user.
+
+        Args:
+            user (User): The target user to verify.
+
+        Returns:
+            OTP: The created OTP model instance.
+        """
         otp_code = "".join(random.choices("0123456789", k=4))
 
         otp = OTP.objects.create(   
@@ -71,10 +102,23 @@ class RegisterSerializer(serializers.ModelSerializer):
 
 
 class VerifyEmailSerializer(serializers.Serializer):
+    """Serializer for verifying user email address using a 4-digit OTP code."""
+
     email = serializers.EmailField()
     otp = serializers.CharField(max_length=4, min_length=4)
 
     def validate(self, attrs):
+        """Validate the submitted OTP code and activate the user account upon success.
+
+        Args:
+            attrs (dict): Input attributes containing email and otp.
+
+        Returns:
+            dict: Validated attributes containing the activated user instance.
+
+        Raises:
+            serializers.ValidationError: If user is not found, OTP is invalid, or OTP expired.
+        """
         email = attrs.get("email")
         otp_code = attrs.get("otp")
 
@@ -107,9 +151,19 @@ class VerifyEmailSerializer(serializers.Serializer):
 
 
 class PasswordResetRequestSerializer(serializers.Serializer):
+    """Serializer for requesting a password reset OTP."""
+
     email = serializers.EmailField()
 
     def validate_email(self, value):
+        """Validate email format (avoids leaking whether email exists).
+
+        Args:
+            value (str): Email address.
+
+        Returns:
+            str: Validated email address.
+        """
         try:
             User.objects.get(email=value)
         except User.DoesNotExist:
@@ -117,6 +171,14 @@ class PasswordResetRequestSerializer(serializers.Serializer):
         return value
 
     def send_reset_otp(self, email):
+        """Generate and email a password reset OTP to the user if the account exists.
+
+        Args:
+            email (str): Target email address.
+
+        Returns:
+            bool: Always returns True to prevent user enumeration.
+        """
         try:
             user = User.objects.get(email=email)
 
@@ -137,10 +199,23 @@ class PasswordResetRequestSerializer(serializers.Serializer):
 
 
 class PasswordResetOTPVerifySerializer(serializers.Serializer):
+    """Serializer to verify that a password reset OTP is valid before changing the password."""
+
     email = serializers.EmailField()
     otp = serializers.CharField(max_length=4, min_length=4)
 
     def validate(self, attrs):
+        """Validate that the password reset OTP exists and is not expired.
+
+        Args:
+            attrs (dict): Input data with email and otp.
+
+        Returns:
+            dict: Validated dictionary containing user and otp_object.
+
+        Raises:
+            serializers.ValidationError: If user does not exist or OTP is invalid/expired.
+        """
         email = attrs.get("email")
         otp_code = attrs.get("otp")
 
@@ -169,12 +244,25 @@ class PasswordResetOTPVerifySerializer(serializers.Serializer):
 
 
 class PasswordResetConfirmSerializer(serializers.Serializer):
+    """Serializer to confirm password reset with a valid OTP and new password."""
+
     email = serializers.EmailField()
     otp = serializers.CharField(max_length=4, min_length=4)
     new_password = serializers.CharField(validators=[validate_password])
     new_password2 = serializers.CharField()
 
     def validate(self, attrs):
+        """Validate matching passwords and OTP validity, then apply new password.
+
+        Args:
+            attrs (dict): Input attributes including email, otp, new_password, new_password2.
+
+        Returns:
+            dict: Validated attributes containing user instance.
+
+        Raises:
+            serializers.ValidationError: If passwords mismatch or OTP is invalid/expired.
+        """
         email = attrs["email"]
         otp_code = attrs["otp"]
         new_password = attrs["new_password"]
@@ -214,11 +302,24 @@ class PasswordResetConfirmSerializer(serializers.Serializer):
 
 
 class ChangePasswordSerializer(serializers.Serializer):
+    """Serializer for authenticated users to change their current password."""
+
     old_password = serializers.CharField(required=True)
     new_password = serializers.CharField(required=True, validators=[validate_password])
     new_password2 = serializers.CharField(required=True)
 
     def validate(self, attrs):
+        """Ensure new passwords match.
+
+        Args:
+            attrs (dict): Input attributes.
+
+        Returns:
+            dict: Validated attributes.
+
+        Raises:
+            serializers.ValidationError: If new password confirmation does not match.
+        """
         if attrs["new_password"] != attrs["new_password2"]:
             raise serializers.ValidationError(
                 {"new_password": "Password fields didn't match."}
@@ -227,19 +328,36 @@ class ChangePasswordSerializer(serializers.Serializer):
 
 
 class SocialLoginSerializer(serializers.Serializer):
+    """Serializer for social authentication with third-party access token."""
+
     provider = serializers.CharField(required=True)
     access_token = serializers.CharField(required=True)
 
 
 class ResendOTPSerializer(serializers.Serializer):
+    """Serializer for requesting re-dispatch of a verification or password reset OTP."""
+
     email = serializers.EmailField()
     purpose = serializers.ChoiceField(choices=["verification", "password_reset"])
 
 
 class AccountSoftDeleteSerializer(serializers.Serializer):
+    """Serializer to confirm soft deletion of user account."""
+
     confirm = serializers.BooleanField(required=True)
 
     def validate_confirm(self, value):
+        """Ensure deletion confirmation flag is True.
+
+        Args:
+            value (bool): Confirmation status.
+
+        Returns:
+            bool: True if confirmed.
+
+        Raises:
+            serializers.ValidationError: If confirm is False.
+        """
         if not value:
             raise serializers.ValidationError(
                 "You must confirm to delete your account."
@@ -247,9 +365,22 @@ class AccountSoftDeleteSerializer(serializers.Serializer):
         return value
 
 class ParmanentAccountDeleteSerializer(serializers.Serializer):
+    """Serializer to confirm permanent deletion of user account."""
+
     confirm = serializers.BooleanField(required=True)
 
     def validate_confirm(self, value):
+        """Ensure permanent deletion confirmation flag is True.
+
+        Args:
+            value (bool): Confirmation status.
+
+        Returns:
+            bool: True if confirmed.
+
+        Raises:
+            serializers.ValidationError: If confirm is False.
+        """
         if not value:
             raise serializers.ValidationError(
                 "You must confirm to parmanent delete your account."
@@ -257,9 +388,22 @@ class ParmanentAccountDeleteSerializer(serializers.Serializer):
         return value
 
 class AccountRestoreSerializer(serializers.Serializer):
+    """Serializer for restoring a previously soft-deleted account."""
+
     email = serializers.EmailField(required=True)
 
     def validate_email(self, value):
+        """Validate that user exists and is currently soft-deleted.
+
+        Args:
+            value (str): Email address of the account to restore.
+
+        Returns:
+            str: Validated email address.
+
+        Raises:
+            serializers.ValidationError: If user does not exist or is not deleted.
+        """
         try:
             user = User.objects.get(email=value)
         except User.DoesNotExist:
@@ -274,6 +418,8 @@ class AccountRestoreSerializer(serializers.Serializer):
 
 
 class ProfileUpdateSerializer(serializers.ModelSerializer):
+    """Serializer for updating user profile attributes and managing email change OTP flow."""
+
     email = serializers.EmailField(source="user.email", required=False)
 
     class Meta:
@@ -281,6 +427,17 @@ class ProfileUpdateSerializer(serializers.ModelSerializer):
         fields = ["full_name", "email", "phone", "date_of_birth", "gender", "bio"]
 
     def validate_email(self, value):
+        """Validate that the new email is not already registered by another user.
+
+        Args:
+            value (str): New email address.
+
+        Returns:
+            str: Validated email.
+
+        Raises:
+            serializers.ValidationError: If email is already in use by another account.
+        """
         user = self.instance.user
 
         # If email hasn't changed, no need for validation
@@ -294,6 +451,15 @@ class ProfileUpdateSerializer(serializers.ModelSerializer):
         return value
 
     def update(self, instance, validated_data):
+        """Update profile fields and dispatch verification OTP if email was modified.
+
+        Args:
+            instance (UserProfile): The existing profile instance.
+            validated_data (dict): Validated update attributes.
+
+        Returns:
+            tuple: (instance, email_changed) where email_changed is a boolean flag.
+        """
         user_data = validated_data.pop("user", {})
         email_changed = False
         new_email = None
@@ -340,9 +506,22 @@ class ProfileUpdateSerializer(serializers.ModelSerializer):
 
 
 class VerifyEmailChangeSerializer(serializers.Serializer):
+    """Serializer to verify email change OTP and update user's primary email address."""
+
     otp = serializers.CharField(max_length=4, min_length=4)
 
     def validate(self, attrs):
+        """Validate OTP for pending email change.
+
+        Args:
+            attrs (dict): Input data containing otp.
+
+        Returns:
+            dict: Validated data containing otp_object.
+
+        Raises:
+            serializers.ValidationError: If no pending change or OTP is invalid/expired.
+        """
         user = self.context["request"].user
         otp_code = attrs.get("otp")
 
@@ -364,6 +543,11 @@ class VerifyEmailChangeSerializer(serializers.Serializer):
             raise serializers.ValidationError({"otp": "Invalid OTP."})
 
     def save(self):
+        """Finalize email change, update User model, and send confirmation notice.
+
+        Returns:
+            User: Updated user instance.
+        """
         user = self.context["request"].user
         otp = self.validated_data["otp_object"]
 
@@ -396,10 +580,22 @@ from apps.identity.models import SOCIAL_AUTH_PROVIDERS
 
 
 class ChangeEmailSerializer(serializers.Serializer):
-    """Serializer for initiating email change"""
+    """Serializer for initiating an email change request."""
+
     new_email = serializers.EmailField(required=True)
 
     def validate_new_email(self, value):
+        """Validate that new email is different from current and not already taken.
+
+        Args:
+            value (str): Proposed new email address.
+
+        Returns:
+            str: Validated email address.
+
+        Raises:
+            serializers.ValidationError: If email is same as current or already taken.
+        """
         user = self.context['request'].user
         
         # Check if email is same as current
@@ -415,10 +611,22 @@ class ChangeEmailSerializer(serializers.Serializer):
 
 
 class ResendEmailChangeOTPSerializer(serializers.Serializer):
-    """Serializer for resending email change OTP"""
+    """Serializer for resending email change OTP to the pending email address."""
+
     new_email = serializers.EmailField(required=True)
 
     def validate_new_email(self, value):
+        """Validate that new_email matches the pending email change.
+
+        Args:
+            value (str): The email address to resend to.
+
+        Returns:
+            str: Validated email.
+
+        Raises:
+            serializers.ValidationError: If no pending change or mismatch occurs.
+        """
         user = self.context['request'].user
         
         # Check if user has a pending email change
@@ -433,11 +641,18 @@ class ResendEmailChangeOTPSerializer(serializers.Serializer):
 
 
 class SocialAuthSerializer(serializers.Serializer):
+    """Serializer to authenticate or register users via OAuth / social providers."""
+
     email = serializers.EmailField()
     provider = serializers.ChoiceField(choices=SOCIAL_AUTH_PROVIDERS)  # Add validation
     full_name = serializers.CharField(required=False, allow_blank=True)
 
     def create_or_login_user(self):
+        """Retrieve existing user or create a new user record associated with the social provider.
+
+        Returns:
+            User: Authenticated or newly created user instance.
+        """
         email = self.validated_data["email"]
         provider = self.validated_data["provider"]
         full_name = self.validated_data.get("full_name", "")
@@ -472,6 +687,8 @@ class SocialAuthSerializer(serializers.Serializer):
 
 
 class UserProfileSerializer(serializers.ModelSerializer):
+    """Serializer for retrieving and updating user profile details."""
+
     profile_picture = serializers.ImageField(required=False, use_url=False)
     email = serializers.EmailField(source='user.email', read_only=True)
 
@@ -483,6 +700,14 @@ class UserProfileSerializer(serializers.ModelSerializer):
         ]
         
     def to_representation(self, instance):
+        """Format and ensure leading slash normalization for media profile pictures.
+
+        Args:
+            instance (UserProfile): The profile instance being serialized.
+
+        Returns:
+            dict: Serialized profile data.
+        """
         data = super().to_representation(instance)
         profile_picture = data.get('profile_picture')
         if profile_picture:
@@ -490,6 +715,17 @@ class UserProfileSerializer(serializers.ModelSerializer):
         return data
 
     def validate_date_of_birth(self, value):
+        """Ensure date of birth is not in the future.
+
+        Args:
+            value (date): Date of birth.
+
+        Returns:
+            date: Validated date of birth.
+
+        Raises:
+            serializers.ValidationError: If date of birth is in the future.
+        """
         from datetime import date
         if value and value > date.today():
             raise serializers.ValidationError("Date of birth cannot be in the future.")

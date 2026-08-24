@@ -67,6 +67,7 @@ class UserAdmin(BaseUserAdmin):
     readonly_fields = ('created_at', 'updated_at', 'last_login', 'date_joined', 'deleted_at')
     
     def get_full_name(self, obj):
+        """Retrieve full name from related user profile for admin display."""
         if hasattr(obj, 'profile') and obj.profile.full_name:
             return obj.profile.full_name
         return "-"
@@ -74,6 +75,7 @@ class UserAdmin(BaseUserAdmin):
     get_full_name.admin_order_field = 'profile__full_name'
     
     def status_badge(self, obj):
+        """Render a color-coded HTML status badge based on user state."""
         if obj.is_deleted:
             return format_html('<span style="background-color: #dc3545; color: white; padding: 3px 10px; border-radius: 10px;">Deleted</span>')
         elif obj.is_blocked:
@@ -87,23 +89,27 @@ class UserAdmin(BaseUserAdmin):
     actions = ['soft_delete_users', 'restore_users', 'block_users', 'unblock_users']
     
     def soft_delete_users(self, request, queryset):
+        """Admin action to soft-delete selected users."""
         for user in queryset:
             user.soft_delete()
         self.message_user(request, f"{queryset.count()} user(s) were successfully soft-deleted.")
     soft_delete_users.short_description = "Soft delete selected users"
     
     def restore_users(self, request, queryset):
+        """Admin action to restore selected soft-deleted users."""
         for user in queryset:
             user.restore()
         self.message_user(request, f"{queryset.count()} user(s) were successfully restored.")
     restore_users.short_description = "Restore selected users"
     
     def block_users(self, request, queryset):
+        """Admin action to block/suspend selected users."""
         queryset.update(is_blocked=True)
         self.message_user(request, f"{queryset.count()} user(s) were successfully blocked.")
     block_users.short_description = "Block selected users"
     
     def unblock_users(self, request, queryset):
+        """Admin action to unblock selected users."""
         queryset.update(is_blocked=False)
         self.message_user(request, f"{queryset.count()} user(s) were successfully unblocked.")
     unblock_users.short_description = "Unblock selected users"
@@ -145,11 +151,13 @@ class UserProfileAdmin(admin.ModelAdmin):
     list_per_page = 50
     
     def user_email(self, obj):
+        """Display linked user's email address."""
         return obj.user.email
     user_email.short_description = 'User Email'
     user_email.admin_order_field = 'user__email'
     
     def profile_picture_preview(self, obj):
+        """Render a rounded thumbnail preview of the user's profile picture."""
         if obj.profile_picture:
             return format_html('<img src="{}" style="max-height: 50px; max-width: 50px; border-radius: 50%;" />', 
                              obj.profile_picture.url)
@@ -159,11 +167,13 @@ class UserProfileAdmin(admin.ModelAdmin):
     actions = ['mark_profile_completed', 'mark_onboarding_completed']
     
     def mark_profile_completed(self, request, queryset):
+        """Admin action to mark selected user profiles as completed."""
         queryset.update(profile_completed=True)
         self.message_user(request, f"{queryset.count()} profile(s) marked as completed.")
     mark_profile_completed.short_description = "Mark profile as completed"
     
     def mark_onboarding_completed(self, request, queryset):
+        """Admin action to mark selected user profiles as having completed onboarding."""
         queryset.update(onboarding_completed=True)
         self.message_user(request, f"{queryset.count()} profile(s) marked as onboarding completed.")
     mark_onboarding_completed.short_description = "Mark onboarding as completed"
@@ -196,11 +206,13 @@ class OTPAdmin(admin.ModelAdmin):
     list_per_page = 50
     
     def user_email(self, obj):
+        """Display associated user email for OTP entry."""
         return obj.user.email
     user_email.short_description = 'User'
     user_email.admin_order_field = 'user__email'
     
     def status_badge(self, obj):
+        """Render a color-coded HTML status badge indicating OTP state (Used/Expired/Valid)."""
         if obj.is_used:
             return format_html('<span style="background-color: #6c757d; color: white; padding: 3px 10px; border-radius: 10px;">Used</span>')
         elif obj.expires_at < timezone.now():
@@ -212,11 +224,13 @@ class OTPAdmin(admin.ModelAdmin):
     actions = ['mark_as_used', 'cleanup_expired']
     
     def mark_as_used(self, request, queryset):
+        """Admin action to mark selected OTPs as used."""
         queryset.update(is_used=True)
         self.message_user(request, f"{queryset.count()} OTP(s) marked as used.")
     mark_as_used.short_description = "Mark selected OTPs as used"
     
     def cleanup_expired(self, request, queryset):
+        """Admin action to purge expired, unused OTP records from the database."""
         expired = queryset.filter(expires_at__lt=timezone.now(), is_used=False)
         count = expired.count()
         expired.delete()

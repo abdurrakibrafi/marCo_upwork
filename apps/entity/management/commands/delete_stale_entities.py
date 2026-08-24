@@ -8,9 +8,11 @@ from apps.nest.models import UserNest, RecentSearch
 from apps.event.models import Event, EventTimeline, EventLineup, EventStatistics, EventPlayerStats
 
 class Command(BaseCommand):
+    """Management command to safely prune unreferenced, stale entities not matching active providers."""
     help = 'Safely identify and delete stale non-StatPal entities.'
 
     def add_arguments(self, parser):
+        """Define command-line arguments including commit flag."""
         parser.add_argument(
             '--commit',
             action='store_true',
@@ -18,6 +20,7 @@ class Command(BaseCommand):
         )
 
     def handle(self, *args, **options):
+        """Execute stale entity detection, safety exclusion filtering, and deletion."""
         commit = options['commit']
 
         self.stdout.write("Gathering active database references for exclusions...")

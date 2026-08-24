@@ -2,7 +2,7 @@ from django.db import models
 from apps.entity.models import Entity
 
 class Event(models.Model):
-    """Sports events/fixtures"""
+    """Sports fixture/match entity representing status, live scores, timings, and broadcast information."""
     
     STATUS_CHOICES = [
         ('upcoming', 'Upcoming'),
@@ -111,7 +111,7 @@ class Event(models.Model):
 
 
 class EventTimeline(models.Model):
-    """Timeline events during a match (goals, cards, etc.)"""
+    """In-game match timeline event (goal, card, substitution, period start/end)."""
     
     EVENT_TYPES = [
         ('goal', 'Goal'),
@@ -157,7 +157,7 @@ class EventTimeline(models.Model):
 
 
 class EventLineup(models.Model):
-    """Team lineups for events"""
+    """Starting and substitute player lineups and tactical formations for a fixture."""
     
     POSITION_TYPES = [
         ('starting', 'Starting XI'),
@@ -192,7 +192,7 @@ class EventLineup(models.Model):
 
 
 class EventStatistics(models.Model):
-    """Match statistics"""
+    """Aggregated team performance statistics (possession, shots, passes) for a match."""
     
     event = models.ForeignKey(Event, on_delete=models.CASCADE, related_name='statistics')
     team = models.ForeignKey(Entity, on_delete=models.CASCADE)
@@ -212,7 +212,7 @@ class EventStatistics(models.Model):
 
 
 class EventPlayerStats(models.Model):
-    """Individual player statistics in a match"""
+    """Individual player in-game performance metrics and box scores."""
     
     event = models.ForeignKey(Event, on_delete=models.CASCADE, related_name='player_stats')
     player = models.ForeignKey(
@@ -240,7 +240,7 @@ class EventPlayerStats(models.Model):
 
 
 class EventHighlight(models.Model):
-    """Video highlights for events"""
+    """External video highlights, streams, and clips associated with a sporting event."""
     
     event = models.ForeignKey(Event, on_delete=models.CASCADE, related_name='highlights')
     

@@ -8,9 +8,11 @@ logger = logging.getLogger(__name__)
 
 
 class Command(BaseCommand):
+    """Management command to decode Google News redirect URLs into direct publisher links."""
     help = "Decodes and replaces all existing Google News redirect URLs in FeedItem with direct publisher URLs."
 
     def add_arguments(self, parser):
+        """Register CLI arguments for batch processing limits."""
         parser.add_argument(
             '--limit',
             type=int,
@@ -19,6 +21,7 @@ class Command(BaseCommand):
         )
 
     def handle(self, *args, **options):
+        """Iterate through Google News redirect links and resolve canonical destination URLs."""
         limit = options['limit']
         qs = FeedItem.objects.filter(url__icontains="news.google.com")
         if limit > 0:
