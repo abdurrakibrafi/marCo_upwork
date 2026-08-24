@@ -1,16 +1,16 @@
+from datetime import datetime
+from collections import defaultdict
 from celery import shared_task
 from celery.utils.log import get_task_logger
-from collections import defaultdict
 from django.core.cache import cache
-from datetime import datetime
-import requests as req
-from django.conf import settings
+from apps.entity.models import Entity, Team, EntityStats
 from apps.sports_apis.services.statpal import statpal_service
 
 logger = get_task_logger(__name__)
 
 
 def _current_season(sport: str) -> int:
+    """Determine the active calendar or split competition season year for a sport."""
     now = datetime.now()
     year, month = now.year, now.month
     if sport == 'soccer':
@@ -20,16 +20,11 @@ def _current_season(sport: str) -> int:
     return year
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# ORCHESTRATOR — fires once per hour, dispatches one task per LEAGUE not per team
-# ─────────────────────────────────────────────────────────────────────────────
 @shared_task
 def update_all_team_stats():
-    """
-    Dynamically discovers every active sport and league that has teams in the DB,
+    """Dynamically discovers every active sport and league that has teams in the DB,
     then dispatches the appropriate Celery tasks.
     """
-    # 1. Discover all active sports that have active teams in the DB
     active_sports = set(
         Entity.objects.filter(type='team', is_active=True)
         .values_list('sport', flat=True)
@@ -38,7 +33,6 @@ def update_all_team_stats():
 
     dispatched = []
 
-    # 2. Soccer, Handball, Volleyball: Dispatch one task per unique league ID
     league_sports = [
         ('soccer', update_soccer_league_stats),
         ('handball', update_handball_league_stats),
@@ -69,7 +63,6 @@ def update_all_team_stats():
                 count += 1
             dispatched.append(f"{count} {sport_key} leagues")
 
-    # 3. Mapping for other sports to their respective Celery tasks
     other_sports_tasks = {
         'basketball': ('NBA', update_nba_standings),
         'cricket': ('cricket', update_cricket_team_stats),
@@ -90,213 +83,9 @@ def update_all_team_stats():
     return msg
 
 
-
-@shared_task
-def seed_players_for_team(team_external_id: str, season: int = None):
-    from apps.entity.models import Entity, Athlete
-
-    team_entity = Entity.objects.filter(
-        external_id=str(team_external_id)
-    ).first()
-
-    if not team_entity:
-        return f"Team {team_external_id} not found in DB"
-
-    if team_entity.api_source == 'thesportsdb' or not team_entity.api_source:
-        try:
-            from apps.sports_apis.services.thesportsdb import TheSportsDBService
-            tsdb = TheSportsDBService()
-            players = tsdb.get_team_roster(team_id=team_entity.external_id, team_name=team_entity.name)
-            created_total = 0
-            for p in players:
-                p_ext_id = str(p.get('id_player') or f"tsdb_{p['name'].replace(' ', '_').lower()}")
-                player_entity, _ = Entity.objects.get_or_create(
-                    api_source='thesportsdb',
-                    external_id=p_ext_id,
-                    defaults={
-                        'type': 'athlete',
-                        'name': p['name'],
-                        'sport': team_entity.sport,
-                        'logo_url': p.get('headshot_url', '') or '',
-                        'has_api_data': True,
-                    }
-                )
-                name_parts = p['name'].strip().split()
-                first_name = name_parts[0] if name_parts else ''
-                last_name = ' '.join(name_parts[1:]) if len(name_parts) > 1 else ''
-
-                _, was_created = Athlete.objects.get_or_create(
-                    entity=player_entity,
-                    defaults={
-                        'first_name': first_name,
-                        'last_name': last_name,
-                        'current_team': team_entity,
-                        'position': p.get('position', ''),
-                        'nationality': p.get('nationality', ''),
-                    }
-                )
-                if was_created:
-                    created_total += 1
-
-            if created_total < 8:
-                try:
-                    from apps.sports_apis.services.wikipedia import wikipedia_service
-                    wiki_players = wikipedia_service.get_team_roster(team_name=team_entity.name, sport=team_entity.sport)
-                    for p in wiki_players:
-                        p_name = p.get('name', '').strip()
-                        if not p_name:
-                            continue
-                        p_ext_id = f"wiki_{p_name.replace(' ', '_').lower()}_{team_entity.id}"
-                        player_entity = Entity.objects.filter(
-                            name=p_name,
-                            type='athlete',
-                            sport=team_entity.sport
-                        ).first()
-                        if not player_entity:
-                            player_entity = Entity.objects.create(
-                                name=p_name,
-                                type='athlete',
-                                sport=team_entity.sport,
-                                api_source='wikipedia',
-                                external_id=p_ext_id,
-                                country=p.get('nationality', '') or team_entity.country or '',
-                                has_api_data=True,
-                            )
-                        name_parts = p_name.split(' ', 1)
-                        first_name = name_parts[0] if name_parts else ''
-                        last_name = name_parts[1] if len(name_parts) > 1 else ''
-
-                        ath_obj = Athlete.objects.filter(entity=player_entity).first()
-                        if not ath_obj:
-                            ath_obj = Athlete.objects.create(
-                                entity=player_entity,
-                                first_name=first_name,
-                                last_name=last_name,
-                                current_team=team_entity,
-                                position=p.get('position', ''),
-                                jersey_number=p.get('jersey_number'),
-                                nationality=p.get('nationality', '') or team_entity.country or '',
-                            )
-                            created_total += 1
-                        else:
-                            if ath_obj.current_team != team_entity:
-                                ath_obj.current_team = team_entity
-                                ath_obj.save()
-                except Exception as wiki_err:
-                    logger.warning(f"Wikipedia fallback in Celery task failed for {team_entity.name}: {wiki_err}")
-
-            return f"Seeded {created_total} players for team {team_external_id}"
-        except Exception as e:
-            logger.warning(f"Player seeding failed for {team_entity.name}: {e}")
-
-    if team_entity.api_source == 'api_sports':
-        headers = {'x-apisports-key': settings.API_SPORTS_KEY}
-        try:
-            resp = req.get(
-                'https://v3.football.api-sports.io/players/squads',
-                headers=headers,
-                params={'team': team_external_id},
-                timeout=15,
-            )
-            if resp.status_code != 200:
-                return f"Failed to fetch team details from API-Sports: HTTP {resp.status_code}"
-
-            squads = resp.json().get('response', [])
-            if not squads:
-                return f"No squads returned from API-Sports for team {team_external_id}"
-
-            players = squads[0].get('players', [])
-            created_total = 0
-            for p in players:
-                player_id = str(p.get('id', ''))
-                if not player_id:
-                    continue
-
-                player_entity, _ = Entity.objects.get_or_create(
-                    api_source='api_sports',
-                    external_id=player_id,
-                    defaults={
-                        'type': 'athlete',
-                        'name': p.get('name', ''),
-                        'sport': team_entity.sport,
-                        'has_api_data': True,
-                        'logo_url': p.get('photo', '') or '',
-                    }
-                )
-
-                name = p.get('name', '').strip()
-                name_parts = name.split()
-                first_name = name_parts[0] if name_parts else ''
-                last_name = ' '.join(name_parts[1:]) if len(name_parts) > 1 else ''
-
-                athlete, was_created = Athlete.objects.get_or_create(
-                    entity=player_entity,
-                    defaults={
-                        'first_name': first_name,
-                        'last_name': last_name,
-                        'current_team': team_entity,
-                    }
-                )
-                athlete.position = p.get('position', '')
-                athlete.jersey_number = p.get('number') or None
-                athlete.save()
-                if was_created:
-                    created_total += 1
-
-            return f"Seeded {created_total} players for team {team_external_id} from API-Sports"
-        except Exception as e:
-            return f"Failed to fetch squad for {team_entity.name} from API-Sports: {e}"
-
-    result = statpal_service.get_soccer_team(team_external_id)
-    if not result['success']:
-        return f"Failed to fetch team details from StatPal: {result.get('error')}"
-
-    squad = result['data'].get('team', {}).get('squad', {}).get('player', [])
-    if isinstance(squad, dict):
-        squad = [squad]
-
-    created_total = 0
-    for p in squad:
-        player_id = str(p.get('id', ''))
-        if not player_id:
-            continue
-
-        player_entity, _ = Entity.objects.get_or_create(
-            api_source='statpal',
-            external_id=player_id,
-            defaults={
-                'type': 'athlete',
-                'name': p.get('name', ''),
-                'sport': team_entity.sport,
-                'has_api_data': True,
-            }
-        )
-
-        name_parts = p.get('name', '').split()
-        first_name = name_parts[0] if name_parts else ''
-        last_name = ' '.join(name_parts[1:]) if len(name_parts) > 1 else ''
-
-        _, was_created = Athlete.objects.get_or_create(
-            entity=player_entity,
-            defaults={
-                'first_name': first_name,
-                'last_name': last_name,
-                'current_team': team_entity,
-            }
-        )
-        if was_created:
-            created_total += 1
-
-    return f"Seeded {created_total} players for team {team_external_id} from StatPal"
-
-# ─────────────────────────────────────────────────────────────────────────────
-# SOCCER — one task per league
-# ─────────────────────────────────────────────────────────────────────────────
-
 @shared_task(bind=True, max_retries=3, default_retry_delay=300)
 def update_soccer_league_stats(self, league_id: int):
-    """
-    Fetch standings for ONE league using StatPal, then update every team in that league
+    """Fetch standings for ONE league using StatPal, then update every team in that league
     from the single API response.
     """
     season = _current_season('soccer')
@@ -318,7 +107,6 @@ def update_soccer_league_stats(self, league_id: int):
         standings_response = result['data'].get('standings', {})
         cache.set(cache_key, standings_response, timeout=3600)
 
-    # Build lookups: statpal team_id or team_name -> standing data
     team_standings_by_id = {}
     team_standings_by_name = {}
     
@@ -337,7 +125,6 @@ def update_soccer_league_stats(self, league_id: int):
     if not team_standings_by_id and not team_standings_by_name:
         return f"No standings data for league {league_id} season {season}"
 
-    # Find all teams in this league in our DB (statpal source)
     teams = Team.objects.filter(
         entity__sport='soccer',
         entity__is_active=True,
@@ -393,18 +180,9 @@ def update_soccer_league_stats(self, league_id: int):
     return f"League {league_id}: updated {updated} teams"
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# CRICKET — aggregate every current tour once for all cricket teams
-# ─────────────────────────────────────────────────────────────────────────────
-
 @shared_task(bind=True, max_retries=2, default_retry_delay=300)
 def update_cricket_team_stats(self):
-    """Store current-year cricket results for every StatPal cricket team.
-
-    Unlike league sports, cricket teams play across bilateral tours.  Fetching
-    each tour once is substantially cheaper than scanning every tour separately
-    for every team when an individual stats endpoint is requested.
-    """
+    """Store current-year cricket results for every StatPal cricket team."""
     season = str(_current_season('cricket'))
     teams = list(
         Team.objects.filter(
@@ -514,15 +292,9 @@ def update_cricket_team_stats(self):
     return f'Cricket: updated {len(teams)} teams from {tours_checked} tours for season {season}'
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# NBA — one task for all 30 teams
-# ─────────────────────────────────────────────────────────────────────────────
-
 @shared_task(bind=True, max_retries=3, default_retry_delay=120)
 def update_nba_standings(self):
-    """
-    Fetch NBA standings once using StatPal, update all NBA teams from the single response.
-    """
+    """Fetch NBA standings once using StatPal, update all NBA teams from the single response."""
     season = _current_season('basketball')
     cache_key = f"standings:nba:{season}"
 
@@ -539,7 +311,6 @@ def update_nba_standings(self):
         standings = result['data'].get('standings', {})
         cache.set(cache_key, standings, timeout=3600)
 
-    # Build lookups: statpal team_id or team_name -> standing data
     team_standings_by_id = {}
     team_standings_by_name = {}
     
@@ -618,9 +389,7 @@ def update_nba_standings(self):
 
 @shared_task(bind=True, max_retries=3, default_retry_delay=120)
 def update_football_league_stats(self):
-    """
-    Fetch NFL standings once using StatPal, update all NFL teams.
-    """
+    """Fetch NFL standings once using StatPal, update all NFL teams."""
     season = _current_season('football')
     cache_key = f"standings:football:{season}"
 
@@ -731,9 +500,7 @@ def update_football_league_stats(self):
 
 @shared_task(bind=True, max_retries=3, default_retry_delay=120)
 def update_baseball_team_stats(self):
-    """
-    Fetch MLB standings once using StatPal, update all MLB teams.
-    """
+    """Fetch MLB standings once using StatPal, update all MLB teams."""
     season = _current_season('baseball')
     cache_key = f"standings:baseball:{season}"
 
@@ -836,9 +603,7 @@ def update_baseball_team_stats(self):
 
 @shared_task(bind=True, max_retries=3, default_retry_delay=120)
 def update_hockey_team_stats(self):
-    """
-    Fetch NHL standings once using StatPal, update all NHL teams.
-    """
+    """Fetch NHL standings once using StatPal, update all NHL teams."""
     season = _current_season('hockey')
     cache_key = f"standings:hockey:{season}"
 
@@ -932,15 +697,9 @@ def update_hockey_team_stats(self):
     return f"NHL: updated {updated} teams"
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# HANDBALL — one task per league
-# ─────────────────────────────────────────────────────────────────────────────
-
 @shared_task(bind=True, max_retries=3, default_retry_delay=300)
 def update_handball_league_stats(self, league_id: int):
-    """
-    Fetch handball standings for ONE league using StatPal, then update every team in DB.
-    """
+    """Fetch handball standings for ONE league using StatPal, then update every team in DB."""
     season = _current_season('handball')
     cache_key = f"standings:handball:{league_id}:{season}"
 
@@ -1025,15 +784,9 @@ def update_handball_league_stats(self, league_id: int):
     return f"Handball League {league_id}: updated {updated} teams"
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# VOLLEYBALL — one task per league
-# ─────────────────────────────────────────────────────────────────────────────
-
 @shared_task(bind=True, max_retries=3, default_retry_delay=300)
 def update_volleyball_league_stats(self, league_id: int):
-    """
-    Fetch volleyball standings for ONE league using StatPal, then update team records in DB.
-    """
+    """Fetch volleyball standings for ONE league using StatPal, then update team records in DB."""
     season = _current_season('volleyball')
     cache_key = f"standings:volleyball:{league_id}:{season}"
 
@@ -1117,15 +870,9 @@ def update_volleyball_league_stats(self, league_id: int):
     return f"Volleyball League {league_id}: updated {updated} teams"
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# TENNIS — ATP & WTA Global Player Rankings
-# ─────────────────────────────────────────────────────────────────────────────
-
 @shared_task(bind=True, max_retries=2, default_retry_delay=300)
 def update_tennis_rankings(self):
-    """
-    Fetch ATP and WTA singles rankings from StatPal and store in cache for 24h.
-    """
+    """Fetch ATP and WTA singles rankings from StatPal and store in cache for 24h."""
     updated_tours = []
     for tour in ['atp', 'wta']:
         try:
@@ -1136,7 +883,7 @@ def update_tennis_rankings(self):
                     players_list = [players_list]
 
                 clean_rankings = []
-                for p in players_list[:100]:  # Top 100
+                for p in players_list[:100]:
                     if not isinstance(p, dict):
                         continue
                     clean_rankings.append({
@@ -1156,15 +903,9 @@ def update_tennis_rankings(self):
     return f"Tennis rankings updated for: {', '.join(updated_tours) if updated_tours else 'none'}"
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# GOLF — PGA Tour Live & Tournament Leaderboards
-# ─────────────────────────────────────────────────────────────────────────────
-
 @shared_task(bind=True, max_retries=2, default_retry_delay=300)
 def update_golf_leaderboards(self):
-    """
-    Fetch current PGA tournament leaderboards from StatPal live/schedule and cache for 1h.
-    """
+    """Fetch current PGA tournament leaderboards from StatPal live/schedule and cache for 1h."""
     try:
         res = statpal_service.get_golf_live()
         if not res.get('success'):
@@ -1215,174 +956,13 @@ def update_golf_leaderboards(self):
 
 @shared_task
 def update_fifa_world_rankings_task():
-
-    """
-    Periodic task: Refreshes FIFA Men and Women World Rankings in Redis cache and DB.
+    """Periodic task: Refreshes FIFA Men and Women World Rankings in Redis cache and DB.
     Runs every 24 hours to ensure fresh rankings for all member nations.
     """
     from apps.entity.views import fetch_live_fifa_rankings
-    from django.core.cache import cache
     cache.delete('scraped_fifa_team_rankings_v3')
     fifa_data = fetch_live_fifa_rankings()
     men_count = len(fifa_data.get('by_format', {}).get('men', []))
     women_count = len(fifa_data.get('by_format', {}).get('women', []))
     logger.info(f"FIFA World Rankings updated: {men_count} Men teams, {women_count} Women teams cached.")
     return f"FIFA World Rankings updated ({men_count} Men, {women_count} Women)"
-
-
-@shared_task
-def bootstrap_all_entities():
-    """
-    Comprehensive bootstrap: ensures EVERY active entity in DB has fresh data.
-    
-    - Fetches recent news from Brave News API for all entities
-    - Seeds roster for soccer teams without players
-    
-    Runs weekly (Sunday 3am) to catch any new entities added via admin.
-    Also used for one-time backfill on deployments.
-    """
-    from apps.feed.tasks import fetch_brave_news_for_entity
-    from django.core.management import call_command
-    from apps.entity.models import Entity, Athlete
-    
-    # ── Auto-seed if VPS database is empty/unpopulated ──
-    team_count = Entity.objects.filter(type='team').count()
-    athlete_count = Athlete.objects.count()
-    
-    if team_count < 50:
-        logger.info(f"Database has only {team_count} teams. Running populate_major_entities command...")
-        try:
-            call_command('populate_major_entities')
-        except Exception as e:
-            logger.exception(f"Auto-population of major entities failed: {e}")
-            
-    if athlete_count < 100:
-        logger.info(f"Database has only {athlete_count} athletes. Running populate_athletes command...")
-        try:
-            call_command('populate_athletes')
-        except Exception as e:
-            logger.exception(f"Auto-population of athletes failed: {e}")
-
-    entities = Entity.objects.filter(is_active=True)
-    total = entities.count()
-    
-    from apps.feed.tasks import discover_rss_feeds_for_entity
-    for i, entity in enumerate(entities):
-        # Discover RSS feeds via Brave Search for entities missing RSS discovery
-        if not entity.rss_discovery_done and entity.follower_count > 0:
-            discover_rss_feeds_for_entity.apply_async(
-                args=[entity.id],
-                countdown=i * 3
-            )
-        
-        # Seed roster for soccer teams with no players yet
-        if entity.type == 'team' and entity.sport == 'soccer' and entity.api_source == 'statpal':
-            from apps.entity.models import Athlete
-            has_players = Athlete.objects.filter(
-                entity__external_id=entity.external_id,
-                entity__api_source='statpal'
-            ).exists()
-            
-            # Check if team has been linked to players (indirect way through current_team)
-            # If no direct athletes, try seeding
-            if not has_players and entity.external_id:
-                seed_players_for_team.apply_async(
-                    args=[entity.external_id],
-                    countdown=i * 3 + 1
-                )
-    
-    logger.info(f"Bootstrap dispatched {total} entities")
-    return f"Bootstrapped {total} entities — news + roster"
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# VENUE CACHE WARMER — called in background when a serializer gets a cache miss
-# ─────────────────────────────────────────────────────────────────────────────
-
-@shared_task(bind=True, max_retries=1, default_retry_delay=60, ignore_result=True)
-def warm_venue_cache_task(self, team_name: str):
-    """
-    Populates the venue cache for a single team name by calling the full
-    resolve_team_venue() (which includes a TheSportsDB search).
-
-    This task is dispatched in the background by resolve_team_venue_fast()
-    when the cache is empty. The next API request for the same team will
-    hit the warm cache and get venue data instantly.
-    """
-    if not team_name:
-        return
-
-    # Deduplicate: if another worker already started this, skip
-    lock_key = f"warm_venue_lock_{team_name.lower().replace(' ', '_')}"
-    if not cache.add(lock_key, '1', timeout=120):
-        return
-
-    try:
-        from apps.entity.utils.matcher import resolve_team_venue
-        v_name, v_city, v_country = resolve_team_venue(team_name)
-        logger.info(
-            'warm_venue_cache_task: %s → venue=%s city=%s country=%s',
-            team_name, v_name or '(empty)', v_city or '(empty)', v_country or '(empty)'
-        )
-    except Exception as exc:
-        logger.warning('warm_venue_cache_task failed for %s: %s', team_name, exc)
-        try:
-            raise self.retry(exc=exc)
-        except Exception:
-            pass
-    finally:
-        cache.delete(lock_key)
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# PROACTIVE VENUE CACHE WARM — runs daily, pre-warms venue for ALL teams in DB
-# so that serializer requests ALWAYS hit cache (never TheSportsDB during a request)
-# ─────────────────────────────────────────────────────────────────────────────
-
-@shared_task(bind=True, max_retries=1, ignore_result=True)
-def warm_all_venue_caches(self):
-    """
-    Proactively warm venue name/city cache for every soccer team entity in the DB.
-    Dispatches one warm_venue_cache_task per team (staggered by 2s countdown)
-    so TheSportsDB rate limits are respected.
-
-    Runs daily at 3am via Celery beat.
-    After this task completes, all serialize calls will hit warm cache — no
-    blocking TheSportsDB calls during API requests.
-    """
-    from apps.entity.models import Entity
-
-    lock_id = 'warm_all_venue_caches_lock'
-    if not cache.add(lock_id, '1', timeout=7200):
-        logger.info('warm_all_venue_caches already running, skipping')
-        return 'skipped — already running'
-
-    try:
-        # Get all team entities — prioritize soccer, then other sports
-        teams = (
-            Entity.objects
-            .filter(type='team')
-            .exclude(name='')
-            .values_list('name', flat=True)
-            .distinct()
-        )
-
-        dispatched = 0
-        for i, name in enumerate(teams):
-            cache_key = f"venue_by_name_{name.lower().replace(' ', '_')}"
-            # Only dispatch if cache is empty — skip already-warm teams
-            if cache.get(cache_key) is None:
-                warm_venue_cache_task.apply_async(
-                    args=[name],
-                    countdown=i * 2,  # stagger 2s apart to respect rate limits
-                )
-                dispatched += 1
-
-        msg = f'warm_all_venue_caches: dispatched {dispatched} team venue warmers'
-        logger.info(msg)
-        return msg
-
-    except Exception as exc:
-        logger.exception('warm_all_venue_caches failed: %s', exc)
-    finally:
-        cache.delete(lock_id)
