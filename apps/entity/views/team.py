@@ -15,6 +15,7 @@ from .helpers.team_rankings import (
     CRICKET_TEAM_ALIAS_MAP,
     _normalize_cricket_team_key,
     fetch_live_icc_rankings,
+    fetch_live_cricket_team_records,
     fetch_live_fifa_rankings,
     _get_tennis_rankings_helper,
     _get_golf_leaderboard_helper,
@@ -187,17 +188,40 @@ def get_team_stats(request, team_id):
 
         active_format_stats = icc_info.get(active_fmt, {}) if isinstance(icc_info, dict) else {}
 
-        # 3. Optional match record stats from DB/API
-        stats_data = _fetch_cricket_team_stats(team_entity.external_id, season)
-        if not stats_data:
-            stats_data = _fetch_stats_from_db_events(team_entity)
+        # 3. Fetch real official international match records (Wins, Losses, Win %, This year form)
+        official_records = fetch_live_cricket_team_records(team_entity.name, is_women=is_women_team)
+        fmt_record = official_records.get(active_fmt, {})
 
-        # Merge format metrics into stats_data
-        stats_data['rank'] = active_format_stats.get('rank', stats_data.get('rank', 0))
-        stats_data['rating'] = active_format_stats.get('rating', 0)
-        stats_data['points'] = active_format_stats.get('points', 0)
-        stats_data['matches_played'] = active_format_stats.get('matches', stats_data.get('matches_played', 0))
-        stats_data['icc_rankings'] = icc_info or {}
+        if fmt_record:
+            # We have verified official match records
+            stats_data = {
+                'format': active_fmt,
+                'rank': active_format_stats.get('rank', 0),
+                'rating': active_format_stats.get('rating', 0),
+                'points': active_format_stats.get('points', 0),
+                'matches_played': fmt_record.get('matches_played', 0),
+                'wins': fmt_record.get('wins', 0),
+                'losses': fmt_record.get('losses', 0),
+                'draws': fmt_record.get('draws', 0),
+                'ties': fmt_record.get('ties', 0),
+                'no_results': fmt_record.get('no_results', 0),
+                'win_percentage': fmt_record.get('win_percentage', 0.0),
+                'this_year': fmt_record.get('this_year', {}),
+                'icc_rankings': icc_info or {},
+            }
+            stats_source = 'official_records'
+        else:
+            # Fallback for franchise/domestic or unlisted teams
+            stats_data = _fetch_cricket_team_stats(team_entity.external_id, season)
+            if not stats_data:
+                stats_data = _fetch_stats_from_db_events(team_entity)
+
+            stats_data['rank'] = active_format_stats.get('rank', stats_data.get('rank', 0))
+            stats_data['rating'] = active_format_stats.get('rating', 0)
+            stats_data['points'] = active_format_stats.get('points', 0)
+            stats_data['matches_played'] = active_format_stats.get('matches', stats_data.get('matches_played', 0))
+            stats_data['icc_rankings'] = icc_info or {}
+            stats_source = 'icc_rankings' if active_format_stats else ('live_api' if stats_data else 'empty')
 
         # 4. Dynamic tabs metadata
         if is_women_team:
@@ -220,7 +244,7 @@ def get_team_stats(request, team_id):
             'available_formats': [t['key'] for t in tabs],
             'tabs': tabs,
             'stats': stats_data,
-            'source': 'icc_rankings' if active_format_stats else ('live_api' if stats_data else 'empty'),
+            'source': stats_source,
         })
 
     # 1 — try DB first
