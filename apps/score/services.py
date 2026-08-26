@@ -60,11 +60,7 @@ def _format_cricket_live_status(game, raw):
 
         if r is not None and str(r) != '':
             score_str = f"{r}/{w}" if w else f"{r}"
-            if o is not None and str(o) != '':
-                score_str += f" ({o} ov)"
-
-            summary_part = f"{short_name} {score_str}".strip()
-            inn_summaries.append(summary_part)
+            inn_summaries.append(score_str.strip())
 
     # 2. Check home/away stat field if innings_list didn't have total
     if not inn_summaries:
@@ -74,16 +70,11 @@ def _format_cricket_live_status(game, raw):
         h_stat = home_raw.get('stat') or home_raw.get('totalscore')
         a_stat = away_raw.get('stat') or away_raw.get('totalscore')
 
-        h_name = getattr(game, 'home_team', '') or home_raw.get('name', 'Home')
-        a_name = getattr(game, 'away_team', '') or away_raw.get('name', 'Away')
-        h_short = h_name.split()[0] if h_name else "Home"
-        a_short = a_name.split()[0] if a_name else "Away"
-
         parts = []
         if h_stat and str(h_stat) not in ('', '0'):
-            parts.append(f"{h_short} {h_stat}")
+            parts.append(str(h_stat).strip())
         if a_stat and str(a_stat) not in ('', '0'):
-            parts.append(f"{a_short} {a_stat}")
+            parts.append(str(a_stat).strip())
         if parts:
             return str(" | ".join(parts))
 
@@ -99,9 +90,9 @@ def _format_cricket_live_status(game, raw):
     h_score = getattr(game, 'home_score', None)
     a_score = getattr(game, 'away_score', None)
     if (h_score is not None and h_score > 0) or (a_score is not None and a_score > 0):
-        h_name = getattr(game, 'home_team', 'Home').split()[0]
-        a_name = getattr(game, 'away_team', 'Away').split()[0]
-        return f"{h_name} {h_score or 0} | {a_name} {a_score or 0}"
+        if h_score is not None and a_score is not None and h_score > 0 and a_score > 0:
+            return f"{h_score} | {a_score}"
+        return f"{h_score or a_score or 0}"
 
     return str(getattr(game, 'status_detail', '') or "In Progress")
 
