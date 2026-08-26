@@ -19,6 +19,93 @@ from .converters import (
 )
 
 
+def _format_cricket_live_status(game, raw):
+    """
+    Format rich cricket live status detail:
+    e.g. "BAN 150/6 (20.0 ov) | IND 98/2 (12.4 ov)" or "152/4 (18.2 ov)"
+    """
+    if not isinstance(raw, dict):
+        raw = {}
+
+    # 1. Check if there are active innings in `inning`
+    innings_list = raw.get('inning', [])
+    if isinstance(innings_list, dict):
+        innings_list = [innings_list]
+    elif not isinstance(innings_list, list):
+        innings_list = []
+
+    inn_summaries = []
+
+    for inn in innings_list:
+        if not isinstance(inn, dict):
+            continue
+        tot = inn.get('total', {})
+        if not isinstance(tot, dict):
+            tot = {}
+
+        r = tot.get('r') if 'r' in tot else tot.get('runs')
+        w = tot.get('w') if 'w' in tot else tot.get('wickets', '0')
+        o = tot.get('o') if 'o' in tot else tot.get('overs')
+
+        team_id = inn.get('team') or inn.get('teamid')
+        team_name = ""
+        if team_id == 'localteam' or str(team_id) == str(raw.get('home', {}).get('id')):
+            team_name = getattr(game, 'home_team', '') or raw.get('home', {}).get('name', '')
+        elif team_id == 'visitorteam' or str(team_id) == str(raw.get('away', {}).get('id')):
+            team_name = getattr(game, 'away_team', '') or raw.get('away', {}).get('name', '')
+        else:
+            team_name = inn.get('name', '')
+
+        short_name = team_name.split()[0] if team_name else ""
+
+        if r is not None and str(r) != '':
+            score_str = f"{r}/{w}" if w else f"{r}"
+            if o is not None and str(o) != '':
+                score_str += f" ({o} ov)"
+
+            summary_part = f"{short_name} {score_str}".strip()
+            inn_summaries.append(summary_part)
+
+    # 2. Check home/away stat field if innings_list didn't have total
+    if not inn_summaries:
+        home_raw = raw.get('home', {}) if isinstance(raw.get('home'), dict) else {}
+        away_raw = raw.get('away', {}) if isinstance(raw.get('away'), dict) else {}
+
+        h_stat = home_raw.get('stat') or home_raw.get('totalscore')
+        a_stat = away_raw.get('stat') or away_raw.get('totalscore')
+
+        h_name = getattr(game, 'home_team', '') or home_raw.get('name', 'Home')
+        a_name = getattr(game, 'away_team', '') or away_raw.get('name', 'Away')
+        h_short = h_name.split()[0] if h_name else "Home"
+        a_short = a_name.split()[0] if a_name else "Away"
+
+        parts = []
+        if h_stat and str(h_stat) not in ('', '0'):
+            parts.append(f"{h_short} {h_stat}")
+        if a_stat and str(a_stat) not in ('', '0'):
+            parts.append(f"{a_short} {a_stat}")
+        if parts:
+            return str(" | ".join(parts))
+
+    if inn_summaries:
+        return str(" | ".join(inn_summaries))
+
+    # 3. Match post / comment e.g. "Match starts in 15 mins" or "Innings Break"
+    comment_post = raw.get('comment', {}).get('post') if isinstance(raw.get('comment'), dict) else None
+    if comment_post and 'yet to begin' not in str(comment_post).lower():
+        return str(comment_post)
+
+    # 4. Fallback: home_score / away_score if present
+    h_score = getattr(game, 'home_score', None)
+    a_score = getattr(game, 'away_score', None)
+    if (h_score is not None and h_score > 0) or (a_score is not None and a_score > 0):
+        h_name = getattr(game, 'home_team', 'Home').split()[0]
+        a_name = getattr(game, 'away_team', 'Away').split()[0]
+        return f"{h_name} {h_score or 0} | {a_name} {a_score or 0}"
+
+    return str(getattr(game, 'status_detail', '') or "In Progress")
+
+
 def get_live_score_detail_data(score_id, request=None):
     """Extract and structure comprehensive real-time detail for a live score, fixture, or completed match.
 
@@ -782,6 +869,12 @@ def get_live_score_detail_data(score_id, request=None):
         else:
             start_time_val = start_time_raw
 
+        status_detail_val = str(getattr(game, 'status_detail', '') or '')
+        if sport == 'cricket':
+            cricket_status = _format_cricket_live_status(game, raw)
+            if cricket_status:
+                status_detail_val = str(cricket_status)
+
         # 7. Construct final data dictionary
         data = {
             'id': game.id,
@@ -791,7 +884,7 @@ def get_live_score_detail_data(score_id, request=None):
             'home_logo': home_logo_val,
             'away_logo': away_logo_val,
             'status': game.status,
-            'status_detail': getattr(game, 'status_detail', ''),
+            'status_detail': status_detail_val,
             'start_time': start_time_val,
             'match_type': match_type,
             'toss': toss_str,
@@ -840,7 +933,7 @@ def get_live_score_detail_data(score_id, request=None):
             'home_logo': home_logo_val,
             'away_logo': away_logo_val,
             'status': getattr(game, 'status', ''),
-            'status_detail': getattr(game, 'status_detail', ''),
+            'status_detail': locals().get('status_detail_val') or getattr(game, 'status_detail', ''),
             'start_time': fb_start_time,
             'match_type': locals().get('match_type', ''),
             'toss': locals().get('toss_str', ''),

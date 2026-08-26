@@ -6,6 +6,7 @@ class LiveScoreSerializer(serializers.ModelSerializer):
     """Serializer for broadcasting and listing live scores with normalized logos and team abbreviations."""
     home_logo = serializers.SerializerMethodField()
     away_logo = serializers.SerializerMethodField()
+    status_detail = serializers.SerializerMethodField()
 
     class Meta:
         model = LiveScore
@@ -14,6 +15,14 @@ class LiveScoreSerializer(serializers.ModelSerializer):
             'home_logo', 'away_logo', 'home_score', 'away_score',
             'status', 'status_detail', 'start_time', 'updated_at'
         ]
+
+    def get_status_detail(self, obj):
+        if getattr(obj, 'sport', None) == 'cricket':
+            from apps.score.services import _format_cricket_live_status
+            formatted = _format_cricket_live_status(obj, getattr(obj, 'raw_data', {}))
+            if formatted:
+                return str(formatted)
+        return str(obj.status_detail or '')
 
     def _absolute(self, relative_url):
         """Construct absolute URL for media/logo assets across environments."""

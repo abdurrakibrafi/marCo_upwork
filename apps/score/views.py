@@ -907,6 +907,13 @@ def live_score_detail(request, score_id):
             away_logo_val = find_team_logo_by_name(game.away_team)
         away_logo_val = _make_absolute(away_logo_val)
 
+        status_detail_val = str(game.status_detail or '')
+        if sport == 'cricket':
+            from .services import _format_cricket_live_status
+            cricket_status = _format_cricket_live_status(game, raw)
+            if cricket_status:
+                status_detail_val = str(cricket_status)
+
         # 7. Construct final data dictionary containing ALL keys (original + new fields)
         data = {
             # Original keys:
@@ -917,7 +924,7 @@ def live_score_detail(request, score_id):
             'home_logo': home_logo_val,
             'away_logo': away_logo_val,
             'status': game.status,
-            'status_detail': game.status_detail,
+            'status_detail': status_detail_val,
             'start_time': game.start_time,
             'match_type': match_type,
             'toss': toss_str,
@@ -965,7 +972,7 @@ def live_score_detail(request, score_id):
                 'home_logo': home_logo_val,
                 'away_logo': away_logo_val,
                 'status': getattr(game, 'status', ''),
-                'status_detail': getattr(game, 'status_detail', ''),
+                'status_detail': locals().get('status_detail_val') or getattr(game, 'status_detail', ''),
                 'start_time': getattr(game, 'start_time', None),
                 'match_type': locals().get('match_type', ''),
                 'toss': locals().get('toss_str', ''),

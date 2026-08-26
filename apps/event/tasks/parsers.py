@@ -340,6 +340,20 @@ def _cricket_rows(data: dict) -> list:
         for match in match_list:
             home = match.get("home", {})
             away = match.get("away", {})
+            status_raw = match.get("status", "NS")
+
+            # Enrich live cricket status with runs and overs if in progress
+            home_stat = home.get("stat") or home.get("totalscore")
+            away_stat = away.get("stat") or away.get("totalscore")
+            if status_raw in ("In Progress", "Live", "") and (home_stat or away_stat):
+                parts = []
+                if home_stat and str(home_stat) not in ('', '0'):
+                    parts.append(f"{home.get('name', '').split()[0]} {home_stat}".strip())
+                if away_stat and str(away_stat) not in ('', '0'):
+                    parts.append(f"{away.get('name', '').split()[0]} {away_stat}".strip())
+                if parts:
+                    status_raw = " | ".join(parts)
+
             rows.append({
                 "external_id": str(match.get("id", "")),
                 "sport": "cricket",
@@ -351,7 +365,7 @@ def _cricket_rows(data: dict) -> list:
                 "away_name": away.get("name", ""),
                 "home_score": _safe_int(home.get("totalscore")),
                 "away_score": _safe_int(away.get("totalscore")),
-                "status_raw": match.get("status", "NS"),
+                "status_raw": status_raw,
                 "date":  match.get("date", ""),
                 "time":  match.get("time", "00:00"),
                 "venue": match.get("venue", ""),
