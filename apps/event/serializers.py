@@ -68,7 +68,8 @@ class EventStatisticsSerializer(serializers.ModelSerializer):
             dict: Normalized team stats mapping.
         """
         from apps.event.utils_stats import normalize_event_stats
-        return normalize_event_stats(obj.stats)
+        sport = getattr(obj.event, 'sport', None) or getattr(obj.team, 'sport', None)
+        return normalize_event_stats(obj.stats, sport=sport, event=getattr(obj, 'event', None))
 
 
 class EventPlayerStatsSerializer(serializers.ModelSerializer):
@@ -350,7 +351,7 @@ class EventDetailSerializer(serializers.ModelSerializer):
             bool: True if event has statistics.
         """
         from apps.event.utils_stats import normalize_event_stats
-        return any(normalize_event_stats(s.stats) for s in obj.statistics.all() if s.stats)
+        return any(normalize_event_stats(s.stats, sport=obj.sport, event=obj) for s in obj.statistics.all() if s.stats)
 
     def get_has_lineups(self, obj):
         """Check if starting lineups have been submitted for this event.

@@ -14,22 +14,142 @@ import logging
 logger = logging.getLogger(__name__)
 
 
-def normalize_event_stats(stats_dict: dict) -> dict:
-    """Normalize team match performance statistics into a consistent, standard schema.
+def normalize_event_stats(stats_dict: dict, sport: str = None, event = None) -> dict:
+    """Normalize team match performance statistics into a consistent, sport-aware schema.
 
-    Standardizes metric names across fouls, saves, shots, passes, corners, offsides,
-    redcards, yellowcards, expected_goals, possession_percent, shot_on_goal,
-    shot_off_goal, block_shots, and pass_accuracy.
+    Standardizes metric names according to the specific sport:
+    - Baseball: runs, hits, errors, innings line-score.
+    - Basketball: points, field_goals, three_pointers, free_throws, rebounds, assists, quarters.
+    - Cricket: runs, wickets, overs, extras, run_rate.
+    - Soccer: fouls, saves, shots, passes, corners, offsides, cards, possession_percent, expected_goals.
 
     Args:
         stats_dict (dict): Raw statistics dictionary from database or live sports API.
+        sport (str, optional): Sport slug (e.g. 'baseball', 'soccer', 'basketball', 'cricket').
+        event (Event, optional): Event instance for extracting rich metadata.
 
     Returns:
-        dict: Cleaned and normalized statistics payload with guaranteed default values.
+        dict: Cleaned and normalized statistics payload according to sport rules.
     """
     if not stats_dict or not isinstance(stats_dict, dict):
         return {}
 
+    detected_sport = (
+        sport or
+        stats_dict.get('sport') or
+        (getattr(event, 'sport', None) if event else None) or
+        ''
+    ).lower()
+
+    # -------------------------------------------------------------------------
+    # 1. BASEBALL / MLB
+    # -------------------------------------------------------------------------
+    if detected_sport in ('baseball', 'mlb') or any(k in stats_dict for k in ['hits', 'errors', 'innings']):
+        side = stats_dict.get('side', 'home')
+        side_meta = {}
+        if event and isinstance(getattr(event, 'metadata', None), dict):
+            side_meta = event.metadata.get(side, {}) if isinstance(event.metadata.get(side), dict) else {}
+
+        innings = stats_dict.get('innings')
+        if not innings and side_meta:
+            innings = {}
+            for i in range(1, 10):
+                k = f'in{i}'
+                if k in side_meta and side_meta[k] != '':
+                    try:
+                        innings[str(i)] = int(side_meta[k])
+                    except (ValueError, TypeError):
+                        innings[str(i)] = side_meta[k]
+            if side_meta.get('extra'):
+                innings['extra'] = side_meta['extra']
+
+        runs_val = stats_dict.get('runs') or stats_dict.get('totalscore')
+        if runs_val is None and side_meta:
+            runs_val = side_meta.get('totalscore')
+        if runs_val is None and event:
+            runs_val = event.home_score if side == 'home' else event.away_score
+
+        hits_val = stats_dict.get('hits') or side_meta.get('hits') or 0
+        errors_val = stats_dict.get('errors') or side_meta.get('errors') or 0
+
+        try:
+            runs = int(runs_val if runs_val is not None else 0)
+        except (ValueError, TypeError):
+            runs = 0
+        try:
+            hits = int(hits_val)
+        except (ValueError, TypeError):
+            hits = 0
+        try:
+            errors = int(errors_val)
+        except (ValueError, TypeError):
+            errors = 0
+
+        return {
+            'side': side,
+            'sport': 'baseball',
+            'runs': runs,
+            'hits': hits,
+            'errors': errors,
+            'innings': innings or {},
+            'is_fallback': bool(stats_dict.get('is_fallback', False)) and not bool(side_meta),
+        }
+
+    # -------------------------------------------------------------------------
+    # 2. BASKETBALL / NBA
+    # -------------------------------------------------------------------------
+    if detected_sport in ('basketball', 'nba') or any(k in stats_dict for k in ['field_goals', 'three_pointers', 'rebounds', 'assists', 'quarters']):
+        side = stats_dict.get('side', 'home')
+        res = {'side': side, 'sport': 'basketball'}
+        for k in ['points', 'field_goals', 'three_pointers', 'free_throws', 'rebounds', 'assists', 'steals', 'blocks', 'turnovers', 'fouls', 'quarters']:
+            if k in stats_dict:
+                res[k] = stats_dict[k]
+        if 'is_fallback' in stats_dict:
+            res['is_fallback'] = stats_dict['is_fallback']
+        return res
+
+    # -------------------------------------------------------------------------
+    # 3. CRICKET
+    # -------------------------------------------------------------------------
+    if detected_sport == 'cricket' or any(k in stats_dict for k in ['wickets', 'overs', 'run_rate']):
+        side = stats_dict.get('side', 'home')
+        res = {'side': side, 'sport': 'cricket'}
+        for k in ['runs', 'wickets', 'overs', 'extras', 'run_rate', 'declared']:
+            if k in stats_dict:
+                res[k] = stats_dict[k]
+        if 'is_fallback' in stats_dict:
+            res['is_fallback'] = stats_dict['is_fallback']
+        return res
+
+    # -------------------------------------------------------------------------
+    # 4. AMERICAN FOOTBALL / NFL
+    # -------------------------------------------------------------------------
+    if detected_sport in ('american_football', 'football', 'nfl') and not detected_sport.startswith('soc'):
+        side = stats_dict.get('side', 'home')
+        res = {'side': side, 'sport': 'american_football'}
+        for k in ['points', 'touchdowns', 'field_goals', 'passing_yards', 'rushing_yards', 'turnovers', 'quarters']:
+            if k in stats_dict:
+                res[k] = stats_dict[k]
+        if 'is_fallback' in stats_dict:
+            res['is_fallback'] = stats_dict['is_fallback']
+        return res
+
+    # -------------------------------------------------------------------------
+    # 5. HOCKEY / NHL
+    # -------------------------------------------------------------------------
+    if detected_sport in ('hockey', 'ice_hockey', 'nhl'):
+        side = stats_dict.get('side', 'home')
+        res = {'side': side, 'sport': 'hockey'}
+        for k in ['goals', 'shots', 'saves', 'power_plays', 'penalty_minutes', 'periods']:
+            if k in stats_dict:
+                res[k] = stats_dict[k]
+        if 'is_fallback' in stats_dict:
+            res['is_fallback'] = stats_dict['is_fallback']
+        return res
+
+    # -------------------------------------------------------------------------
+    # 6. SOCCER / FOOTBALL
+    # -------------------------------------------------------------------------
     # Ignore basic score & side metadata when checking for team performance stats
     SCORE_AND_SIDE_KEYS = {'side', 'et_away', 'et_home', 'ft_away', 'ft_home', 'ht_away', 'ht_home', 'score', 'runs'}
     has_real_data = False

@@ -79,3 +79,25 @@ class EventStatisticsNormalizationTestCase(TestCase):
         self.assertEqual(normalized["block_shots"], 2)
         self.assertEqual(normalized["pass_accuracy"], "88%")
 
+    def test_normalize_baseball_stats(self):
+        from apps.event.utils_stats import normalize_event_stats
+
+        raw_baseball = {
+            "side": "home",
+            "hits": 6,
+            "errors": 2,
+            "runs": 2,
+            "innings": {"1": 0, "2": 0, "3": 0, "4": 1, "5": 0, "6": 0, "7": 0, "8": 0, "9": 1}
+        }
+
+        normalized = normalize_event_stats(raw_baseball, sport="baseball")
+
+        self.assertEqual(normalized["sport"], "baseball")
+        self.assertEqual(normalized["runs"], 2)
+        self.assertEqual(normalized["hits"], 6)
+        self.assertEqual(normalized["errors"], 2)
+        self.assertEqual(normalized["innings"]["4"], 1)
+        self.assertNotIn("corners", normalized)
+        self.assertNotIn("yellowcards", normalized)
+        self.assertNotIn("offsides", normalized)
+
