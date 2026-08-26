@@ -342,3 +342,88 @@ def _get_golf_leaderboard_helper():
         except Exception:
             pass
     return leaderboard or []
+
+
+def _detect_cricket_active_format(entity, is_women: bool = False):
+    """Dynamically detect the cricket format based on the team/league's current live, upcoming, or recent match.
+
+    Returns:
+        tuple[str, dict | None]: (active_format, context_match_summary)
+    """
+    from datetime import timedelta
+    from django.utils import timezone
+    from django.db.models import Q
+    from apps.event.models import Event
+
+    default_fmt = 'wodi' if is_women else 'odi'
+
+    try:
+        now = timezone.now()
+        q_filter = Q(home_entity=entity) | Q(away_entity=entity)
+        if getattr(entity, 'type', '') == 'league':
+            q_filter = Q(league=entity)
+
+        # 1. Live match has highest priority
+        live_match = Event.objects.filter(
+            q_filter,
+            sport='cricket',
+            status='live'
+        ).select_related('league', 'home_entity', 'away_entity').first()
+
+        # 2. Next upcoming match within 14 days
+        upcoming_match = None
+        if not live_match:
+            upcoming_match = Event.objects.filter(
+                q_filter,
+                sport='cricket',
+                status='upcoming',
+                start_time__gte=now - timedelta(hours=6),
+                start_time__lte=now + timedelta(days=14)
+            ).select_related('league', 'home_entity', 'away_entity').order_by('start_time').first()
+
+        # 3. Most recent match within last 7 days
+        recent_match = None
+        if not live_match and not upcoming_match:
+            recent_match = Event.objects.filter(
+                q_filter,
+                sport='cricket',
+                start_time__gte=now - timedelta(days=7)
+            ).select_related('league', 'home_entity', 'away_entity').order_by('-start_time').first()
+
+        target_event = live_match or upcoming_match or recent_match
+        if target_event:
+            league_name = getattr(target_event.league, 'name', '') if target_event.league else ''
+            meta = target_event.metadata if isinstance(target_event.metadata, dict) else {}
+            search_text = " ".join([
+                str(target_event.status_detail or ''),
+                str(league_name),
+                str(meta.get('league_name', '')),
+                str(meta.get('tournament_name', '')),
+                str(meta.get('format', '')),
+                str(meta.get('match_type', '')),
+                str(target_event),
+            ]).lower()
+
+            detected_fmt = None
+            if any(k in search_text for k in ('test', 'wtest', 'first-class', 'first class')):
+                detected_fmt = 'test'
+            elif any(k in search_text for k in ('t20', 't20i', 'twenty20', 't-20', 'bbl', 'ipl', 'psl', 'bpl', 'cpl', 'hundred')):
+                detected_fmt = 'wt20i' if is_women else 't20i'
+            elif any(k in search_text for k in ('odi', 'wodi', 'one day', 'oneday', 'one-day', '50 over', 'super 50')):
+                detected_fmt = 'wodi' if is_women else 'odi'
+
+            if detected_fmt:
+                context_info = {
+                    'event_id': target_event.id,
+                    'status': target_event.status,
+                    'start_time': target_event.start_time.isoformat() if target_event.start_time else None,
+                    'title': str(target_event),
+                    'format': detected_fmt,
+                    'league': league_name or meta.get('tournament_name', ''),
+                }
+                return detected_fmt, context_info
+    except Exception:
+        pass
+
+    return default_fmt, None
+

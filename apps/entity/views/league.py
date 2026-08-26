@@ -51,20 +51,31 @@ def _get_standings_for_league(request, league_entity, season, highlight_team_id=
     """
     sport_clean = str(getattr(league_entity, 'sport', '') or '').lower()
     if sport_clean == 'cricket':
-        from .helpers.team_rankings import fetch_live_icc_rankings, _normalize_cricket_team_key
+        from .helpers.team_rankings import fetch_live_icc_rankings, _normalize_cricket_team_key, _detect_cricket_active_format
+        league_name_lower = league_entity.name.lower()
+        is_women_league = bool(
+            'women' in league_name_lower or
+            league_name_lower.endswith(' w') or
+            ' w ' in league_name_lower or
+            '(w)' in league_name_lower
+        )
+
         icc_res = fetch_live_icc_rankings()
         by_format = icc_res.get('by_format', {}) if isinstance(icc_res, dict) else {}
 
         icc_tables = {}
         for fmt, rows in by_format.items():
+            fmt_is_women = fmt in ('wodi', 'wt20i', 'wtest')
             fmt_rows = []
             for row in rows:
                 t_name = row.get('team_name', '')
                 t_key = _normalize_cricket_team_key(t_name)
                 is_hl = False
-                if highlight_team_name:
+                if highlight_team_name and (is_women_league == fmt_is_women):
                     clean_hl = _normalize_cricket_team_key(highlight_team_name)
-                    is_hl = (t_key == clean_hl) or (clean_hl and (clean_hl in t_key or t_key in clean_hl))
+                    base_hl = clean_hl.replace('women', '').strip()
+                    row_base = t_key.replace('women', '').strip()
+                    is_hl = (t_key == clean_hl) or (bool(base_hl) and base_hl == row_base)
                 row_copy = dict(row)
                 row_copy['is_highlighted'] = is_hl
                 row_copy.setdefault('played', row.get('matches', 0))
@@ -72,31 +83,55 @@ def _get_standings_for_league(request, league_entity, season, highlight_team_id=
             icc_tables[fmt] = fmt_rows
 
         raw_fmt = str(request.GET.get('format', '')).lower().strip()
-        if raw_fmt in ('test', 'tests'):
-            active_fmt = 'test'
-        elif raw_fmt in ('t20', 't20i', 't20s'):
-            active_fmt = 't20i'
-        elif raw_fmt in ('wodi', 'women_odi', 'women-odi'):
-            active_fmt = 'wodi'
-        elif raw_fmt in ('wt20', 'wt20i', 'women_t20', 'women-t20'):
-            active_fmt = 'wt20i'
-        elif raw_fmt in ('odi', 'odis', 'onday', 'oneday', 'one-day', 'one_day'):
-            active_fmt = 'odi'
+        context_match = None
+        if raw_fmt:
+            if is_women_league:
+                if raw_fmt in ('t20', 't20i', 't20s', 'wt20', 'wt20i', 'women_t20', 'women-t20'):
+                    active_fmt = 'wt20i'
+                else:
+                    active_fmt = 'wodi'
+            else:
+                if raw_fmt in ('test', 'tests'):
+                    active_fmt = 'test'
+                elif raw_fmt in ('t20', 't20i', 't20s'):
+                    active_fmt = 't20i'
+                elif raw_fmt in ('wodi', 'women_odi', 'women-odi'):
+                    active_fmt = 'wodi'
+                elif raw_fmt in ('wt20', 'wt20i', 'women_t20', 'women-t20'):
+                    active_fmt = 'wt20i'
+                else:
+                    active_fmt = 'odi'
         else:
-            is_women_league = 'women' in league_entity.name.lower() or ' w' in league_entity.name.lower()
-            active_fmt = 'wodi' if is_women_league else 'odi'
+            active_fmt, context_match = _detect_cricket_active_format(league_entity, is_women=is_women_league)
 
+        target_default = 'wodi' if is_women_league else 'odi'
         if active_fmt not in icc_tables or not icc_tables[active_fmt]:
-            if 'odi' in icc_tables and icc_tables['odi']:
-                active_fmt = 'odi'
+            if target_default in icc_tables and icc_tables[target_default]:
+                active_fmt = target_default
             elif icc_tables:
                 active_fmt = list(icc_tables.keys())[0]
 
         standings = icc_tables.get(active_fmt, [])
+
+        if is_women_league:
+            tabs = [
+                {'key': 'wodi', 'label': 'ODI', 'is_active': (active_fmt == 'wodi')},
+                {'key': 'wt20i', 'label': 'T20I', 'is_active': (active_fmt == 'wt20i')},
+            ]
+        else:
+            tabs = [
+                {'key': 'odi', 'label': 'ODI', 'is_active': (active_fmt == 'odi')},
+                {'key': 't20i', 'label': 'T20I', 'is_active': (active_fmt == 't20i')},
+                {'key': 'test', 'label': 'Test', 'is_active': (active_fmt == 'test')},
+            ]
+
         return Response({
             'league': _safe_league_data(league_entity, request),
             'season': season,
             'format': active_fmt,
+            'context_match': context_match,
+            'available_formats': [t['key'] for t in tabs],
+            'tabs': tabs,
             'standings': standings,
             'icc_rankings': icc_tables,
             'source': 'icc_rankings',

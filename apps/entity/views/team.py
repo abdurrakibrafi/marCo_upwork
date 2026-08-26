@@ -18,6 +18,7 @@ from .helpers.team_rankings import (
     fetch_live_fifa_rankings,
     _get_tennis_rankings_helper,
     _get_golf_leaderboard_helper,
+    _detect_cricket_active_format,
 )
 from .helpers.team_stats import (
     _fetch_soccer_team_stats_thesportsdb,
@@ -516,20 +517,43 @@ def get_team_standings(request, team_id):
     # 1. Cricket National Team -> ICC World Rankings (Default to ODI / onday)
     if team_entity.sport == 'cricket':
         clean_name = _normalize_cricket_team_key(team_entity.name)
+        team_name_lower = team_entity.name.lower()
+        gender_val = str(getattr(team_entity.team_details, 'gender', '')).lower() if hasattr(team_entity, 'team_details') else ''
+        is_women_team = bool(
+            'women' in team_name_lower or
+            team_name_lower.endswith(' w') or
+            ' w ' in team_name_lower or
+            '(w)' in team_name_lower or
+            gender_val in ('female', 'women')
+        )
+
         icc_res = fetch_live_icc_rankings()
         by_format = icc_res.get('by_format', {}) if isinstance(icc_res, dict) else {}
 
         icc_tables = {}
         cricket_standings_list = []
         is_national = False
+
+        base_country_name = clean_name.replace('women', '').strip()
+
         for fmt, rows in by_format.items():
+            fmt_is_women = fmt in ('wodi', 'wt20i', 'wtest')
             fmt_rows = []
             for row in rows:
                 t_name = row.get('team_name', '')
                 t_key = _normalize_cricket_team_key(t_name)
-                is_hl = (t_key == clean_name) or (clean_name and (clean_name in t_key or t_key in clean_name))
+                row_base_country = t_key.replace('women', '').strip()
+
+                # Highlight only if team gender matches table gender (never cross-highlight men/women)
+                is_hl = False
+                if is_women_team == fmt_is_women:
+                    is_hl = (t_key == clean_name) or (
+                        bool(base_country_name) and (base_country_name == row_base_country)
+                    )
+
                 if is_hl:
                     is_national = True
+
                 row_copy = dict(row)
                 row_copy['is_highlighted'] = is_hl
                 row_copy.setdefault('played', row.get('matches', 0))
@@ -538,40 +562,62 @@ def get_team_standings(request, team_id):
                 fmt_rows.append(row_copy)
             icc_tables[fmt] = fmt_rows
 
-        # Format parameter normalization (Default is onday / ODI - only ICC national matches)
+        # Format parameter normalization (backend dynamic detection when no format is specified)
         raw_fmt = str(request.GET.get('format', '')).lower().strip()
-        if raw_fmt in ('test', 'tests'):
-            active_fmt = 'test'
-        elif raw_fmt in ('t20', 't20i', 't20s'):
-            active_fmt = 't20i'
-        elif raw_fmt in ('wodi', 'women_odi', 'women-odi'):
-            active_fmt = 'wodi'
-        elif raw_fmt in ('wt20', 'wt20i', 'women_t20', 'women-t20'):
-            active_fmt = 'wt20i'
-        elif raw_fmt in ('odi', 'odis', 'onday', 'oneday', 'one-day', 'one_day'):
-            active_fmt = 'odi'
+        context_match = None
+
+        if raw_fmt:
+            # Frontend explicitly asked for a format
+            if is_women_team:
+                if raw_fmt in ('t20', 't20i', 't20s', 'wt20', 'wt20i', 'women_t20', 'women-t20'):
+                    active_fmt = 'wt20i'
+                else:
+                    active_fmt = 'wodi'
+            else:
+                if raw_fmt in ('test', 'tests'):
+                    active_fmt = 'test'
+                elif raw_fmt in ('t20', 't20i', 't20s'):
+                    active_fmt = 't20i'
+                elif raw_fmt in ('wodi', 'women_odi', 'women-odi'):
+                    active_fmt = 'wodi'
+                elif raw_fmt in ('wt20', 'wt20i', 'women_t20', 'women-t20'):
+                    active_fmt = 'wt20i'
+                else:
+                    active_fmt = 'odi'
         else:
-            # Default to ODI ('onday') for cricket, or WODI if women's team
-            is_women_team = bool(
-                'women' in team_entity.name.lower() or
-                ' w' in team_entity.name.lower() or
-                (hasattr(team_entity, 'team_details') and 'women' in str(getattr(team_entity.team_details, 'gender', '')).lower())
-            )
-            active_fmt = 'wodi' if is_women_team else 'odi'
+            # Backend automatically detects active format from current/upcoming match
+            active_fmt, context_match = _detect_cricket_active_format(team_entity, is_women=is_women_team)
 
         # Fallback if active_fmt table is missing or empty
+        target_default = 'wodi' if is_women_team else 'odi'
         if active_fmt not in icc_tables or not icc_tables[active_fmt]:
-            if 'odi' in icc_tables and icc_tables['odi']:
-                active_fmt = 'odi'
+            if target_default in icc_tables and icc_tables[target_default]:
+                active_fmt = target_default
             elif icc_tables:
                 active_fmt = list(icc_tables.keys())[0]
 
         cricket_standings_list = icc_tables.get(active_fmt, [])
 
+        # Dynamic tabs metadata for frontend
+        if is_women_team:
+            tabs = [
+                {'key': 'wodi', 'label': 'ODI', 'is_active': (active_fmt == 'wodi')},
+                {'key': 'wt20i', 'label': 'T20I', 'is_active': (active_fmt == 'wt20i')},
+            ]
+        else:
+            tabs = [
+                {'key': 'odi', 'label': 'ODI', 'is_active': (active_fmt == 'odi')},
+                {'key': 't20i', 'label': 'T20I', 'is_active': (active_fmt == 't20i')},
+                {'key': 'test', 'label': 'Test', 'is_active': (active_fmt == 'test')},
+            ]
+
         return Response({
             'team': EntitySerializer(team_entity, context={'request': request}).data,
             'season': season,
             'format': active_fmt,
+            'context_match': context_match,
+            'available_formats': [t['key'] for t in tabs],
+            'tabs': tabs,
             'standings': cricket_standings_list,
             'icc_rankings': icc_tables,
             'source': 'icc_rankings',
