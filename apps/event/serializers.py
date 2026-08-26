@@ -206,6 +206,19 @@ class EventSerializer(serializers.ModelSerializer):
             if status_det in ('Not Started', '') or ':' in status_det:
                 data['status_detail'] = 'FT'
 
+        # Timezone conversion for local_date, local_time, and status_detail
+        user_tz = self.context.get('timezone')
+        if not user_tz and self.context.get('request'):
+            from apps.event.views import _resolve_timezone
+            user_tz = _resolve_timezone(self.context.get('request'))
+
+        if user_tz and instance.start_time:
+            local_dt = instance.start_time.astimezone(user_tz)
+            data['local_date'] = local_dt.date().isoformat()
+            data['local_time'] = local_dt.strftime('%H:%M')
+            if data.get('status') == 'upcoming' and (not data.get('status_detail') or ':' in str(data.get('status_detail'))):
+                data['status_detail'] = local_dt.strftime('%H:%M')
+
         # Highlight followed Nest entity logo and ID for calendar entries (agent_task.md Section 14)
         nest_entity_ids = self.context.get('nest_entity_ids')
         if nest_entity_ids:
@@ -300,6 +313,19 @@ class EventDetailSerializer(serializers.ModelSerializer):
             status_det = str(data.get('status_detail') or '')
             if status_det in ('Not Started', '') or ':' in status_det:
                 data['status_detail'] = 'FT'
+
+        # Timezone conversion for local_date, local_time, and status_detail
+        user_tz = self.context.get('timezone')
+        if not user_tz and self.context.get('request'):
+            from apps.event.views import _resolve_timezone
+            user_tz = _resolve_timezone(self.context.get('request'))
+
+        if user_tz and instance.start_time:
+            local_dt = instance.start_time.astimezone(user_tz)
+            data['local_date'] = local_dt.date().isoformat()
+            data['local_time'] = local_dt.strftime('%H:%M')
+            if data.get('status') == 'upcoming' and (not data.get('status_detail') or ':' in str(data.get('status_detail'))):
+                data['status_detail'] = local_dt.strftime('%H:%M')
 
         # Auto-fill missing venue name/city/country from metadata / home team lookup
         data = _extract_event_venue_info(instance, data)

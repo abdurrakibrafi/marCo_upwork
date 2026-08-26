@@ -10,6 +10,58 @@ from apps.event.models import Event, EventStatistics
 from apps.event.serializers import EventSerializer, EventDetailSerializer
 from apps.core.utils.mixins import BaseResponseMixin
 from apps.nest.models import UserNest
+import re
+
+
+def _resolve_timezone(request):
+    """Resolve requested timezone from query params (?timezone=, ?tz=) or headers (X-Timezone).
+
+    Defaults to settings.TIME_ZONE (UTC).
+    """
+    if not request:
+        return timezone.get_current_timezone()
+
+    tz_param = None
+    if hasattr(request, 'query_params'):
+        tz_param = request.query_params.get("timezone") or request.query_params.get("tz")
+    if not tz_param and hasattr(request, 'GET'):
+        tz_param = request.GET.get("timezone") or request.GET.get("tz")
+    if not tz_param and hasattr(request, 'headers'):
+        tz_param = request.headers.get("X-Timezone")
+
+    if not tz_param:
+        return timezone.get_current_timezone()
+
+    tz_str = str(tz_param).strip()
+
+    # 1. Try pytz
+    try:
+        import pytz
+        return pytz.timezone(tz_str)
+    except Exception:
+        pass
+
+    # 2. Try zoneinfo
+    try:
+        import zoneinfo
+        return zoneinfo.ZoneInfo(tz_str)
+    except Exception:
+        pass
+
+    # 3. Try offset format (e.g. '+06:00', '-05:00', '+6')
+    try:
+        from datetime import timezone as dt_timezone
+        m = re.match(r'^([+-])(\d{1,2})(?::?(\d{2}))?$', tz_str)
+        if m:
+            sign = -1 if m.group(1) == '-' else 1
+            hours = int(m.group(2))
+            minutes = int(m.group(3)) if m.group(3) else 0
+            offset = timedelta(hours=hours, minutes=minutes) * sign
+            return dt_timezone(offset)
+    except Exception:
+        pass
+
+    return timezone.get_current_timezone()
 
 
 def _deduplicate_events(events_list: list) -> list:
@@ -138,12 +190,15 @@ def get_nest_calendar(request):
             athlete_teams = Athlete.objects.filter(entity_id__in=athlete_ids).values_list('current_team_id', flat=True)
             team_ids.update(athlete_teams)
 
+        user_tz = _resolve_timezone(request)
+        now_local = timezone.now().astimezone(user_tz)
+
         # Date range support
         start_date_str = request.query_params.get("start_date")
         end_date_str = request.query_params.get("end_date")
 
         try:
-            start_date = datetime.fromisoformat(start_date_str).date() if start_date_str else timezone.now().date() - timedelta(days=7)
+            start_date = datetime.fromisoformat(start_date_str).date() if start_date_str else now_local.date() - timedelta(days=7)
             end_date = datetime.fromisoformat(end_date_str).date() if end_date_str else start_date + timedelta(days=97)
         except ValueError:
             return mixin.error_response(
@@ -151,11 +206,14 @@ def get_nest_calendar(request):
                 status_code=status.HTTP_400_BAD_REQUEST
             )
 
+        start_dt = datetime.combine(start_date, datetime.min.time()).replace(tzinfo=user_tz)
+        end_dt = datetime.combine(end_date, datetime.max.time()).replace(tzinfo=user_tz)
+
         # 3. Queryset
         qs = (
             Event.objects.filter(
-                start_time__date__gte=start_date,
-                start_time__date__lte=end_date,
+                start_time__gte=start_dt,
+                start_time__lte=end_dt,
             ).filter(
                 Q(home_entity_id__in=team_ids)
                 | Q(away_entity_id__in=team_ids)
@@ -188,13 +246,14 @@ def get_nest_calendar(request):
         serialized   = EventSerializer(
             events_list,
             many=True,
-            context={'request': request, 'nest_entity_ids': set(nest_entity_ids)}
+            context={'request': request, 'nest_entity_ids': set(nest_entity_ids), 'timezone': user_tz}
         ).data
 
-        # 7. Group by date
+        # 7. Group by date in user's timezone
         events_by_date: dict = {}
         for event_obj, event_data in zip(events_list, serialized):
-            date_key = event_obj.start_time.date().isoformat()
+            local_dt = event_obj.start_time.astimezone(user_tz) if event_obj.start_time else None
+            date_key = local_dt.date().isoformat() if local_dt else "TBD"
             events_by_date.setdefault(date_key, []).append(event_data)
 
         return mixin.success_response(
@@ -289,7 +348,10 @@ def get_event_detail(request, event_id: int):
                     "player_stats", "highlights"
                 ).get(id=event_id)
 
-        return mixin.success_response(data=EventDetailSerializer(event).data)
+        user_tz = _resolve_timezone(request)
+        return mixin.success_response(
+            data=EventDetailSerializer(event, context={'request': request, 'timezone': user_tz}).data
+        )
     except Exception as exc:
         return mixin.handle_exception(exc)
 
@@ -309,14 +371,19 @@ def get_matches_of_day(request):
     """
     mixin = BaseResponseMixin()
     try:
+        user_tz = _resolve_timezone(request)
+        now_local = timezone.now().astimezone(user_tz)
         date_str = request.GET.get('date')
         try:
-            query_date = datetime.fromisoformat(date_str).date() if date_str else timezone.now().date()
+            query_date = datetime.fromisoformat(date_str).date() if date_str else now_local.date()
         except ValueError:
             return mixin.error_response(
                 message='Invalid date format. Use YYYY-MM-DD',
                 status_code=status.HTTP_400_BAD_REQUEST
             )
+
+        start_dt = datetime.combine(query_date, datetime.min.time()).replace(tzinfo=user_tz)
+        end_dt = datetime.combine(query_date, datetime.max.time()).replace(tzinfo=user_tz)
 
         nest_entities = list(UserNest.objects.filter(
             user=request.user
@@ -362,9 +429,10 @@ def get_matches_of_day(request):
             athlete_teams = Athlete.objects.filter(entity_id__in=athlete_ids).values_list('current_team_id', flat=True)
             team_ids.update(athlete_teams)
 
-        # Get all matches on this date involving user's nest entities
+        # Get all matches on this date in user's timezone involving user's nest entities
         matches_qs = Event.objects.filter(
-            start_time__date=query_date,
+            start_time__gte=start_dt,
+            start_time__lte=end_dt,
         ).filter(
             Q(home_entity_id__in=team_ids) |
             Q(away_entity_id__in=team_ids) |
@@ -376,7 +444,8 @@ def get_matches_of_day(request):
         # If no nest matches, show popular matches of the day
         if not matches_qs.exists():
             matches_qs = Event.objects.filter(
-                start_time__date=query_date,
+                start_time__gte=start_dt,
+                start_time__lte=end_dt,
             ).select_related(
                 'home_entity', 'away_entity', 'league'
             ).order_by('start_time')[:10]
@@ -388,12 +457,13 @@ def get_matches_of_day(request):
         upcoming = [e for e in matches if e.status == 'upcoming']
         completed = [e for e in matches if e.status == 'completed']
 
+        serializer_context = {'request': request, 'timezone': user_tz}
         data = {
             'date': query_date.isoformat(),
             'total_count': len(matches),
-            'live': EventSerializer(live, many=True).data,
-            'upcoming': EventSerializer(upcoming, many=True).data,
-            'completed': EventSerializer(completed, many=True).data,
+            'live': EventSerializer(live, many=True, context=serializer_context).data,
+            'upcoming': EventSerializer(upcoming, many=True, context=serializer_context).data,
+            'completed': EventSerializer(completed, many=True, context=serializer_context).data,
         }
         return mixin.success_response(data=data)
     except Exception as exc:
@@ -414,17 +484,22 @@ def get_entity_calendar(request, entity_id):
     """
     mixin = BaseResponseMixin()
     try:
+        user_tz = _resolve_timezone(request)
+        now_local = timezone.now().astimezone(user_tz)
         start_date_str = request.GET.get('start_date')
         end_date_str = request.GET.get('end_date')
 
         try:
-            start_date = datetime.fromisoformat(start_date_str).date() if start_date_str else timezone.now().date()
+            start_date = datetime.fromisoformat(start_date_str).date() if start_date_str else now_local.date()
             end_date = datetime.fromisoformat(end_date_str).date() if end_date_str else start_date + timedelta(days=30)
         except ValueError:
             return mixin.error_response(
                 message='Invalid date format. Use YYYY-MM-DD',
                 status_code=status.HTTP_400_BAD_REQUEST
             )
+
+        start_dt = datetime.combine(start_date, datetime.min.time()).replace(tzinfo=user_tz)
+        end_dt = datetime.combine(end_date, datetime.max.time()).replace(tzinfo=user_tz)
 
         # Expand entity_id to include duplicate / canonical entity IDs
         from apps.entity.models import Entity
@@ -454,8 +529,8 @@ def get_entity_calendar(request, entity_id):
             related_ids = [entity_id]
 
         events_qs = Event.objects.filter(
-            start_time__date__gte=start_date,
-            start_time__date__lte=end_date,
+            start_time__gte=start_dt,
+            start_time__lte=end_dt,
         ).filter(
             Q(home_entity_id__in=related_ids) | Q(away_entity_id__in=related_ids)
         ).select_related(
@@ -468,11 +543,12 @@ def get_entity_calendar(request, entity_id):
         live = [e for e in events_list if e.status == 'live']
         recent = sorted([e for e in events_list if e.start_time < now], key=lambda x: x.start_time, reverse=True)[:10]
 
+        serializer_context = {'request': request, 'timezone': user_tz}
         data = {
             'entity_id': entity_id,
-            'upcoming': EventSerializer(upcoming, many=True).data,
-            'live': EventSerializer(live, many=True).data,
-            'recent': EventSerializer(recent, many=True).data,
+            'upcoming': EventSerializer(upcoming, many=True, context=serializer_context).data,
+            'live': EventSerializer(live, many=True, context=serializer_context).data,
+            'recent': EventSerializer(recent, many=True, context=serializer_context).data,
         }
         return mixin.success_response(data=data)
     except Exception as exc:
@@ -492,6 +568,7 @@ def get_live_events(request):
     """
     mixin = BaseResponseMixin()
     try:
+        user_tz = _resolve_timezone(request)
         events = Event.objects.filter(
             status='live'
         ).select_related('home_entity', 'away_entity', 'league').order_by('-start_time')
@@ -500,9 +577,10 @@ def get_live_events(request):
         if sport:
             events = events.filter(sport=sport)
 
+        serializer_context = {'request': request, 'timezone': user_tz}
         data = {
             'count': events.count(),
-            'events': EventSerializer(events, many=True).data,
+            'events': EventSerializer(events, many=True, context=serializer_context).data,
         }
         return mixin.success_response(data=data)
     except Exception as exc:
@@ -522,6 +600,7 @@ def get_upcoming_events(request):
     """
     mixin = BaseResponseMixin()
     try:
+        user_tz = _resolve_timezone(request)
         days = int(request.GET.get('days', 7))
         sport = request.GET.get('sport')
         end_date = timezone.now() + timedelta(days=days)
@@ -535,10 +614,11 @@ def get_upcoming_events(request):
         if sport:
             events = events.filter(sport=sport)
 
+        serializer_context = {'request': request, 'timezone': user_tz}
         data = {
             'days': days,
             'count': events.count(),
-            'events': EventSerializer(events, many=True).data,
+            'events': EventSerializer(events, many=True, context=serializer_context).data,
         }
         return mixin.success_response(data=data)
     except Exception as exc:
@@ -559,6 +639,7 @@ def get_events_by_date(request, date):
     """
     mixin = BaseResponseMixin()
     try:
+        user_tz = _resolve_timezone(request)
         try:
             query_date = datetime.fromisoformat(date).date()
         except ValueError:
@@ -567,21 +648,26 @@ def get_events_by_date(request, date):
                 status_code=status.HTTP_400_BAD_REQUEST
             )
 
+        start_dt = datetime.combine(query_date, datetime.min.time()).replace(tzinfo=user_tz)
+        end_dt = datetime.combine(query_date, datetime.max.time()).replace(tzinfo=user_tz)
+
         events = Event.objects.filter(
-            start_time__date=query_date
+            start_time__gte=start_dt,
+            start_time__lte=end_dt,
         ).select_related('home_entity', 'away_entity', 'league').order_by('start_time')
 
         sport = request.GET.get('sport')
         if sport:
             events = events.filter(sport=sport)
 
+        serializer_context = {'request': request, 'timezone': user_tz}
         # Group by sport
         grouped = {}
         for event in events:
             s = event.sport
             if s not in grouped:
                 grouped[s] = []
-            grouped[s].append(EventSerializer(event).data)
+            grouped[s].append(EventSerializer(event, context=serializer_context).data)
 
         data = {
             'date': date,
