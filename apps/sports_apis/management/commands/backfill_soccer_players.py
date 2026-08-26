@@ -23,9 +23,17 @@ class Command(BaseCommand):
         if dry_run:
             self.stdout.write(self.style.WARNING("=== DRY RUN MODE: Database changes will not be saved ==="))
 
-        # Get all soccer team entities in the DB that have external IDs
-        teams = Entity.objects.filter(type='team', sport='soccer').exclude(external_id="")
-        self.stdout.write(f"Found {teams.count()} soccer teams with external IDs in the database.")
+        # Get all soccer team entities in the DB that have numeric StatPal external IDs
+        teams_qs = Entity.objects.filter(
+            type='team',
+            sport='soccer'
+        ).exclude(
+            external_id=""
+        ).exclude(
+            external_id__startswith="tsdb_"
+        )
+        teams = [t for t in teams_qs if str(t.external_id).strip().isdigit()]
+        self.stdout.write(f"Found {len(teams)} valid StatPal soccer teams in the database.")
 
         created_count = 0
         updated_count = 0
@@ -39,7 +47,11 @@ class Command(BaseCommand):
         }
 
         for team in teams:
-            self.stdout.write(f"\nProcessing team: {team.name} (External ID: {team.external_id})")
+            ext_id = str(team.external_id).strip()
+            if not ext_id.isdigit():
+                continue
+
+            self.stdout.write(f"\nProcessing team: {team.name} (External ID: {ext_id})")
             time.sleep(0.5)  # Rate limiting safety delay
 
             response = statpal_service.get_soccer_team(team.external_id)

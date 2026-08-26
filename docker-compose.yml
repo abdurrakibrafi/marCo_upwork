@@ -15,6 +15,21 @@ services:
       - redis
     restart: unless-stopped
 
+  celery_live:
+    build: .
+    container_name: mysportsnest_celery_live
+    volumes:
+      - .:/app
+      - media_volume:/app/media
+    env_file:
+      - .env
+    depends_on:
+      - db
+      - redis
+    restart: unless-stopped
+    entrypoint: []
+    command: celery -A config worker --loglevel=info -Q live_scores --concurrency=2 -n live_worker@%h
+
   celery:
     build: .
     container_name: mysportsnest_celery
@@ -28,7 +43,7 @@ services:
       - redis
     restart: unless-stopped
     entrypoint: []
-    command: celery -A config worker --loglevel=info -Q live_scores,default,news_feed,heavy_background --concurrency=2 --max-tasks-per-child=200
+    command: celery -A config worker --loglevel=info -Q default,news_feed,heavy_background --concurrency=3 -O fair --max-tasks-per-child=200 -n background_worker@%h
 
   celery_beat:
     build: .

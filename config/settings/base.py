@@ -246,6 +246,7 @@ CELERY_TASK_DEFAULT_QUEUE = 'default'
 CELERY_TASK_ROUTES = {
     # ── High Priority (Real-time live scores) ──
     'apps.event.tasks.sync_statpal_data': {'queue': 'live_scores'},
+    'apps.event.tasks.update_soccer_live_scores_only': {'queue': 'live_scores'},
     'apps.sports_apis.tasks.update_nfl_live_scores': {'queue': 'live_scores'},
 
     # ── News Feed & RSS ──
