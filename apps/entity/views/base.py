@@ -234,6 +234,9 @@ def get_entity_stats(request, entity_id):
     entity = get_object_or_404(Entity, id=entity_id)
     entity = entity.canonical_entity or entity
 
+    if entity.sport == 'cricket':
+        return get_team_stats(request._request, entity.id)
+
     if entity.type == 'team':
         return get_team_stats(request._request, entity.id)
 

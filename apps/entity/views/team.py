@@ -109,6 +109,120 @@ def get_team_stats(request, team_id):
     )
     api_season = int(str(season).split('-', 1)[0])
 
+    # ── Cricket National Team Stats (Dynamic active format) ──
+    if team_entity.sport == 'cricket':
+        clean_name = _normalize_cricket_team_key(team_entity.name)
+        team_name_lower = team_entity.name.lower()
+        gender_val = str(getattr(team_entity.team_details, 'gender', '')).lower() if hasattr(team_entity, 'team_details') else ''
+        is_women_team = bool(
+            'women' in team_name_lower or
+            team_name_lower.endswith(' w') or
+            ' w ' in team_name_lower or
+            '(w)' in team_name_lower or
+            gender_val in ('female', 'women')
+        )
+
+        # 1. Format parameter normalization or backend auto-detection
+        raw_fmt = str(request.GET.get('format', '')).lower().strip()
+        context_match = None
+        if raw_fmt:
+            if is_women_team:
+                active_fmt = 'wt20i' if raw_fmt in ('t20', 't20i', 't20s', 'wt20', 'wt20i', 'women_t20', 'women-t20') else 'wodi'
+            else:
+                if raw_fmt in ('test', 'tests'):
+                    active_fmt = 'test'
+                elif raw_fmt in ('t20', 't20i', 't20s'):
+                    active_fmt = 't20i'
+                elif raw_fmt in ('wodi', 'women_odi', 'women-odi'):
+                    active_fmt = 'wodi'
+                elif raw_fmt in ('wt20', 'wt20i', 'women_t20', 'women-t20'):
+                    active_fmt = 'wt20i'
+                else:
+                    active_fmt = 'odi'
+        else:
+            active_fmt, context_match = _detect_cricket_active_format(team_entity, is_women=is_women_team)
+
+        # 2. Fetch live ICC rankings
+        icc_res = fetch_live_icc_rankings()
+        icc_map = icc_res.get('by_team', {}) if isinstance(icc_res, dict) and 'by_team' in icc_res else {}
+        by_format = icc_res.get('by_format', {}) if isinstance(icc_res, dict) and 'by_format' in icc_res else {}
+
+        base_country_name = clean_name.replace('women', '').strip()
+        icc_info = None
+
+        if clean_name:
+            for k, v in icc_map.items():
+                ck = _normalize_cricket_team_key(k)
+                row_base = ck.replace('women', '').strip()
+                k_is_women = 'women' in k.lower()
+                if (is_women_team == k_is_women) and (ck == clean_name or (bool(base_country_name) and base_country_name == row_base)):
+                    icc_info = v
+                    break
+
+        if not icc_info:
+            icc_info = {}
+            for fmt_k, fmt_rows in by_format.items():
+                fmt_is_women = fmt_k in ('wodi', 'wt20i', 'wtest')
+                if is_women_team != fmt_is_women:
+                    continue
+                for r in fmt_rows:
+                    r_key = _normalize_cricket_team_key(r.get('team_name', ''))
+                    r_base = r_key.replace('women', '').strip()
+                    if r_key == clean_name or (bool(base_country_name) and base_country_name == r_base):
+                        icc_info[fmt_k] = {
+                            'rank': r.get('rank', 0),
+                            'matches': r.get('matches', 0),
+                            'points': r.get('points', 0),
+                            'rating': r.get('rating', 0),
+                        }
+                        break
+
+        # Fallback if active_fmt not found in icc_info
+        target_default = 'wodi' if is_women_team else 'odi'
+        if active_fmt not in icc_info:
+            if target_default in icc_info:
+                active_fmt = target_default
+            elif icc_info:
+                active_fmt = list(icc_info.keys())[0]
+
+        active_format_stats = icc_info.get(active_fmt, {}) if isinstance(icc_info, dict) else {}
+
+        # 3. Optional match record stats from DB/API
+        stats_data = _fetch_cricket_team_stats(team_entity.external_id, season)
+        if not stats_data:
+            stats_data = _fetch_stats_from_db_events(team_entity)
+
+        # Merge format metrics into stats_data
+        stats_data['rank'] = active_format_stats.get('rank', stats_data.get('rank', 0))
+        stats_data['rating'] = active_format_stats.get('rating', 0)
+        stats_data['points'] = active_format_stats.get('points', 0)
+        stats_data['matches_played'] = active_format_stats.get('matches', stats_data.get('matches_played', 0))
+        stats_data['icc_rankings'] = icc_info or {}
+
+        # 4. Dynamic tabs metadata
+        if is_women_team:
+            tabs = [
+                {'key': 'wodi', 'label': 'ODI', 'is_active': (active_fmt == 'wodi')},
+                {'key': 'wt20i', 'label': 'T20I', 'is_active': (active_fmt == 'wt20i')},
+            ]
+        else:
+            tabs = [
+                {'key': 'odi', 'label': 'ODI', 'is_active': (active_fmt == 'odi')},
+                {'key': 't20i', 'label': 'T20I', 'is_active': (active_fmt == 't20i')},
+                {'key': 'test', 'label': 'Test', 'is_active': (active_fmt == 'test')},
+            ]
+
+        return Response({
+            'team': EntitySerializer(team_entity, context={'request': request}).data,
+            'season': stats_season,
+            'format': active_fmt,
+            'context_match': context_match,
+            'available_formats': [t['key'] for t in tabs],
+            'tabs': tabs,
+            'stats': stats_data,
+            'source': 'icc_rankings' if active_format_stats else ('live_api' if stats_data else 'empty'),
+        })
+
     # 1 — try DB first
     stats = EntityStats.objects.filter(entity=team_entity, season=stats_season).first()
     has_valid_db_stats = (
