@@ -264,10 +264,72 @@ def _entity_matches_text(entity: Entity, text: str) -> bool:
 
     # Enforce sports context for national team entities (e.g. country names)
     from apps.entity.utils.matcher import is_national_team
-    if is_national_team(entity.name):
-        # Match roots of sports keywords to support variations like coaching, played, refereeing, etc.
+    sport_clean = (getattr(entity, 'sport', '') or '').strip().lower()
+
+    # Cross-sport negative checks to prevent cricket/basketball/volleyball leaking into soccer and vice-versa
+    if sport_clean == 'soccer':
+        other_sports_pattern = re.compile(
+            r'\b(cricket|wicket|batsman|batter|bowler|ipl|bcci|bbl|psl|cpl|odi|t20|t20i|test match|century|'
+            r'nba|wnba|basketball|slam dunk|three-pointer|triple-double|'
+            r'volleyball|vnl|'
+            r'baseball|mlb|home run|strikeout|'
+            r'tennis|wimbledon|us open|french open|australian open|atp|wta|'
+            r'formula 1|f1|grand prix)\b', re.I
+        )
+        soccer_specific_pattern = re.compile(
+            r'\b(soccer|football|fifa|uefa|copa|conmebol|concacaf|champions league|world cup|striker|midfield|'
+            r'defend|goalkeep|goal|penalty|clean sheet|red card|yellow card|hat-trick|neymar|messi|ronaldo|'
+            r'vinicius|mbappe|rodrygo|alisson|ederson|pele|dorival|club|squad|rost|nwsl|premier league|'
+            r'la liga|serie a|bundesliga|ligue 1|mls)\b', re.I
+        )
+        # Reject if text is dominated by another sport and lacks soccer context
+        if other_sports_pattern.search(text_norm) and not soccer_specific_pattern.search(text_norm):
+            return False
+
+        if is_national_team(entity.name):
+            if not soccer_specific_pattern.search(text_norm):
+                return False
+
+    elif sport_clean == 'cricket':
+        other_sports_pattern = re.compile(
+            r'\b(fifa|uefa|premier league|la liga|serie a|bundesliga|ligue 1|mls|el clasico|'
+            r'nba|wnba|basketball|slam dunk|three-pointer|'
+            r'volleyball|vnl|'
+            r'baseball|mlb|home run|'
+            r'tennis|wimbledon|'
+            r'formula 1|f1)\b', re.I
+        )
+        cricket_specific_pattern = re.compile(
+            r'\b(cricket|icc|bcci|ipl|bpl|psl|cpl|bbl|test match|odi|t20|t20i|'
+            r'wicket|batsman|batter|bowler|bowling|batting|innings|century|half-century|pitch|ashes|'
+            r'cricinfo|cricbuzz|shakib|kohli|rohit|babar|root)\b', re.I
+        )
+        if other_sports_pattern.search(text_norm) and not cricket_specific_pattern.search(text_norm):
+            return False
+
+        if is_national_team(entity.name):
+            if not cricket_specific_pattern.search(text_norm):
+                return False
+
+    elif sport_clean == 'basketball':
+        other_sports_pattern = re.compile(
+            r'\b(cricket|wicket|batsman|bowler|ipl|bcci|fifa|uefa|soccer|premier league)\b', re.I
+        )
+        basket_specific_pattern = re.compile(
+            r'\b(basketball|nba|wnba|fiba|dunk|three-pointer|3-pointer|rebound|assist|triple-double|free throw|playoffs|lebron|curry|giannis)\b', re.I
+        )
+        if other_sports_pattern.search(text_norm) and not basket_specific_pattern.search(text_norm):
+            return False
+
+        if is_national_team(entity.name):
+            if not basket_specific_pattern.search(text_norm):
+                return False
+
+    elif is_national_team(entity.name):
         sports_pattern = re.compile(
-            r'\b(sport|game|match|play|coach|stadium|cup|tourn|leagu|champ|win|won|lost|lose|beat|defeat|scor|goal|team|club|socc|footb|crick|nba|nfl|mlb|nhl|baseb|hockey|tenn|golf|f1|formu|mma|ufc|fight|athlet|runn|race|olympi|squad|rost|train|seaso|jersey|manag|quali|friend|vs|draw|lineup|transf|victo|fan|ref|ump|offic|capt|skip|boss|injur|rule|pitch|ground|copa|americ|fifa|icc|strik|midf|defen|goalk|keep|batsm|bowl|clash|fixt|tie|legend|espn|cricinfo|espncricinfo|basketb|fiba|uefa|unbeat|sub|ban|card|assist|select|retir|ronaldo|messi|neymar|mbappe|shakib|cricbuzz|skysport|eurosport|talksport|theathletic|derby)\w*\b'
+            r'\b(sport|game|match|play|coach|stadium|cup|tourn|leagu|champ|win|won|lost|lose|beat|defeat|'
+            r'scor|goal|team|club|squad|rost|train|seaso|jersey|manag|quali|friend|vs|draw|lineup|transf|'
+            r'victo|fan|ref|ump|offic|capt|skip|boss|injur)\w*\b'
         )
         if not sports_pattern.search(text_norm):
             return False

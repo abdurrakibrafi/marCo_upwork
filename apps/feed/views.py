@@ -274,20 +274,59 @@ def get_entity_feed(request, entity_id):
         publisher_name__in=hidden_publishers
     ).select_related('source').prefetch_related('entities').distinct()
 
-    # Enforce sports context for national team entities (e.g. Brazil, Argentina, France)
+    # Enforce strict sport-specific context and exclude cross-sport leaks (e.g. cricket/basketball into soccer)
+    sport_clean = (getattr(entity, 'sport', '') or '').strip().lower()
     from apps.entity.utils.matcher import is_national_team
-    if is_national_team(entity.name):
-        from django.db import connection
-        sports_regex = (
-            r'(sport|game|match|play|coach|stadium|cup|tourn|leagu|champ|win|won|lost|lose|beat|defeat|'
-            r'scor|goal|team|club|socc|footb|crick|nba|nfl|mlb|nhl|baseb|hockey|tenn|golf|f1|formu|'
-            r'mma|ufc|fight|athlet|race|olympi|squad|rost|train|seaso|jersey|manag|quali|friend|vs|'
-            r'draw|lineup|transf|victo|fan|ref|ump|capt|boss|injur|copa|fifa|icc|strik|midf|defen|'
-            r'goalk|clash|fixt|tie|legend|espn|cricinfo|basketb|uefa|sub|ban|card|assist|ronaldo|'
-            r'messi|neymar|mbappe|vinicius|rodrygo|alisson|ederson|pele|dorival)'
-        )
-        if connection.vendor == 'postgresql':
-            feed = feed.filter(Q(title__iregex=sports_regex) | Q(summary__iregex=sports_regex))
+    from django.db import connection
+
+    if connection.vendor == 'postgresql':
+        if sport_clean == 'soccer':
+            other_sports_regex = (
+                r'(cricket|wicket|batsman|batter|bowler|ipl\b|bcci\b|bbl\b|psl\b|cpl\b|\bodi\b|\bt20\b|\bt20i\b|'
+                r'\btest match|\bcentury\b|nba\b|wnba\b|basketball|slam dunk|three-pointer|triple-double|'
+                r'volleyball|vnl\b|baseball|mlb\b|home run|strikeout|tennis|wimbledon|us open|french open|'
+                r'australian open|\batp\b|\bwta\b|formula 1|\bf1\b|grand prix)'
+            )
+            feed = feed.exclude(Q(title__iregex=other_sports_regex) | Q(summary__iregex=other_sports_regex))
+
+            if is_national_team(entity.name):
+                soccer_regex = (
+                    r'(soccer|football|fifa|uefa|copa|conmebol|concacaf|champions league|world cup|striker|midfield|'
+                    r'defend|goalkeep|goal|penalty|clean sheet|red card|yellow card|hat-trick|neymar|messi|ronaldo|'
+                    r'vinicius|mbappe|rodrygo|alisson|ederson|pele|dorival|club|squad|rost|nwsl|premier league|'
+                    r'la liga|serie a|bundesliga|ligue 1|mls\b)'
+                )
+                feed = feed.filter(Q(title__iregex=soccer_regex) | Q(summary__iregex=soccer_regex))
+
+        elif sport_clean == 'cricket':
+            other_sports_regex = (
+                r'(fifa|uefa|premier league|la liga|serie a|bundesliga|ligue 1|mls\b|el clasico|'
+                r'nba\b|wnba\b|basketball|slam dunk|three-pointer|volleyball|vnl\b|baseball|mlb\b|'
+                r'home run|tennis|wimbledon|formula 1|\bf1\b)'
+            )
+            feed = feed.exclude(Q(title__iregex=other_sports_regex) | Q(summary__iregex=other_sports_regex))
+
+            if is_national_team(entity.name):
+                cricket_regex = (
+                    r'(cricket|icc\b|bcci\b|ipl\b|bpl\b|psl\b|cpl\b|bbl\b|\btest match|\bodi\b|\bt20\b|\bt20i\b|'
+                    r'wicket|batsman|batter|bowler|bowling|batting|innings|century|half-century|pitch|ashes|'
+                    r'cricinfo|cricbuzz|shakib|kohli|rohit|babar|root)'
+                )
+                feed = feed.filter(Q(title__iregex=cricket_regex) | Q(summary__iregex=cricket_regex))
+
+        elif sport_clean == 'basketball':
+            other_sports_regex = (
+                r'(cricket|wicket|batsman|bowler|ipl\b|bcci\b|fifa|uefa|soccer|premier league|'
+                r'volleyball|vnl\b|formula 1|\bf1\b)'
+            )
+            feed = feed.exclude(Q(title__iregex=other_sports_regex) | Q(summary__iregex=other_sports_regex))
+
+            if is_national_team(entity.name):
+                basket_regex = (
+                    r'(basketball|nba\b|wnba\b|fiba\b|dunk|three-pointer|3-pointer|rebound|assist|'
+                    r'triple-double|free throw|playoffs|lebron|curry|giannis)'
+                )
+                feed = feed.filter(Q(title__iregex=basket_regex) | Q(summary__iregex=basket_regex))
 
     # Content type filters (News/Articles vs Videos)
     raw_filters = request.GET.getlist('type') + request.GET.getlist('filter')
