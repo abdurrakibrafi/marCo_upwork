@@ -223,8 +223,12 @@ def live_score_detail(request, score_id):
         league_name = raw.get('league_name', '')
         home_rr = raw.get('event_home_rr')
         away_rr = raw.get('event_away_rr')
-        scorecard = raw.get('scorecard', {})
-        commentary_list = raw.get('commentaries', {}).get('commentary', [])
+        scorecard = raw.get('scorecard') if isinstance(raw.get('scorecard'), dict) else {}
+        commentaries = raw.get('commentaries')
+        if isinstance(commentaries, dict):
+            commentary_list = commentaries.get('commentary', [])
+        else:
+            commentary_list = []
         if isinstance(commentary_list, dict):
             commentary_list = [commentary_list]
         elif not isinstance(commentary_list, list):
@@ -323,7 +327,8 @@ def live_score_detail(request, score_id):
                 scorecard[inning_name] = []
                 
                 # Add Batsmen
-                batsmen = inn.get('batsmanstats', {}).get('player', [])
+                b_stats = inn.get('batsmanstats')
+                batsmen = b_stats.get('player', []) if isinstance(b_stats, dict) else []
                 if isinstance(batsmen, dict):
                     batsmen = [batsmen]
                 elif not isinstance(batsmen, list):
@@ -342,7 +347,8 @@ def live_score_detail(request, score_id):
                     })
                     
                 # Add Bowlers
-                bowlers = inn.get('bowlers', {}).get('player', [])
+                bw_stats = inn.get('bowlers')
+                bowlers = bw_stats.get('player', []) if isinstance(bw_stats, dict) else []
                 if isinstance(bowlers, dict):
                     bowlers = [bowlers]
                 elif not isinstance(bowlers, list):
@@ -359,7 +365,11 @@ def live_score_detail(request, score_id):
                     })
 
             # Extract ball_by_ball
-            commentary_list = raw.get('commentaries', {}).get('commentary', [])
+            commentaries = raw.get('commentaries')
+            if isinstance(commentaries, dict):
+                commentary_list = commentaries.get('commentary', [])
+            else:
+                commentary_list = []
             if isinstance(commentary_list, dict):
                 commentary_list = [commentary_list]
             elif not isinstance(commentary_list, list):
@@ -379,7 +389,8 @@ def live_score_detail(request, score_id):
                 })
 
             # Extract Toss
-            info_list = raw.get('matchinfo', {}).get('info', [])
+            minfo = raw.get('matchinfo')
+            info_list = minfo.get('info', []) if isinstance(minfo, dict) else []
             if isinstance(info_list, dict):
                 info_list = [info_list]
             elif not isinstance(info_list, list):
@@ -393,12 +404,14 @@ def live_score_detail(request, score_id):
             for inn in innings_list:
                 if not isinstance(inn, dict):
                     continue
+                tot = inn.get('total')
                 if inn.get('team') == 'localteam':
-                    home_rr = inn.get('total', {}).get('rr')
+                    home_rr = tot.get('rr') if isinstance(tot, dict) else None
                 elif inn.get('team') == 'visitorteam':
-                    away_rr = inn.get('total', {}).get('rr')
+                    away_rr = tot.get('rr') if isinstance(tot, dict) else None
 
-            status_info = raw.get('comment', {}).get('post', '') or raw.get('event_status_info', '')
+            comm = raw.get('comment')
+            status_info = comm.get('post', '') if isinstance(comm, dict) else (raw.get('event_status_info', '') or '')
             wickets = raw.get('wickets', {})
             lineups = raw.get('lineups', {})
             match_type = raw.get('type', '')
@@ -907,12 +920,16 @@ def live_score_detail(request, score_id):
             away_logo_val = find_team_logo_by_name(game.away_team)
         away_logo_val = _make_absolute(away_logo_val)
 
-        status_detail_val = str(game.status_detail or '')
-        if sport == 'cricket':
-            from .services import _format_cricket_live_status
-            cricket_status = _format_cricket_live_status(game, raw)
-            if cricket_status:
-                status_detail_val = str(cricket_status)
+        from .services import format_sport_status_detail
+        status_detail_val = format_sport_status_detail(
+            sport=sport,
+            status=getattr(game, 'status', ''),
+            status_detail=getattr(game, 'status_detail', ''),
+            home_score=getattr(game, 'home_score', None),
+            away_score=getattr(game, 'away_score', None),
+            raw_data=raw,
+            game=game
+        )
 
         # 7. Construct final data dictionary containing ALL keys (original + new fields)
         data = {

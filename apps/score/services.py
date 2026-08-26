@@ -97,6 +97,60 @@ def _format_cricket_live_status(game, raw):
     return str(getattr(game, 'status_detail', '') or "In Progress")
 
 
+def format_sport_status_detail(sport, status, status_detail, home_score, away_score, raw_data=None, game=None):
+    """
+    Format score + time/period in status_detail across all sports (Option 2):
+      - Cricket: "140/9 | 77/2"
+      - Soccer live: "2-1 (75')" or "2-1 (HT)"
+      - Basketball live: "98-104 (Q3)"
+      - Baseball live: "2-4 (Top 7th)"
+      - Completed: "2-1 (FT)" or "FT"
+      - Upcoming: "15:30"
+    """
+    sport_lower = str(sport or '').lower().strip()
+    status_lower = str(status or '').lower().strip()
+    detail_str = str(status_detail or '').strip()
+
+    # 1. Cricket: custom cricket run/wicket extractor
+    if sport_lower == 'cricket':
+        raw = raw_data or getattr(game, 'raw_data', {}) or getattr(game, 'metadata', {})
+        cricket_status = _format_cricket_live_status(game, raw)
+        if cricket_status and cricket_status not in ('In Progress', 'Live', 'NS', 'Not Started'):
+            return str(cricket_status)
+        if home_score is not None and away_score is not None and (home_score > 0 or away_score > 0):
+            return f"{home_score} | {away_score}"
+        return detail_str or "In Progress"
+
+    # 2. Upcoming matches: keep time or NS
+    if status_lower in ('upcoming', 'ns', 'not started'):
+        return detail_str or "NS"
+
+    # 3. All other sports (Soccer, Basketball, Baseball, NFL, NHL, Tennis, etc.)
+    if home_score is not None and away_score is not None:
+        score_prefix = f"{home_score}-{away_score}"
+
+        # Clean detail_str if it already contains the score prefix to avoid duplication
+        clean_detail = detail_str
+        if score_prefix in clean_detail:
+            clean_detail = clean_detail.replace(score_prefix, "").strip(" -()|")
+
+        # If live:
+        if status_lower in ('live', 'in progress', '1', '2', '3'):
+            if clean_detail and clean_detail.lower() not in ('live', 'in progress', 'ip', ''):
+                return f"{score_prefix} ({clean_detail})"
+            return score_prefix
+
+        # If completed:
+        if status_lower in ('completed', 'finished', 'ft'):
+            if clean_detail and clean_detail.upper() in ('AET', 'PEN', 'AP', 'AFTER EXTRA TIME', 'PENALTIES'):
+                return f"{score_prefix} ({clean_detail.upper()})"
+            return f"{score_prefix} (FT)"
+
+    if status_lower in ('completed', 'finished'):
+        return detail_str or "FT"
+    return detail_str
+
+
 def get_live_score_detail_data(score_id, request=None):
     """Extract and structure comprehensive real-time detail for a live score, fixture, or completed match.
 
@@ -272,7 +326,8 @@ def get_live_score_detail_data(score_id, request=None):
                 scorecard[inning_name] = []
 
                 # Add Batsmen
-                batsmen = inn.get('batsmanstats', {}).get('player', [])
+                b_stats = inn.get('batsmanstats')
+                batsmen = b_stats.get('player', []) if isinstance(b_stats, dict) else []
                 if isinstance(batsmen, dict):
                     batsmen = [batsmen]
                 elif not isinstance(batsmen, list):
@@ -291,7 +346,8 @@ def get_live_score_detail_data(score_id, request=None):
                     })
 
                 # Add Bowlers
-                bowlers = inn.get('bowlers', {}).get('player', [])
+                bw_stats = inn.get('bowlers')
+                bowlers = bw_stats.get('player', []) if isinstance(bw_stats, dict) else []
                 if isinstance(bowlers, dict):
                     bowlers = [bowlers]
                 elif not isinstance(bowlers, list):
@@ -332,7 +388,8 @@ def get_live_score_detail_data(score_id, request=None):
                 })
 
             # Extract Toss
-            info_list = raw.get('matchinfo', {}).get('info', [])
+            minfo = raw.get('matchinfo')
+            info_list = minfo.get('info', []) if isinstance(minfo, dict) else []
             if isinstance(info_list, dict):
                 info_list = [info_list]
             elif not isinstance(info_list, list):
@@ -346,12 +403,14 @@ def get_live_score_detail_data(score_id, request=None):
             for inn in innings_list:
                 if not isinstance(inn, dict):
                     continue
+                tot = inn.get('total')
                 if inn.get('team') == 'localteam':
-                    home_rr = inn.get('total', {}).get('rr')
+                    home_rr = tot.get('rr') if isinstance(tot, dict) else None
                 elif inn.get('team') == 'visitorteam':
-                    away_rr = inn.get('total', {}).get('rr')
+                    away_rr = tot.get('rr') if isinstance(tot, dict) else None
 
-            status_info = raw.get('comment', {}).get('post', '') or raw.get('event_status_info', '')
+            comm = raw.get('comment')
+            status_info = comm.get('post', '') if isinstance(comm, dict) else (raw.get('event_status_info', '') or '')
             wickets = raw.get('wickets', {})
             lineups = raw.get('lineups', {})
             match_type = raw.get('type', '')
@@ -860,11 +919,15 @@ def get_live_score_detail_data(score_id, request=None):
         else:
             start_time_val = start_time_raw
 
-        status_detail_val = str(getattr(game, 'status_detail', '') or '')
-        if sport == 'cricket':
-            cricket_status = _format_cricket_live_status(game, raw)
-            if cricket_status:
-                status_detail_val = str(cricket_status)
+        status_detail_val = format_sport_status_detail(
+            sport=sport,
+            status=getattr(game, 'status', ''),
+            status_detail=getattr(game, 'status_detail', ''),
+            home_score=getattr(game, 'home_score', None),
+            away_score=getattr(game, 'away_score', None),
+            raw_data=raw,
+            game=game
+        )
 
         # 7. Construct final data dictionary
         data = {

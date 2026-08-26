@@ -381,7 +381,7 @@ def _fetch_cricket_team_stats(external_id, season):
                     if str(external_id) not in (home_id, away_id):
                         continue
 
-                    comment_post = str(match.get('comment', {}).get('post', '')).lower()
+                    comment_post = str((match.get('comment') or {}).get('post', '')).lower()
                     home_winner = str(home.get('winner', '')).lower()
                     away_winner = str(away.get('winner', '')).lower()
 

@@ -244,7 +244,7 @@ def update_cricket_team_stats(self):
 
                 home = match.get('home', {}) or {}
                 away = match.get('away', {}) or {}
-                result_text = str(match.get('comment', {}).get('post', '')).lower()
+                result_text = str((match.get('comment') or {}).get('post', '')).lower()
                 is_draw = 'drawn' in result_text or 'draw' in result_text
                 is_no_result = 'no result' in result_text or 'abandoned' in result_text
 

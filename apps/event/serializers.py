@@ -220,14 +220,17 @@ class EventSerializer(serializers.ModelSerializer):
             if data.get('status') == 'upcoming' and (not data.get('status_detail') or ':' in str(data.get('status_detail'))):
                 data['status_detail'] = local_dt.strftime('%H:%M')
 
-        if instance.sport == 'cricket' and data.get('status') in ('live', 'completed'):
-            cur_detail = str(data.get('status_detail') or '')
-            if cur_detail in ('In Progress', 'Live', 'NS', 'Not Started', 'FT', '') or not cur_detail:
-                from apps.score.services import _format_cricket_live_status
-                meta = instance.metadata if isinstance(instance.metadata, dict) else {}
-                rich_status = _format_cricket_live_status(instance, meta)
-                if rich_status and rich_status not in ('In Progress', 'Live'):
-                    data['status_detail'] = str(rich_status)
+        from apps.score.services import format_sport_status_detail
+        meta = instance.metadata if isinstance(instance.metadata, dict) else {}
+        data['status_detail'] = format_sport_status_detail(
+            sport=instance.sport,
+            status=data.get('status', instance.status),
+            status_detail=data.get('status_detail', instance.status_detail),
+            home_score=instance.home_score,
+            away_score=instance.away_score,
+            raw_data=meta,
+            game=instance
+        )
 
         # Highlight followed Nest entity logo and ID for calendar entries (agent_task.md Section 14)
         nest_entity_ids = self.context.get('nest_entity_ids')
@@ -337,14 +340,17 @@ class EventDetailSerializer(serializers.ModelSerializer):
             if data.get('status') == 'upcoming' and (not data.get('status_detail') or ':' in str(data.get('status_detail'))):
                 data['status_detail'] = local_dt.strftime('%H:%M')
 
-        if instance.sport == 'cricket' and data.get('status') in ('live', 'completed'):
-            cur_detail = str(data.get('status_detail') or '')
-            if cur_detail in ('In Progress', 'Live', 'NS', 'Not Started', 'FT', '') or not cur_detail:
-                from apps.score.services import _format_cricket_live_status
-                meta = instance.metadata if isinstance(instance.metadata, dict) else {}
-                rich_status = _format_cricket_live_status(instance, meta)
-                if rich_status and rich_status not in ('In Progress', 'Live'):
-                    data['status_detail'] = str(rich_status)
+        from apps.score.services import format_sport_status_detail
+        meta = instance.metadata if isinstance(instance.metadata, dict) else {}
+        data['status_detail'] = format_sport_status_detail(
+            sport=instance.sport,
+            status=data.get('status', instance.status),
+            status_detail=data.get('status_detail', instance.status_detail),
+            home_score=instance.home_score,
+            away_score=instance.away_score,
+            raw_data=meta,
+            game=instance
+        )
 
         # Auto-fill missing venue name/city/country from metadata / home team lookup
         data = _extract_event_venue_info(instance, data)
