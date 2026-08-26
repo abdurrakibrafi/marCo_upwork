@@ -19,10 +19,26 @@ from .converters import (
 )
 
 
+def _clean_cricket_stat(stat_str):
+    if not stat_str:
+        return ""
+    s = str(stat_str).strip()
+    # Remove follow-on tags and brackets like (fo), (f/o)
+    s = re.sub(r'\(f/?o\)', '', s, flags=re.IGNORECASE).strip()
+    s = re.sub(r'\(.*?\)', '', s).strip()
+
+    # In multi-innings matches, replace ' and ' with '&' so both innings are preserved compactly
+    s = re.sub(r'\s+and\s+', ' & ', s, flags=re.IGNORECASE)
+
+    # Remove extra spaces
+    s = re.sub(r'\s+', ' ', s).strip()
+    return s
+
+
 def _format_cricket_live_status(game, raw):
     """
-    Format rich cricket live status detail:
-    e.g. "BAN 150/6 (20.0 ov) | IND 98/2 (12.4 ov)" or "152/4 (18.2 ov)"
+    Format rich cricket live status detail preserving both innings in Test matches:
+    e.g. "503/9d | 290 & 229/6" or "140/9 | 77/2"
     """
     if not isinstance(raw, dict):
         raw = {}
@@ -34,52 +50,42 @@ def _format_cricket_live_status(game, raw):
     elif not isinstance(innings_list, list):
         innings_list = []
 
-    inn_summaries = []
-
+    team_innings = {}
     for inn in innings_list:
         if not isinstance(inn, dict):
             continue
-        tot = inn.get('total', {})
-        if not isinstance(tot, dict):
-            tot = {}
-
+        tot = inn.get('total') or {}
         r = tot.get('r') if 'r' in tot else tot.get('runs')
         w = tot.get('w') if 'w' in tot else tot.get('wickets', '0')
-        o = tot.get('o') if 'o' in tot else tot.get('overs')
-
-        team_id = inn.get('team') or inn.get('teamid')
-        team_name = ""
-        if team_id == 'localteam' or str(team_id) == str(raw.get('home', {}).get('id')):
-            team_name = getattr(game, 'home_team', '') or raw.get('home', {}).get('name', '')
-        elif team_id == 'visitorteam' or str(team_id) == str(raw.get('away', {}).get('id')):
-            team_name = getattr(game, 'away_team', '') or raw.get('away', {}).get('name', '')
-        else:
-            team_name = inn.get('name', '')
-
-        short_name = team_name.split()[0] if team_name else ""
 
         if r is not None and str(r) != '':
             score_str = f"{r}/{w}" if w else f"{r}"
-            inn_summaries.append(score_str.strip())
+            t_key = inn.get('team') or inn.get('teamid') or inn.get('name') or 'team'
+            if t_key not in team_innings:
+                team_innings[t_key] = []
+            team_innings[t_key].append(score_str.strip())
+
+    if team_innings:
+        team_parts = []
+        for t_key, scores in team_innings.items():
+            team_parts.append(" & ".join(scores))
+        if team_parts:
+            return str(" | ".join(team_parts))
 
     # 2. Check home/away stat field if innings_list didn't have total
-    if not inn_summaries:
-        home_raw = raw.get('home', {}) if isinstance(raw.get('home'), dict) else {}
-        away_raw = raw.get('away', {}) if isinstance(raw.get('away'), dict) else {}
+    home_raw = raw.get('home', {}) if isinstance(raw.get('home'), dict) else {}
+    away_raw = raw.get('away', {}) if isinstance(raw.get('away'), dict) else {}
 
-        h_stat = home_raw.get('stat') or home_raw.get('totalscore')
-        a_stat = away_raw.get('stat') or away_raw.get('totalscore')
+    h_stat = _clean_cricket_stat(home_raw.get('stat') or home_raw.get('totalscore'))
+    a_stat = _clean_cricket_stat(away_raw.get('stat') or away_raw.get('totalscore'))
 
-        parts = []
-        if h_stat and str(h_stat) not in ('', '0'):
-            parts.append(str(h_stat).strip())
-        if a_stat and str(a_stat) not in ('', '0'):
-            parts.append(str(a_stat).strip())
-        if parts:
-            return str(" | ".join(parts))
-
-    if inn_summaries:
-        return str(" | ".join(inn_summaries))
+    parts = []
+    if h_stat and str(h_stat) not in ('', '0', '0/0'):
+        parts.append(str(h_stat).strip())
+    if a_stat and str(a_stat) not in ('', '0', '0/0'):
+        parts.append(str(a_stat).strip())
+    if parts:
+        return str(" | ".join(parts))
 
     # 3. Match post / comment e.g. "Match starts in 15 mins" or "Innings Break"
     comment_post = raw.get('comment', {}).get('post') if isinstance(raw.get('comment'), dict) else None
