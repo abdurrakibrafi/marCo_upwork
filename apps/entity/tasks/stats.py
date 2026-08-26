@@ -20,7 +20,7 @@ def _current_season(sport: str) -> int:
     return year
 
 
-@shared_task
+@shared_task(name='apps.entity.tasks.update_all_team_stats')
 def update_all_team_stats():
     """Dynamically discovers every active sport and league that has teams in the DB,
     then dispatches the appropriate Celery tasks.
@@ -83,7 +83,7 @@ def update_all_team_stats():
     return msg
 
 
-@shared_task(bind=True, max_retries=3, default_retry_delay=300)
+@shared_task(name='apps.entity.tasks.update_soccer_league_stats', bind=True, max_retries=3, default_retry_delay=300)
 def update_soccer_league_stats(self, league_id: int):
     """Fetch standings for ONE league using StatPal, then update every team in that league
     from the single API response.
@@ -180,7 +180,7 @@ def update_soccer_league_stats(self, league_id: int):
     return f"League {league_id}: updated {updated} teams"
 
 
-@shared_task(bind=True, max_retries=2, default_retry_delay=300)
+@shared_task(name='apps.entity.tasks.update_cricket_team_stats', bind=True, max_retries=2, default_retry_delay=300)
 def update_cricket_team_stats(self):
     """Store current-year cricket results for every StatPal cricket team."""
     season = str(_current_season('cricket'))
@@ -292,7 +292,7 @@ def update_cricket_team_stats(self):
     return f'Cricket: updated {len(teams)} teams from {tours_checked} tours for season {season}'
 
 
-@shared_task(bind=True, max_retries=3, default_retry_delay=120)
+@shared_task(name='apps.entity.tasks.update_nba_standings', bind=True, max_retries=3, default_retry_delay=120)
 def update_nba_standings(self):
     """Fetch NBA standings once using StatPal, update all NBA teams from the single response."""
     season = _current_season('basketball')
@@ -387,7 +387,7 @@ def update_nba_standings(self):
     return f"NBA: updated {updated} teams"
 
 
-@shared_task(bind=True, max_retries=3, default_retry_delay=120)
+@shared_task(name='apps.entity.tasks.update_football_league_stats', bind=True, max_retries=3, default_retry_delay=120)
 def update_football_league_stats(self):
     """Fetch NFL standings once using StatPal, update all NFL teams."""
     season = _current_season('football')
@@ -498,7 +498,7 @@ def update_football_league_stats(self):
     return f"NFL: updated {updated} teams"
 
 
-@shared_task(bind=True, max_retries=3, default_retry_delay=120)
+@shared_task(name='apps.entity.tasks.update_baseball_team_stats', bind=True, max_retries=3, default_retry_delay=120)
 def update_baseball_team_stats(self):
     """Fetch MLB standings once using StatPal, update all MLB teams."""
     season = _current_season('baseball')
@@ -601,7 +601,7 @@ def update_baseball_team_stats(self):
     return f"MLB: updated {updated} teams"
 
 
-@shared_task(bind=True, max_retries=3, default_retry_delay=120)
+@shared_task(name='apps.entity.tasks.update_hockey_team_stats', bind=True, max_retries=3, default_retry_delay=120)
 def update_hockey_team_stats(self):
     """Fetch NHL standings once using StatPal, update all NHL teams."""
     season = _current_season('hockey')
@@ -697,7 +697,7 @@ def update_hockey_team_stats(self):
     return f"NHL: updated {updated} teams"
 
 
-@shared_task(bind=True, max_retries=3, default_retry_delay=300)
+@shared_task(name='apps.entity.tasks.update_handball_league_stats', bind=True, max_retries=3, default_retry_delay=300)
 def update_handball_league_stats(self, league_id: int):
     """Fetch handball standings for ONE league using StatPal, then update every team in DB."""
     season = _current_season('handball')
@@ -784,7 +784,7 @@ def update_handball_league_stats(self, league_id: int):
     return f"Handball League {league_id}: updated {updated} teams"
 
 
-@shared_task(bind=True, max_retries=3, default_retry_delay=300)
+@shared_task(name='apps.entity.tasks.update_volleyball_league_stats', bind=True, max_retries=3, default_retry_delay=300)
 def update_volleyball_league_stats(self, league_id: int):
     """Fetch volleyball standings for ONE league using StatPal, then update team records in DB."""
     season = _current_season('volleyball')
@@ -870,7 +870,7 @@ def update_volleyball_league_stats(self, league_id: int):
     return f"Volleyball League {league_id}: updated {updated} teams"
 
 
-@shared_task(bind=True, max_retries=2, default_retry_delay=300)
+@shared_task(name='apps.entity.tasks.update_tennis_rankings', bind=True, max_retries=2, default_retry_delay=300)
 def update_tennis_rankings(self):
     """Fetch ATP and WTA singles rankings from StatPal and store in cache for 24h."""
     updated_tours = []
@@ -903,7 +903,7 @@ def update_tennis_rankings(self):
     return f"Tennis rankings updated for: {', '.join(updated_tours) if updated_tours else 'none'}"
 
 
-@shared_task(bind=True, max_retries=2, default_retry_delay=300)
+@shared_task(name='apps.entity.tasks.update_golf_leaderboards', bind=True, max_retries=2, default_retry_delay=300)
 def update_golf_leaderboards(self):
     """Fetch current PGA tournament leaderboards from StatPal live/schedule and cache for 1h."""
     try:
@@ -954,7 +954,7 @@ def update_golf_leaderboards(self):
     return "Golf leaderboards update completed with no new data"
 
 
-@shared_task
+@shared_task(name='apps.entity.tasks.update_fifa_world_rankings_task')
 def update_fifa_world_rankings_task():
     """Periodic task: Refreshes FIFA Men and Women World Rankings in Redis cache and DB.
     Runs every 24 hours to ensure fresh rankings for all member nations.

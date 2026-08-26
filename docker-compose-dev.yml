@@ -28,7 +28,7 @@ services:
       - redis
     restart: unless-stopped
     entrypoint: []
-    command: celery -A config worker --loglevel=info --concurrency=2 --max-tasks-per-child=200
+    command: celery -A config worker --loglevel=info -Q live_scores,default,news_feed,heavy_background --concurrency=2 --max-tasks-per-child=200
 
   celery_beat:
     build: .

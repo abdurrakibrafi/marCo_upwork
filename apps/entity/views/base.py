@@ -404,6 +404,10 @@ def get_entity_standings(request, entity_id):
     get_params = getattr(request, 'GET', {}) or getattr(getattr(request, '_request', None), 'GET', {})
     season = get_params.get('season') or str(_current_season(entity.sport or 'soccer'))
 
+    if entity.sport == 'cricket':
+        django_req = getattr(request, '_request', request)
+        return get_team_standings(django_req, entity.id)
+
     if entity.type == 'team':
         django_req = getattr(request, '_request', request)
         return get_team_standings(django_req, entity.id)

@@ -9,7 +9,7 @@ from apps.sports_apis.services.statpal import statpal_service
 logger = get_task_logger(__name__)
 
 
-@shared_task
+@shared_task(name='apps.entity.tasks.seed_players_for_team')
 def seed_players_for_team(team_external_id: str, season: int = None):
     """Seed or synchronize athlete rosters for a specific team entity.
 
@@ -217,7 +217,7 @@ def seed_players_for_team(team_external_id: str, season: int = None):
     return f"Seeded {created_total} players for team {team_external_id} from StatPal"
 
 
-@shared_task
+@shared_task(name='apps.entity.tasks.bootstrap_all_entities')
 def bootstrap_all_entities():
     """Comprehensive bootstrap: ensures EVERY active entity in DB has fresh data.
     
@@ -275,7 +275,7 @@ def bootstrap_all_entities():
     return f"Bootstrapped {total} entities — news + roster"
 
 
-@shared_task(bind=True, max_retries=1, default_retry_delay=60, ignore_result=True)
+@shared_task(name='apps.entity.tasks.warm_venue_cache_task', bind=True, max_retries=1, default_retry_delay=60, ignore_result=True)
 def warm_venue_cache_task(self, team_name: str):
     """Populates the venue cache for a single team name by calling resolve_team_venue.
 
@@ -307,7 +307,7 @@ def warm_venue_cache_task(self, team_name: str):
         cache.delete(lock_key)
 
 
-@shared_task(bind=True, max_retries=1, ignore_result=True)
+@shared_task(name='apps.entity.tasks.warm_all_venue_caches', bind=True, max_retries=1, ignore_result=True)
 def warm_all_venue_caches(self):
     """Proactively warm venue name/city cache for every team entity in the DB.
 

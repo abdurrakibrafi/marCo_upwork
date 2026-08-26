@@ -17,7 +17,7 @@ from .helpers import _save_event, _save_livescore
 logger = logging.getLogger(__name__)
 
 
-@shared_task
+@shared_task(name='apps.event.tasks.update_nfl_fixtures')
 def update_nfl_fixtures(dates: list[str] = None):
     """Synchronize NFL fixtures using StatPal provider endpoints.
 
@@ -50,7 +50,7 @@ def update_nfl_fixtures(dates: list[str] = None):
     return f"NFL: {total_updated} fixtures updated"
 
 
-@shared_task
+@shared_task(name='apps.event.tasks.update_soccer_fixtures')
 def update_soccer_fixtures(date=None):
     """Synchronize soccer match fixtures for a specific date using StatPal.
 
@@ -82,7 +82,7 @@ def update_soccer_fixtures(date=None):
     return "Soccer fixtures update failed"
 
 
-@shared_task
+@shared_task(name='apps.event.tasks.update_statpal_fixtures_for_dates')
 def update_statpal_fixtures_for_dates(dates: list[str] = None):
     """Fetch and synchronize upcoming/past fixtures from StatPal across all sports.
 
@@ -152,7 +152,7 @@ def update_statpal_fixtures_for_dates(dates: list[str] = None):
     return f"Completed: Saved/Updated {total_saved} fixtures across daily sports."
 
 
-@shared_task
+@shared_task(name='apps.event.tasks.update_all_fixtures')
 def update_all_fixtures():
     """Trigger background fixture synchronization covering the historical past 30 days to upcoming 90 days.
 
@@ -168,14 +168,14 @@ def update_all_fixtures():
     return f"Fixture updates triggered for {dates[0]} to {dates[-1]}"
 
 
-@shared_task
+@shared_task(name='apps.event.tasks.update_soccer_live_scores_only')
 def update_soccer_live_scores_only():
     """Trigger background synchronization of soccer live scores via StatPal."""
     sync_statpal_data.delay()
     return "Delegated to sync_statpal_data"
 
 
-@shared_task(bind=True, max_retries=2, default_retry_delay=300)
+@shared_task(name='apps.event.tasks.sync_thesportsdb_upcoming_fixtures', bind=True, max_retries=2, default_retry_delay=300)
 def sync_thesportsdb_upcoming_fixtures(self):
     """Fetch long-range soccer fixtures for the next 30 days from TheSportsDB (eventsday.php).
 
@@ -246,7 +246,7 @@ def sync_thesportsdb_upcoming_fixtures(self):
         cache.delete(lock_id)
 
 
-@shared_task(bind=True, max_retries=3, default_retry_delay=60)
+@shared_task(name='apps.event.tasks.sync_statpal_data', bind=True, max_retries=3, default_retry_delay=60)
 def sync_statpal_data(self):
     """Fetch active live matches across all supported sports and publish updates via WebSockets.
 
@@ -332,7 +332,7 @@ def sync_statpal_data(self):
         cache.delete(lock_id)
 
 
-@shared_task(bind=True, max_retries=2, default_retry_delay=300)
+@shared_task(name='apps.event.tasks.sync_statpal_fixtures_data', bind=True, max_retries=2, default_retry_delay=300)
 def sync_statpal_fixtures_data(self):
     """Fetch and sync upcoming and past match fixtures from StatPal within the ±7 day window.
 

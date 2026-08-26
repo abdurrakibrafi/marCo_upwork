@@ -513,7 +513,7 @@ def get_team_standings(request, team_id):
     team_entity = entity
     season = request.GET.get('season') or str(_current_season(team_entity.sport))
 
-    # 1. Cricket National Team -> ICC World Rankings
+    # 1. Cricket National Team -> ICC World Rankings (Default to ODI / onday)
     if team_entity.sport == 'cricket':
         clean_name = _normalize_cricket_team_key(team_entity.name)
         icc_res = fetch_live_icc_rankings()
@@ -532,23 +532,51 @@ def get_team_standings(request, team_id):
                     is_national = True
                 row_copy = dict(row)
                 row_copy['is_highlighted'] = is_hl
+                row_copy.setdefault('played', row.get('matches', 0))
+                if is_hl and not row_copy.get('logo') and team_entity.logo_url:
+                    row_copy['logo'] = team_entity.logo_url
                 fmt_rows.append(row_copy)
             icc_tables[fmt] = fmt_rows
 
-        if is_national:
-            active_fmt = request.GET.get('format', 'tests').lower()
-            if active_fmt not in icc_tables:
-                active_fmt = 'tests'
-            cricket_standings_list = icc_tables.get(active_fmt, [])
+        # Format parameter normalization (Default is onday / ODI - only ICC national matches)
+        raw_fmt = str(request.GET.get('format', '')).lower().strip()
+        if raw_fmt in ('test', 'tests'):
+            active_fmt = 'test'
+        elif raw_fmt in ('t20', 't20i', 't20s'):
+            active_fmt = 't20i'
+        elif raw_fmt in ('wodi', 'women_odi', 'women-odi'):
+            active_fmt = 'wodi'
+        elif raw_fmt in ('wt20', 'wt20i', 'women_t20', 'women-t20'):
+            active_fmt = 'wt20i'
+        elif raw_fmt in ('odi', 'odis', 'onday', 'oneday', 'one-day', 'one_day'):
+            active_fmt = 'odi'
+        else:
+            # Default to ODI ('onday') for cricket, or WODI if women's team
+            is_women_team = bool(
+                'women' in team_entity.name.lower() or
+                ' w' in team_entity.name.lower() or
+                (hasattr(team_entity, 'team_details') and 'women' in str(getattr(team_entity.team_details, 'gender', '')).lower())
+            )
+            active_fmt = 'wodi' if is_women_team else 'odi'
 
-            return Response({
-                'team': EntitySerializer(team_entity, context={'request': request}).data,
-                'season': season,
-                'standings': cricket_standings_list,
-                'icc_rankings': icc_tables,
-                'source': 'icc_rankings',
-                'message': 'ICC Rankings provided for Cricket national team.',
-            })
+        # Fallback if active_fmt table is missing or empty
+        if active_fmt not in icc_tables or not icc_tables[active_fmt]:
+            if 'odi' in icc_tables and icc_tables['odi']:
+                active_fmt = 'odi'
+            elif icc_tables:
+                active_fmt = list(icc_tables.keys())[0]
+
+        cricket_standings_list = icc_tables.get(active_fmt, [])
+
+        return Response({
+            'team': EntitySerializer(team_entity, context={'request': request}).data,
+            'season': season,
+            'format': active_fmt,
+            'standings': cricket_standings_list,
+            'icc_rankings': icc_tables,
+            'source': 'icc_rankings',
+            'message': 'ICC Rankings provided for Cricket national match.',
+        })
 
     # 2. Soccer National Team -> FIFA World Rankings
     if team_entity.sport == 'soccer':

@@ -82,6 +82,10 @@ MAILGUN_FROM_NAME = env.str("MAILGUN_FROM_NAME")
 # Static files with WhiteNoise
 STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
 
+# Ensure logs directory exists
+LOGS_DIR = BASE_DIR / 'logs'
+LOGS_DIR.mkdir(parents=True, exist_ok=True)
+
 # Production logging
 LOGGING = { 
     'version': 1,
@@ -90,7 +94,7 @@ LOGGING = {
         'file': {
             'level': 'INFO',
             'class': 'logging.FileHandler',
-            'filename': '/app/logs/django.log',
+            'filename': str(LOGS_DIR / 'django.log'),
         },
         'console': {
             'level': 'INFO',

@@ -27,6 +27,7 @@ services:
       - db
       - redis
     restart: unless-stopped
+    entrypoint: []
     command: celery -A config worker --loglevel=info -Q live_scores,default,news_feed,heavy_background --concurrency=2 --max-tasks-per-child=200
 
   celery_beat:
@@ -40,6 +41,7 @@ services:
       - db
       - redis
     restart: unless-stopped
+    entrypoint: []
     command: celery -A config beat --loglevel=info
 
   flower:
@@ -76,24 +78,6 @@ services:
     volumes:
       - redis_data:/data
     restart: unless-stopped
-
-  nginx:
-    image: nginx:alpine
-    container_name: mysportsnest_nginx
-    ports:
-      - "80:80"
-      - "443:443"
-    volumes:
-      - ./nginx/sites-available:/etc/nginx/conf.d
-      - static_volume:/app/staticfiles:ro
-      - media_volume:/app/media:ro
-      - /etc/letsencrypt:/etc/letsencrypt:ro
-      - /var/lib/letsencrypt:/var/lib/letsencrypt:ro
-      - /var/www/certbot:/var/www/certbot:ro
-    depends_on:
-      - api
-    networks:
-      - default
 
 volumes:
   postgres_data:

@@ -517,7 +517,7 @@ def _on_the_fly_update_statpal_event(event) -> bool:
     return False
 
 
-@shared_task(bind=True, max_retries=2, default_retry_delay=60)
+@shared_task(name='apps.event.tasks.fetch_event_details', bind=True, max_retries=2, default_retry_delay=60)
 def fetch_event_details(self, event_id: int):
     """Fetch and populate full statistics, lineups, and timeline events for a completed event.
 
@@ -550,7 +550,7 @@ def fetch_event_details(self, event_id: int):
     return f"Event {event_id} (statpal) details populated"
 
 
-@shared_task
+@shared_task(name='apps.event.tasks.check_completed_events')
 def check_completed_events():
     """Backup synchronization task ensuring completed matches have populated statistics and timeline data.
 
@@ -590,7 +590,7 @@ def check_completed_events():
     return f"Triggered {count} backup event detail fetches"
 
 
-@shared_task
+@shared_task(name='apps.event.tasks.cleanup_stale_live_events')
 def cleanup_stale_live_events():
     """Auto-transition events that have been in 'live' status for over 5 hours into 'completed'."""
     cutoff = timezone.now() - timedelta(hours=5)

@@ -34,8 +34,10 @@ CRICKET_TEAM_ALIAS_MAP = {
 def _normalize_cricket_team_key(name):
     if not name:
         return ''
-    clean = str(name).lower().replace('cricket', '').replace('team', '').strip()
-    clean = re.sub(r'\s+', ' ', clean)
+    clean = str(name).lower()
+    for w in ('cricket', 'national', 'team', 'men', 'mens', "men's", 'the'):
+        clean = re.sub(r'\b' + re.escape(w) + r'\b', '', clean)
+    clean = re.sub(r'\s+', ' ', clean).strip()
     return CRICKET_TEAM_ALIAS_MAP.get(clean, clean)
 
 
