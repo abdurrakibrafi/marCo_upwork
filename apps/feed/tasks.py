@@ -378,7 +378,22 @@ def poll_single_source(self, source_id: int):
         entity = source.entities.first()
         entity_name = entity.name if entity else source.name.replace('YouTube Video - ', '').strip()
         if entity_name:
-            clean_query = urllib.parse.quote(f'"{entity_name}" site:youtube.com')
+            from apps.entity.utils.matcher import is_national_team
+            sport_term = (getattr(entity, 'sport', '') or '').strip().lower() if entity else ''
+            if entity and is_national_team(entity_name) and sport_term and sport_term != 'none':
+                if sport_term == 'soccer':
+                    sport_term = 'soccer OR football'
+                elif sport_term in ('football', 'american_football', 'nfl'):
+                    sport_term = 'nfl OR "american football"'
+                elif sport_term in ('basketball', 'nba'):
+                    sport_term = 'nba OR basketball'
+                elif sport_term in ('baseball', 'mlb'):
+                    sport_term = 'mlb OR baseball'
+                elif sport_term in ('hockey', 'ice_hockey', 'nhl'):
+                    sport_term = 'nhl OR hockey'
+                clean_query = urllib.parse.quote(f'"{entity_name}" AND ({sport_term}) site:youtube.com')
+            else:
+                clean_query = urllib.parse.quote(f'"{entity_name}" site:youtube.com')
             clean_url = f"https://news.google.com/rss/search?q={clean_query}&hl=en&gl=US&ceid=US:en"
             if source.rss_url != clean_url:
                 source.rss_url = clean_url
@@ -423,7 +438,15 @@ def poll_single_source(self, source_id: int):
         # If article doesn't match any entity in text: for dedicated entity sources use candidate_entities, else skip
         if not matched_entities:
             if not is_global_source and candidate_entities:
-                matched_entities = candidate_entities
+                from apps.entity.utils.matcher import is_national_team
+                valid_candidates = [
+                    e for e in candidate_entities
+                    if not is_national_team(e.name)
+                ]
+                if valid_candidates:
+                    matched_entities = valid_candidates
+                else:
+                    continue
             else:
                 continue
 
@@ -629,6 +652,14 @@ def ensure_entity_has_rss_source(entity_id: int):
         source.save(update_fields=['is_active', 'poll_failures'])
     source.entities.add(entity)
 
+    # ── Also create YouTube Video RSS source for video feeds (filter=videos) ──
+    if is_national_team(entity.name) and sport_term and sport_term != 'none':
+        video_query_str = f'"{entity.name}" AND ({sport_term}) site:youtube.com'
+    else:
+        video_query_str = f'"{entity.name}" site:youtube.com'
+    query_video = urllib.parse.quote(video_query_str)
+    google_video_url = f"https://news.google.com/rss/search?q={query_video}&hl=en&gl=US&ceid=US:en"
+
     # Deactivate old unscoped sources for national team entities to avoid duplicates
     if is_national_team(entity.name):
         old_sources = Source.objects.filter(
@@ -636,17 +667,12 @@ def ensure_entity_has_rss_source(entity_id: int):
             rss_url__icontains="news.google.com",
             is_active=True
         ).exclude(
-            rss_url=google_news_url
+            rss_url__in=[google_news_url, google_video_url]
         )
         for old_source in old_sources:
             old_source.is_active = False
             old_source.save(update_fields=['is_active'])
     poll_single_source.delay(source.id)
-
-    # ── Also create YouTube Video RSS source for video feeds (filter=videos) ──
-    video_query_str = f'"{entity.name}" site:youtube.com'
-    query_video = urllib.parse.quote(video_query_str)
-    google_video_url = f"https://news.google.com/rss/search?q={query_video}&hl=en&gl=US&ceid=US:en"
 
     video_source = Source.objects.filter(rss_url=google_video_url).first()
 
@@ -1026,3 +1052,25 @@ def extract_clean_article(html_or_markdown: str, url: str) -> str | None:
             return extracted
 
     return None
+
+
+@shared_task
+def cleanup_non_sports_national_team_items():
+    """Detach non-sports articles and videos from national team entities that were erroneously linked."""
+    from apps.entity.utils.matcher import is_national_team
+
+    national_teams = Entity.objects.filter(is_active=True, type='team')
+    target_teams = [e for e in national_teams if is_national_team(e.name)]
+
+    detached_count = 0
+    for team in target_teams:
+        items = FeedItem.objects.filter(entities=team)
+        for item in items.iterator():
+            text = f"{item.title} {item.summary or ''}".lower()
+            if not _entity_matches_text(team, text):
+                item.entities.remove(team)
+                detached_count += 1
+
+    logger.info(f"Cleaned up {detached_count} non-sports items from national teams")
+    return f"Cleaned up {detached_count} non-sports items from national teams"
+

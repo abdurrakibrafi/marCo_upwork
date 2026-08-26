@@ -272,7 +272,46 @@ def get_entity_feed(request, entity_id):
         source_id__in=hidden_source_ids
     ).exclude(
         publisher_name__in=hidden_publishers
-    ).select_related('source').prefetch_related('entities').order_by('-published_at').distinct()
+    ).select_related('source').prefetch_related('entities').distinct()
+
+    # Enforce sports context for national team entities (e.g. Brazil, Argentina, France)
+    from apps.entity.utils.matcher import is_national_team
+    if is_national_team(entity.name):
+        from django.db import connection
+        sports_regex = (
+            r'(sport|game|match|play|coach|stadium|cup|tourn|leagu|champ|win|won|lost|lose|beat|defeat|'
+            r'scor|goal|team|club|socc|footb|crick|nba|nfl|mlb|nhl|baseb|hockey|tenn|golf|f1|formu|'
+            r'mma|ufc|fight|athlet|race|olympi|squad|rost|train|seaso|jersey|manag|quali|friend|vs|'
+            r'draw|lineup|transf|victo|fan|ref|ump|capt|boss|injur|copa|fifa|icc|strik|midf|defen|'
+            r'goalk|clash|fixt|tie|legend|espn|cricinfo|basketb|uefa|sub|ban|card|assist|ronaldo|'
+            r'messi|neymar|mbappe|vinicius|rodrygo|alisson|ederson|pele|dorival)'
+        )
+        if connection.vendor == 'postgresql':
+            feed = feed.filter(Q(title__iregex=sports_regex) | Q(summary__iregex=sports_regex))
+
+    # Content type filters (News/Articles vs Videos)
+    raw_filters = request.GET.getlist('type') + request.GET.getlist('filter')
+    filters = []
+    for rf in raw_filters:
+        if rf:
+            filters.extend([v.strip().lower() for v in rf.split(',') if v.strip()])
+
+    if 'video' in filters or 'videos' in filters:
+        feed = feed.filter(
+            Q(source__domain__icontains='youtube') | 
+            Q(url__icontains='youtube.com/watch') | 
+            Q(url__icontains='youtube.com/shorts') | 
+            Q(url__icontains='youtu.be/')
+        )
+    elif 'news' in filters or 'article' in filters or 'articles' in filters:
+        feed = feed.exclude(
+            Q(source__domain__icontains='youtube') | 
+            Q(url__icontains='youtube.com/watch') | 
+            Q(url__icontains='youtube.com/shorts') | 
+            Q(url__icontains='youtu.be/')
+        )
+
+    feed = feed.order_by('-published_at')
 
     # If entity has no feed items yet, auto-trigger targeted RSS source discovery
     if not feed.exists():
