@@ -223,6 +223,39 @@ def get_live_score_detail_data(score_id, request=None):
 
         sport = getattr(game, 'sport', '')
 
+        if sport == 'cricket':
+            from apps.sports_apis.services.statpal import statpal_service
+            try:
+                cache_key = 'statpal_cricket_live_full'
+                live_all = cache.get(cache_key)
+                if not live_all:
+                    live_result = statpal_service.get_cricket_live()
+                    if live_result.get('success'):
+                        live_cats = live_result['data'].get('scores', {}).get('category', [])
+                        if isinstance(live_cats, dict):
+                            live_cats = [live_cats]
+                        live_all = live_cats
+                        cache.set(cache_key, live_all, 15)
+
+                if live_all:
+                    ext_id = str(getattr(game, 'external_id', ''))
+                    for cat in live_all:
+                        if not isinstance(cat, dict):
+                            continue
+                        matches = cat.get('match', [])
+                        if isinstance(matches, dict):
+                            matches = [matches]
+                        elif not isinstance(matches, list):
+                            matches = []
+                        for m in matches:
+                            if isinstance(m, dict) and str(m.get('id', '')) == ext_id:
+                                raw = m
+                                break
+                        if raw is not None and str(raw.get('id', '')) == ext_id:
+                            break
+            except Exception as e:
+                logger.warning(f"Live cricket on-demand fetch failed: {e}")
+
         # 5. Initialize all output fields with original raw values to match StatPal exact structures
         toss_str = raw.get('event_toss', '')
         status_info = raw.get('event_status_info', getattr(game, 'status_detail', None) or getattr(game, 'status', ''))

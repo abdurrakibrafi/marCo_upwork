@@ -135,7 +135,18 @@ def _safe_int(val) -> int | None:
     if val is None or str(val).strip() in ("", "?", "-", "None", "null", "undefined"):
         return None
     try:
-        return int(str(val).split("/")[0].split("&")[0].strip())
+        s = str(val).strip()
+        # e.g. "503/9d" -> 503, "(fo) 290 and 229/6" -> 229
+        # if slash or & present, look at the first section
+        s_part = s.split("/")[0].split("&")[0].strip()
+        digits = re.findall(r'\d+', s_part)
+        if digits:
+            return int(digits[-1])
+        # fallback to any digits in entire string
+        all_digits = re.findall(r'\d+', s)
+        if all_digits:
+            return int(all_digits[0])
+        return None
     except Exception:
         return None
 
@@ -340,6 +351,9 @@ def _cricket_rows(data: dict) -> list:
         for match in match_list:
             home = match.get("home", {})
             away = match.get("away", {})
+            status_raw = match.get("status", "NS")
+            home_stat_val = home.get("totalscore") or home.get("stat")
+            away_stat_val = away.get("totalscore") or away.get("stat")
             rows.append({
                 "external_id": str(match.get("id", "")),
                 "sport": "cricket",
@@ -349,8 +363,8 @@ def _cricket_rows(data: dict) -> list:
                 "home_name": home.get("name", ""),
                 "away_id":   str(away.get("id", "")),
                 "away_name": away.get("name", ""),
-                "home_score": _safe_int(home.get("totalscore")),
-                "away_score": _safe_int(away.get("totalscore")),
+                "home_score": _safe_int(home_stat_val),
+                "away_score": _safe_int(away_stat_val),
                 "status_raw": status_raw,
                 "date":  match.get("date", ""),
                 "time":  match.get("time", "00:00"),
