@@ -64,11 +64,19 @@ def _resolve_timezone(request):
     return timezone.get_current_timezone()
 
 
+def _clean_entity_name_for_match(name: str) -> str:
+    if not name:
+        return ''
+    s = name.lower().strip()
+    s = re.sub(r'\b(fc|cf|club|united|utd|sc|afc|the)\b', '', s)
+    return re.sub(r'[^a-z0-9]', '', s)
+
+
 def _deduplicate_events(events_list: list) -> list:
-    """Deduplicate a list of Event objects by canonical entity IDs and start time.
+    """Deduplicate a list of Event objects by canonical entity IDs, cleaned names, and start time.
 
     Prefers 'statpal' api source over other providers when duplicate fixture records exist.
-    Matches events that share the same home/away teams (via canonical mapping) and start
+    Matches events that share the same home/away teams (via canonical mapping or normalized name) and start
     within 12 hours of each other.
 
     Args:
@@ -102,21 +110,30 @@ def _deduplicate_events(events_list: list) -> list:
                 ext_away_key = 'none'
 
             names_match = False
-            if home_key == ext_home_key and away_key == ext_away_key:
+            if home_key == ext_home_key and away_key == ext_away_key and home_key != 'none':
                 names_match = True
             else:
-                h1 = event.home_entity.name.lower() if event.home_entity else ''
-                h2 = existing.home_entity.name.lower() if existing.home_entity else ''
-                a1 = event.away_entity.name.lower() if event.away_entity else ''
-                a2 = existing.away_entity.name.lower() if existing.away_entity else ''
-                if h1 == h2 and a1 == a2 and h1 != '' and a1 != '':
+                h1 = event.home_entity.name.lower().strip() if event.home_entity else ''
+                h2 = existing.home_entity.name.lower().strip() if existing.home_entity else ''
+                a1 = event.away_entity.name.lower().strip() if event.away_entity else ''
+                a2 = existing.away_entity.name.lower().strip() if existing.away_entity else ''
+                if h1 == h2 and a1 == a2 and h1 != '':
+                    names_match = True
+                elif _clean_entity_name_for_match(h1) == _clean_entity_name_for_match(h2) and \
+                     _clean_entity_name_for_match(a1) == _clean_entity_name_for_match(a2) and \
+                     _clean_entity_name_for_match(h1) != '':
+                    names_match = True
+                elif h1 and h2 and not a1 and not a2 and (h1 == h2 or _clean_entity_name_for_match(h1) == _clean_entity_name_for_match(h2)):
                     names_match = True
 
             if names_match:
-                time_diff = abs((event.start_time - existing.start_time).total_seconds())
+                time_diff = abs((event.start_time - existing.start_time).total_seconds()) if (event.start_time and existing.start_time) else 0
                 if time_diff <= 12 * 3600:  # 12 hours
                     duplicate_found = True
-                    if event.api_source == 'statpal' and existing.api_source != 'statpal':
+                    # Prefer statpal over other sources, or prefer event with scores/live status
+                    if (event.api_source == 'statpal' and existing.api_source != 'statpal') or \
+                       (existing.home_score is None and event.home_score is not None) or \
+                       (existing.status == 'upcoming' and event.status in ('live', 'completed')):
                         unique_events[idx] = event
                     break
 
@@ -270,8 +287,10 @@ def get_nest_calendar(request):
         # 5. Optional sport filter
         sport = request.query_params.get("sport")
         if sport:
-            # Entity.sport is 'basketball' but Event.sport is 'nba' — filter using raw slug
-            qs = qs.filter(sport=sport.lower())
+            if sport.lower() in ('basketball', 'nba'):
+                qs = qs.filter(sport__in=['basketball', 'nba'])
+            else:
+                qs = qs.filter(sport=sport.lower())
 
         # 6. Deduplicate and Serialize
         events_list = _deduplicate_events(list(qs))
@@ -708,12 +727,17 @@ def get_live_events(request):
 
         sport = request.GET.get('sport')
         if sport:
-            events = events.filter(sport=sport)
+            if sport.lower() in ('basketball', 'nba'):
+                events = events.filter(sport__in=['basketball', 'nba'])
+            else:
+                events = events.filter(sport=sport.lower())
+
+        events_list = _deduplicate_events(list(events))
 
         serializer_context = {'request': request, 'timezone': user_tz}
         data = {
-            'count': events.count(),
-            'events': EventSerializer(events, many=True, context=serializer_context).data,
+            'count': len(events_list),
+            'events': EventSerializer(events_list, many=True, context=serializer_context).data,
         }
         return mixin.success_response(data=data)
     except Exception as exc:
@@ -745,13 +769,18 @@ def get_upcoming_events(request):
         ).select_related('home_entity', 'away_entity', 'league').order_by('start_time')
 
         if sport:
-            events = events.filter(sport=sport)
+            if sport.lower() in ('basketball', 'nba'):
+                events = events.filter(sport__in=['basketball', 'nba'])
+            else:
+                events = events.filter(sport=sport.lower())
+
+        events_list = _deduplicate_events(list(events))
 
         serializer_context = {'request': request, 'timezone': user_tz}
         data = {
             'days': days,
-            'count': events.count(),
-            'events': EventSerializer(events, many=True, context=serializer_context).data,
+            'count': len(events_list),
+            'events': EventSerializer(events_list, many=True, context=serializer_context).data,
         }
         return mixin.success_response(data=data)
     except Exception as exc:
@@ -791,12 +820,17 @@ def get_events_by_date(request, date):
 
         sport = request.GET.get('sport')
         if sport:
-            events = events.filter(sport=sport)
+            if sport.lower() in ('basketball', 'nba'):
+                events = events.filter(sport__in=['basketball', 'nba'])
+            else:
+                events = events.filter(sport=sport.lower())
+
+        events_list = _deduplicate_events(list(events))
 
         serializer_context = {'request': request, 'timezone': user_tz}
         # Group by sport
         grouped = {}
-        for event in events:
+        for event in events_list:
             s = event.sport
             if s not in grouped:
                 grouped[s] = []
@@ -804,7 +838,7 @@ def get_events_by_date(request, date):
 
         data = {
             'date': date,
-            'total_count': events.count(),
+            'total_count': len(events_list),
             'events_by_sport': grouped,
         }
         return mixin.success_response(data=data)
@@ -829,6 +863,7 @@ def trigger_event_detail_fetch(request, event_id):
         from apps.event.tasks import fetch_event_details
         from apps.event.models import Event
 
+        event = get_object_or_404(Event, id=event_id)
         if event.api_source != 'statpal':
             return mixin.error_response(
                 message=f'Only statpal events supported. This event is from {event.api_source}',
