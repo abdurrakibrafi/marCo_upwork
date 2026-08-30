@@ -59,15 +59,45 @@ class LiveScoreConsumer(AsyncWebsocketConsumer):
         }, cls=DjangoJSONEncoder))
 
     async def score_update(self, event):
-        """Relay broadcast score updates from Redis channel layer to the connected client."""
-        await self.send(text_data=json.dumps(event, cls=DjangoJSONEncoder))
+        """Relay broadcast score updates only if relevant to the connected user's Nest."""
+        user = self.scope.get('user')
+        score_data = event.get('data') or {}
+        score_id = score_data.get('id') or score_data.get('external_id')
+        home_team = score_data.get('home_team', '')
+        away_team = score_data.get('away_team', '')
+
+        is_relevant = await self.check_if_relevant_to_user(user, score_id, home_team, away_team)
+        if is_relevant:
+            await self.send(text_data=json.dumps(event, cls=DjangoJSONEncoder))
+
+    @database_sync_to_async
+    def check_if_relevant_to_user(self, user, score_id, home_team, away_team):
+        """Check if an incoming live score update matches the user's followed Nest entities."""
+        if not user or not user.is_authenticated:
+            return False
+        from .views import _get_user_live_scores_queryset
+        user_live_scores = _get_user_live_scores_queryset(user, sport=self.sport_filter)
+        if score_id:
+            try:
+                if user_live_scores.filter(id=int(score_id)).exists() or user_live_scores.filter(external_id=str(score_id)).exists():
+                    return True
+            except (ValueError, TypeError):
+                if user_live_scores.filter(external_id=str(score_id)).exists():
+                    return True
+        if home_team or away_team:
+            if user_live_scores.filter(home_team__iexact=home_team).exists() or user_live_scores.filter(away_team__iexact=away_team).exists():
+                return True
+        return False
 
     @database_sync_to_async
     def get_live_games(self):
-        """Synchronously fetch active live scores matching the current sport filter."""
-        qs = LiveScore.objects.filter(status='live').order_by('-updated_at')
-        if self.sport_filter:
-            qs = qs.filter(sport=self.sport_filter)
+        """Synchronously fetch active live scores strictly matching the user's Nest and sport filter."""
+        user = self.scope.get('user')
+        if user and user.is_authenticated:
+            from .views import _get_user_live_scores_queryset
+            qs = _get_user_live_scores_queryset(user, sport=self.sport_filter)
+        else:
+            qs = LiveScore.objects.none()
         serializer = LiveScoreSerializer(qs, many=True, context={'request': None})
         return serializer.data
 
