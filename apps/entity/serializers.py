@@ -26,6 +26,79 @@ def make_logo_url_absolute(url, request=None):
         return url
 
 
+def find_entity_logo(entity):
+    """Resolve and backfill entity logo or athlete headshot URL."""
+    if not entity:
+        return ""
+    logo = entity.logo_url
+    is_invalid_logo = logo and "statpal.io" in logo
+    if logo and not is_invalid_logo:
+        return logo
+
+    # 1. If team, search team logo by name
+    if entity.type == 'team':
+        from apps.entity.utils.matcher import find_team_logo_by_name
+        return find_team_logo_by_name(entity.name)
+
+    # 2. If athlete:
+    if entity.type == 'athlete':
+        from apps.entity.models import Entity
+        # 2a. Check if another entity instance with same name has logo_url
+        alt_logo = Entity.objects.filter(
+            name__iexact=entity.name,
+            type='athlete'
+        ).exclude(logo_url="").values_list("logo_url", flat=True).first()
+        if alt_logo and "statpal.io" not in alt_logo:
+            return alt_logo
+
+        # 2b. Check cover_image_url
+        if entity.cover_image_url and "statpal.io" not in entity.cover_image_url:
+            return entity.cover_image_url
+
+        # 2c. Check athlete_details -> current_team logo
+        ad = getattr(entity, 'athlete_details', None)
+        if ad and ad.current_team:
+            team_logo = ad.current_team.logo_url
+            if team_logo and "statpal.io" not in team_logo:
+                return team_logo
+            from apps.entity.utils.matcher import find_team_logo_by_name
+            t_logo = find_team_logo_by_name(ad.current_team.name)
+            if t_logo:
+                return t_logo
+
+        # 2d. TheSportsDB live headshot lookup fallback
+        try:
+            from django.core.cache import cache
+            cache_key = f"athlete_headshot_{entity.name.lower().strip().replace(' ', '_')}"
+            cached_headshot = cache.get(cache_key)
+            if cached_headshot:
+                return cached_headshot
+            from apps.sports_apis.services.thesportsdb import thesportsdb_service
+            p_info = thesportsdb_service.get_player_details(entity.name) or {}
+            headshot = p_info.get('headshot_url') or p_info.get('thumb_url') or ''
+            if headshot:
+                cache.set(cache_key, headshot, timeout=604800)
+                entity.logo_url = headshot
+                entity.save(update_fields=['logo_url'])
+                return headshot
+        except Exception:
+            pass
+
+    # 3. If league, check other league entities or cover_image_url
+    if entity.type == 'league':
+        from apps.entity.models import Entity
+        alt_logo = Entity.objects.filter(
+            name__iexact=entity.name,
+            type='league'
+        ).exclude(logo_url="").values_list("logo_url", flat=True).first()
+        if alt_logo and "statpal.io" not in alt_logo:
+            return alt_logo
+        if entity.cover_image_url and "statpal.io" not in entity.cover_image_url:
+            return entity.cover_image_url
+
+    return ""
+
+
 class EntityCompactSerializer(serializers.ModelSerializer):
     """Minimal entity serializer for lightweight embedding in nested responses."""
     
@@ -44,11 +117,7 @@ class EntityCompactSerializer(serializers.ModelSerializer):
         Returns:
             str: Resolved absolute logo URL.
         """
-        logo = obj.logo_url
-        is_invalid_logo = logo and "statpal.io" in logo
-        if (not logo or is_invalid_logo) and obj.type == 'team':
-            from apps.entity.utils.matcher import find_team_logo_by_name
-            logo = find_team_logo_by_name(obj.name)
+        logo = find_entity_logo(obj)
         return make_logo_url_absolute(logo, self.context.get('request'))
 
 
@@ -94,11 +163,7 @@ class EntitySerializer(serializers.ModelSerializer):
         Returns:
             str: Resolved absolute logo URL.
         """
-        logo = obj.logo_url
-        is_invalid_logo = logo and "statpal.io" in logo
-        if (not logo or is_invalid_logo) and obj.type == 'team':
-            from apps.entity.utils.matcher import find_team_logo_by_name
-            logo = find_team_logo_by_name(obj.name)
+        logo = find_entity_logo(obj)
         return make_logo_url_absolute(logo, self.context.get('request'))
 
     def to_representation(self, instance):
