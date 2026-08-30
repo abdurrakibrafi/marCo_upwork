@@ -368,7 +368,10 @@ class EventDetailSerializer(serializers.ModelSerializer):
 
         # Exclude empty stats objects (e.g. when API has no stats for a minor league match)
         if data.get('statistics'):
-            valid_stats = [s for s in data['statistics'] if s.get('stats') and any(k not in ('side', 'ft_home', 'ft_away') for k in s['stats'].keys())]
+            valid_stats = [
+                s for s in data['statistics']
+                if isinstance(s, dict) and isinstance(s.get('stats'), dict) and any(k not in ('side', 'ft_home', 'ft_away') for k in s['stats'].keys())
+            ]
             data['statistics'] = valid_stats
             data['has_stats'] = len(valid_stats) > 0
         else:
@@ -415,14 +418,17 @@ class EventDetailSerializer(serializers.ModelSerializer):
         )
         result = []
         for ps in top:
+            if not ps.player:
+                continue
+            ps_stats = ps.stats if isinstance(ps.stats, dict) else {}
             result.append({
                 'player_id':     ps.player.id,
                 'name':          ps.player.name,
-                'photo':         ps.player.logo_url,
+                'photo':         ps.player.logo_url or '',
                 'team':          ps.team.name if ps.team else '',
                 'goals':         ps.points_or_goals,
-                'rating':        ps.stats.get('rating'),
-                'assists':       ps.stats.get('assists', 0),
-                'minutes':       ps.stats.get('minutes', 0),
+                'rating':        ps_stats.get('rating'),
+                'assists':       ps_stats.get('assists', 0),
+                'minutes':       ps_stats.get('minutes', 0),
             })
         return result

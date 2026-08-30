@@ -431,7 +431,7 @@ def _on_the_fly_update_statpal_event(event) -> bool:
     
     sport = event.sport
     today = timezone.now().date()
-    offset = (event.start_time.date() - today).days
+    offset = (event.start_time.date() - today).days if event.start_time else 0
     
     configs = {
         "soccer": (statpal_service.get_soccer_fixtures, _soccer_rows),
