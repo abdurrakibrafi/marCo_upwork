@@ -411,11 +411,12 @@ def get_event_detail(request, event_id: int):
                             'innings': innings,
                             'is_fallback': False if side_meta else True,
                         }
-                        EventStatistics.objects.update_or_create(
-                            event=event,
-                            team=team,
-                            defaults={'stats': stats_payload}
-                        )
+                        stat_obj = EventStatistics.objects.filter(event=event, team=team).first()
+                        if stat_obj:
+                            stat_obj.stats = stats_payload
+                            stat_obj.save(update_fields=['stats'])
+                        else:
+                            EventStatistics.objects.create(event=event, team=team, stats=stats_payload)
                 elif event.sport == 'cricket':
                     for side, team in [('home', event.home_entity), ('away', event.away_entity)]:
                         score_val = event.home_score if side == 'home' else event.away_score
@@ -425,11 +426,12 @@ def get_event_detail(request, event_id: int):
                             'runs': score_val if score_val is not None else 0,
                             'is_fallback': True,
                         }
-                        EventStatistics.objects.update_or_create(
-                            event=event,
-                            team=team,
-                            defaults={'stats': stats_payload}
-                        )
+                        stat_obj = EventStatistics.objects.filter(event=event, team=team).first()
+                        if stat_obj:
+                            stat_obj.stats = stats_payload
+                            stat_obj.save(update_fields=['stats'])
+                        else:
+                            EventStatistics.objects.create(event=event, team=team, stats=stats_payload)
                 elif event.sport in ('basketball', 'nba'):
                     for side, team in [('home', event.home_entity), ('away', event.away_entity)]:
                         score_val = event.home_score if side == 'home' else event.away_score
@@ -439,11 +441,12 @@ def get_event_detail(request, event_id: int):
                             'points': score_val if score_val is not None else 0,
                             'is_fallback': True,
                         }
-                        EventStatistics.objects.update_or_create(
-                            event=event,
-                            team=team,
-                            defaults={'stats': stats_payload}
-                        )
+                        stat_obj = EventStatistics.objects.filter(event=event, team=team).first()
+                        if stat_obj:
+                            stat_obj.stats = stats_payload
+                            stat_obj.save(update_fields=['stats'])
+                        else:
+                            EventStatistics.objects.create(event=event, team=team, stats=stats_payload)
                 else:
                     for side, team in [('home', event.home_entity), ('away', event.away_entity)]:
                         team_tl = event.timeline.filter(team=team)
@@ -460,11 +463,12 @@ def get_event_detail(request, event_id: int):
                             'ft_away': str(event.away_score or 0),
                             'is_fallback': True,
                         }
-                        EventStatistics.objects.update_or_create(
-                            event=event,
-                            team=team,
-                            defaults={'stats': stats_payload}
-                        )
+                        stat_obj = EventStatistics.objects.filter(event=event, team=team).first()
+                        if stat_obj:
+                            stat_obj.stats = stats_payload
+                            stat_obj.save(update_fields=['stats'])
+                        else:
+                            EventStatistics.objects.create(event=event, team=team, stats=stats_payload)
                 event = Event.objects.select_related(
                     "home_entity", "away_entity", "league"
                 ).prefetch_related(
