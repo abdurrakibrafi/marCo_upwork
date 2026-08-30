@@ -477,9 +477,12 @@ def get_event_detail(request, event_id: int):
                 ).get(id=event_id)
 
         user_tz = _resolve_timezone(request)
-        return mixin.success_response(
-            data=EventDetailSerializer(event, context={'request': request, 'timezone': user_tz}).data
-        )
+        try:
+            serialized_data = EventDetailSerializer(event, context={'request': request, 'timezone': user_tz}).data
+        except Exception:
+            serialized_data = EventSerializer(event, context={'request': request, 'timezone': user_tz}).data
+
+        return mixin.success_response(data=serialized_data)
     except Exception as exc:
         return mixin.handle_exception(exc)
 

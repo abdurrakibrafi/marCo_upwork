@@ -27,9 +27,12 @@ class EntityMinimalSerializer(serializers.ModelSerializer):
     def get_logo_url(self, obj):
         if not obj:
             return ''
-        from apps.entity.serializers import find_entity_logo, make_logo_url_absolute
-        logo = find_entity_logo(obj)
-        return make_logo_url_absolute(logo, self.context.get('request'))
+        try:
+            from apps.entity.serializers import find_entity_logo, make_logo_url_absolute
+            logo = find_entity_logo(obj)
+            return make_logo_url_absolute(logo, self.context.get('request'))
+        except Exception:
+            return getattr(obj, 'logo_url', '') or ''
 
 
 class EventTimelineSerializer(serializers.ModelSerializer):
@@ -76,9 +79,12 @@ class EventStatisticsSerializer(serializers.ModelSerializer):
         Returns:
             dict: Normalized team stats mapping.
         """
-        from apps.event.utils_stats import normalize_event_stats
-        sport = getattr(obj.event, 'sport', None) or getattr(obj.team, 'sport', None)
-        return normalize_event_stats(obj.stats, sport=sport, event=getattr(obj, 'event', None))
+        try:
+            from apps.event.utils_stats import normalize_event_stats
+            sport = getattr(obj.event, 'sport', None) or (getattr(obj.team, 'sport', None) if obj.team else None)
+            return normalize_event_stats(obj.stats, sport=sport, event=getattr(obj, 'event', None))
+        except Exception:
+            return obj.stats if isinstance(obj.stats, dict) else {}
 
 
 class EventPlayerStatsSerializer(serializers.ModelSerializer):
@@ -330,52 +336,60 @@ class EventDetailSerializer(serializers.ModelSerializer):
         Returns:
             dict: Serialized event detail dictionary.
         """
-        data = super().to_representation(instance)
-        from django.utils import timezone
-        if instance.status == 'upcoming' and instance.start_time and instance.start_time < timezone.now():
-            data['status'] = 'completed'
-            status_det = str(data.get('status_detail') or '')
-            if status_det in ('Not Started', '') or ':' in status_det:
-                data['status_detail'] = 'FT'
+        try:
+            data = super().to_representation(instance)
+        except Exception:
+            from apps.event.serializers import EventSerializer
+            return EventSerializer(instance, context=self.context).data
 
-        # Timezone conversion for local_date, local_time, and status_detail
-        user_tz = self.context.get('timezone')
-        if not user_tz and self.context.get('request'):
-            from apps.event.views import _resolve_timezone
-            user_tz = _resolve_timezone(self.context.get('request'))
+        try:
+            from django.utils import timezone
+            if instance.status == 'upcoming' and instance.start_time and instance.start_time < timezone.now():
+                data['status'] = 'completed'
+                status_det = str(data.get('status_detail') or '')
+                if status_det in ('Not Started', '') or ':' in status_det:
+                    data['status_detail'] = 'FT'
 
-        if user_tz and instance.start_time:
-            local_dt = instance.start_time.astimezone(user_tz)
-            data['local_date'] = local_dt.date().isoformat()
-            data['local_time'] = local_dt.strftime('%H:%M')
-            if data.get('status') == 'upcoming' and (not data.get('status_detail') or ':' in str(data.get('status_detail'))):
-                data['status_detail'] = local_dt.strftime('%H:%M')
+            # Timezone conversion for local_date, local_time, and status_detail
+            user_tz = self.context.get('timezone')
+            if not user_tz and self.context.get('request'):
+                from apps.event.views import _resolve_timezone
+                user_tz = _resolve_timezone(self.context.get('request'))
 
-        from apps.score.services import format_sport_status_detail
-        meta = instance.metadata if isinstance(instance.metadata, dict) else {}
-        data['status_detail'] = format_sport_status_detail(
-            sport=instance.sport,
-            status=data.get('status', instance.status),
-            status_detail=data.get('status_detail', instance.status_detail),
-            home_score=instance.home_score,
-            away_score=instance.away_score,
-            raw_data=meta,
-            game=instance
-        )
+            if user_tz and instance.start_time:
+                local_dt = instance.start_time.astimezone(user_tz)
+                data['local_date'] = local_dt.date().isoformat()
+                data['local_time'] = local_dt.strftime('%H:%M')
+                if data.get('status') == 'upcoming' and (not data.get('status_detail') or ':' in str(data.get('status_detail'))):
+                    data['status_detail'] = local_dt.strftime('%H:%M')
 
-        # Auto-fill missing venue name/city/country from metadata / home team lookup
-        data = _extract_event_venue_info(instance, data)
+            from apps.score.services import format_sport_status_detail
+            meta = instance.metadata if isinstance(instance.metadata, dict) else {}
+            data['status_detail'] = format_sport_status_detail(
+                sport=instance.sport,
+                status=data.get('status', instance.status),
+                status_detail=data.get('status_detail', instance.status_detail),
+                home_score=instance.home_score,
+                away_score=instance.away_score,
+                raw_data=meta,
+                game=instance
+            )
 
-        # Exclude empty stats objects (e.g. when API has no stats for a minor league match)
-        if data.get('statistics'):
-            valid_stats = [
-                s for s in data['statistics']
-                if isinstance(s, dict) and isinstance(s.get('stats'), dict) and any(k not in ('side', 'ft_home', 'ft_away') for k in s['stats'].keys())
-            ]
-            data['statistics'] = valid_stats
-            data['has_stats'] = len(valid_stats) > 0
-        else:
-            data['has_stats'] = False
+            # Auto-fill missing venue name/city/country from metadata / home team lookup
+            data = _extract_event_venue_info(instance, data)
+
+            # Exclude empty stats objects (e.g. when API has no stats for a minor league match)
+            if data.get('statistics'):
+                valid_stats = [
+                    s for s in data['statistics']
+                    if isinstance(s, dict) and isinstance(s.get('stats'), dict) and any(k not in ('side', 'ft_home', 'ft_away') for k in s['stats'].keys())
+                ]
+                data['statistics'] = valid_stats
+                data['has_stats'] = len(valid_stats) > 0
+            else:
+                data['has_stats'] = False
+        except Exception:
+            pass
 
         return data
 
@@ -388,8 +402,11 @@ class EventDetailSerializer(serializers.ModelSerializer):
         Returns:
             bool: True if event has statistics.
         """
-        from apps.event.utils_stats import normalize_event_stats
-        return any(normalize_event_stats(s.stats, sport=obj.sport, event=obj) for s in obj.statistics.all() if s.stats)
+        try:
+            from apps.event.utils_stats import normalize_event_stats
+            return any(normalize_event_stats(s.stats, sport=obj.sport, event=obj) for s in obj.statistics.all() if s.stats)
+        except Exception:
+            return False
 
     def get_has_lineups(self, obj):
         """Check if starting lineups have been submitted for this event.
@@ -400,7 +417,10 @@ class EventDetailSerializer(serializers.ModelSerializer):
         Returns:
             bool: True if lineups exist.
         """
-        return obj.lineups.exists()
+        try:
+            return obj.lineups.exists()
+        except Exception:
+            return False
 
     def get_key_players(self, obj):
         """Extract top 3 player performers by goals/points in this match.
