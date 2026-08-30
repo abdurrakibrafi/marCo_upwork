@@ -660,7 +660,7 @@ def get_entity_calendar(request, entity_id):
 @api_view(['GET'])
 @permission_classes([AllowAny])
 def get_live_events(request):
-    """Retrieve all currently active live sports events across all supported sports.
+    """Retrieve currently active live sports events filtered for user's followed Nest entities.
 
     Args:
         request (Request): HTTP GET request with optional 'sport' filter.
@@ -674,6 +674,37 @@ def get_live_events(request):
         events = Event.objects.filter(
             status='live'
         ).select_related('home_entity', 'away_entity', 'league').order_by('-start_time')
+
+        # Filter by Nest entities for authenticated users (unless ?all=true is explicitly requested)
+        show_all = request.GET.get('all', '').lower() == 'true'
+        if request.user and request.user.is_authenticated and not show_all:
+            from apps.nest.models import UserNest
+            from apps.entity.models import Entity
+            from django.db.models import Q
+
+            user_nest_ids = list(
+                UserNest.objects.filter(user=request.user).values_list("entity_id", flat=True)
+            )
+            if not user_nest_ids:
+                return mixin.success_response(data={'count': 0, 'events': []})
+
+            nest_entities = Entity.objects.filter(id__in=user_nest_ids)
+            all_ids = set(user_nest_ids)
+            for ent in nest_entities:
+                dups = Entity.objects.filter(name__iexact=ent.name, sport=ent.sport, type=ent.type).values_list("id", flat=True)
+                all_ids.update(dups)
+                if ent.canonical_entity_id:
+                    all_ids.add(ent.canonical_entity_id)
+                if ent.type == 'athlete':
+                    ad = getattr(ent, 'athlete_details', None)
+                    if ad and ad.current_team_id:
+                        all_ids.add(ad.current_team_id)
+
+            events = events.filter(
+                Q(home_entity_id__in=all_ids)
+                | Q(away_entity_id__in=all_ids)
+                | Q(league_id__in=all_ids)
+            )
 
         sport = request.GET.get('sport')
         if sport:

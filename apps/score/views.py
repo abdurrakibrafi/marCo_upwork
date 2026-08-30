@@ -57,10 +57,78 @@ from .converters import (
 
 # apps/score/views.py
 
+def _get_user_live_scores_queryset(user, sport=None):
+    """Retrieve active live scores strictly filtered for the user's followed Nest entities."""
+    from apps.nest.models import UserNest
+    from apps.entity.models import Entity
+    from apps.event.models import Event
+    from django.db.models import Q
+
+    if not user or not user.is_authenticated:
+        return LiveScore.objects.none()
+
+    user_nest_entity_ids = list(
+        UserNest.objects.filter(user=user).values_list("entity_id", flat=True)
+    )
+    if not user_nest_entity_ids:
+        return LiveScore.objects.none()
+
+    # Expand canonical, child duplicates, and athlete teams
+    nest_entities = Entity.objects.filter(id__in=user_nest_entity_ids)
+    all_entity_ids = set(user_nest_entity_ids)
+    team_names = set()
+
+    for ent in nest_entities:
+        team_names.add(ent.name.lower().strip())
+        duplicates = Entity.objects.filter(
+            name__iexact=ent.name,
+            sport=ent.sport,
+            type=ent.type
+        ).values_list("id", flat=True)
+        all_entity_ids.update(duplicates)
+        if ent.canonical_entity_id:
+            all_entity_ids.add(ent.canonical_entity_id)
+            if ent.canonical_entity:
+                team_names.add(ent.canonical_entity.name.lower().strip())
+        if ent.type == 'athlete':
+            ad = getattr(ent, 'athlete_details', None)
+            if ad and ad.current_team_id:
+                all_entity_ids.add(ad.current_team_id)
+                if ad.current_team:
+                    team_names.add(ad.current_team.name.lower().strip())
+
+    all_entity_ids = list(all_entity_ids)
+
+    # Find live Event external_ids matching user's Nest entities
+    live_event_external_ids = list(
+        Event.objects.filter(
+            status="live"
+        ).filter(
+            Q(home_entity_id__in=all_entity_ids)
+            | Q(away_entity_id__in=all_entity_ids)
+            | Q(league_id__in=all_entity_ids)
+        ).values_list("external_id", flat=True)
+    )
+
+    name_q = Q()
+    for tname in team_names:
+        if tname and len(tname) >= 3:
+            name_q |= Q(home_team__icontains=tname) | Q(away_team__icontains=tname)
+
+    qs = LiveScore.objects.filter(status="live").filter(
+        Q(external_id__in=live_event_external_ids) | name_q
+    ).distinct().order_by("-updated_at")
+
+    if sport:
+        qs = qs.filter(sport=sport.lower())
+
+    return qs
+
+
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def live_scores(request):
-    """Retrieve top active live scores across all sports for periodic frontend polling.
+    """Retrieve active live scores strictly filtered for the user's followed Nest entities.
 
     Args:
         request: Django HTTP request.
@@ -70,7 +138,8 @@ def live_scores(request):
     """
     mixin = BaseResponseMixin()
     try:
-        live_games = LiveScore.objects.filter(status='live').order_by('-updated_at')[:20]
+        sport = request.query_params.get('sport')
+        live_games = _get_user_live_scores_queryset(request.user, sport=sport)
         serializer = LiveScoreSerializer(live_games, many=True)
 
         data = {
@@ -94,44 +163,11 @@ def nest_live_scores(request):
     """
     mixin = BaseResponseMixin()
     try:
-        from apps.nest.models import UserNest
-        from django.db.models import Q
-
-        nest_entity_ids = list(
-            UserNest.objects.filter(user=request.user)
-            .values_list("entity_id", flat=True)
-        )
-        if not nest_entity_ids:
-            return mixin.success_response(
-                data={"count": 0, "games": []},
-                message="No entities in your nest.",
-            )
-
-        from apps.event.models import Event
-        live_event_ids = (
-            Event.objects.filter(
-                api_source="statpal",
-                status="live",
-            )
-            .filter(
-                Q(home_entity_id__in=nest_entity_ids)
-                | Q(away_entity_id__in=nest_entity_ids)
-            )
-            .values_list("external_id", flat=True)
-        )
-
-        qs = LiveScore.objects.filter(
-            status="live",
-            external_id__in=list(live_event_ids),
-        ).order_by("-updated_at")
-
         sport = request.query_params.get("sport")
-        if sport:
-            qs = qs.filter(sport=sport.lower())
-
-        serializer = LiveScoreSerializer(list(qs), many=True)
+        live_games = _get_user_live_scores_queryset(request.user, sport=sport)
+        serializer = LiveScoreSerializer(live_games, many=True)
         return mixin.success_response(
-            data={"count": qs.count(), "games": serializer.data}
+            data={"count": live_games.count(), "games": serializer.data}
         )
 
     except Exception as exc:
@@ -1072,24 +1108,14 @@ def live_scores_by_sport(request, sport: str):
                 status_code=status.HTTP_400_BAD_REQUEST
             )
         
-        cache_key = f'live_scores_{sport_lower}'
-        cached_data = cache.get(cache_key)
+        live_games = _get_user_live_scores_queryset(request.user, sport=sport_lower)
+        serializer = LiveScoreSerializer(live_games, many=True)
         
-        if cached_data:
-            # Get from database
-            live_games = LiveScore.objects.filter(sport=sport_lower, status='live')
-            serializer = LiveScoreSerializer(live_games, many=True)
-            
-            data = {
-                'sport': sport_lower,
-                'count': live_games.count(),
-                'games': serializer.data
-            }
-            return mixin.success_response(data=data)
-        else:
-            return mixin.success_response(
-                data={'sport': sport_lower, 'games': []},
-                message='Live scores are being updated...'
-            )
+        data = {
+            'sport': sport_lower,
+            'count': live_games.count(),
+            'games': serializer.data
+        }
+        return mixin.success_response(data=data)
     except Exception as exc:
         return mixin.handle_exception(exc)
