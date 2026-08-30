@@ -346,135 +346,147 @@ def get_event_detail(request, event_id: int):
             id=event_id
         )
 
-        # On-the-fly details population for completed/finished events (if missing)
-        is_completed = (event.status == "completed") or (
-            event.status == "upcoming" and event.start_time and event.start_time < timezone.now()
-        )
-        meta = event.metadata if isinstance(event.metadata, dict) else {}
-        if is_completed and (not meta.get("details_fetched") or (event.sport == "soccer" and not meta.get("team_stats"))):
-            if event.api_source == "statpal":
-                from apps.event.tasks import _on_the_fly_update_statpal_event
-                try:
-                    _on_the_fly_update_statpal_event(event)
-                    if not isinstance(event.metadata, dict):
-                        event.metadata = {}
-                    event.metadata["details_fetched"] = True
-                    event.save(update_fields=["metadata"])
-                    # Re-fetch event to include newly created timeline and stats
+        try:
+            # On-the-fly details population for completed/finished events (if missing)
+            is_completed = (event.status == "completed") or (
+                event.status == "upcoming" and event.start_time and event.start_time < timezone.now()
+            )
+            meta = event.metadata if isinstance(event.metadata, dict) else {}
+            if is_completed and (not meta.get("details_fetched") or (event.sport == "soccer" and not meta.get("team_stats"))):
+                if event.api_source == "statpal":
+                    from apps.event.tasks import _on_the_fly_update_statpal_event
+                    try:
+                        _on_the_fly_update_statpal_event(event)
+                        if not isinstance(event.metadata, dict):
+                            event.metadata = {}
+                        event.metadata["details_fetched"] = True
+                        event.save(update_fields=["metadata"])
+                        # Re-fetch event to include newly created timeline and stats
+                        event = Event.objects.select_related(
+                            "home_entity", "away_entity", "league"
+                        ).prefetch_related(
+                            "timeline", "lineups", "statistics",
+                            "player_stats", "highlights"
+                        ).get(id=event_id)
+                    except Exception:
+                        pass
+
+            # Auto-ensure EventStatistics exist for any sport if scores exist
+            if (event.home_score is not None or event.away_score is not None) and event.home_entity and event.away_entity:
+                from apps.event.utils_stats import normalize_event_stats
+                is_baseball = event.sport in ('baseball', 'mlb')
+                has_valid = any(normalize_event_stats(s.stats, sport=event.sport, event=event) for s in event.statistics.all() if s.stats)
+                
+                # If sport is baseball, ensure baseball stats with hits/errors/innings are present
+                needs_update = not has_valid
+                if is_baseball and not any(isinstance(s.stats, dict) and ('hits' in s.stats or s.stats.get('sport') == 'baseball') for s in event.statistics.all()):
+                    needs_update = True
+
+                if needs_update:
+                    if is_baseball:
+                        meta = event.metadata if isinstance(event.metadata, dict) else {}
+                        for side, team in [('home', event.home_entity), ('away', event.away_entity)]:
+                            if not team:
+                                continue
+                            side_meta = meta.get(side, {}) if isinstance(meta.get(side), dict) else {}
+                            innings = {}
+                            for i in range(1, 10):
+                                k = f'in{i}'
+                                if k in side_meta and side_meta[k] != '':
+                                    try:
+                                        innings[str(i)] = int(side_meta[k])
+                                    except (ValueError, TypeError):
+                                        innings[str(i)] = side_meta[k]
+                            if side_meta.get('extra'):
+                                innings['extra'] = side_meta['extra']
+
+                            score_val = event.home_score if side == 'home' else event.away_score
+                            runs = int(side_meta.get('totalscore') or (score_val if score_val is not None else 0))
+                            hits = int(side_meta.get('hits') or 0)
+                            errors = int(side_meta.get('errors') or 0)
+
+                            stats_payload = {
+                                'side': side,
+                                'sport': 'baseball',
+                                'runs': runs,
+                                'hits': hits,
+                                'errors': errors,
+                                'innings': innings,
+                                'is_fallback': False if side_meta else True,
+                            }
+                            stat_obj = EventStatistics.objects.filter(event=event, team=team).first()
+                            if stat_obj:
+                                stat_obj.stats = stats_payload
+                                stat_obj.save(update_fields=['stats'])
+                            else:
+                                EventStatistics.objects.create(event=event, team=team, stats=stats_payload)
+                    elif event.sport == 'cricket':
+                        for side, team in [('home', event.home_entity), ('away', event.away_entity)]:
+                            if not team:
+                                continue
+                            score_val = event.home_score if side == 'home' else event.away_score
+                            stats_payload = {
+                                'side': side,
+                                'sport': 'cricket',
+                                'runs': score_val if score_val is not None else 0,
+                                'is_fallback': True,
+                            }
+                            stat_obj = EventStatistics.objects.filter(event=event, team=team).first()
+                            if stat_obj:
+                                stat_obj.stats = stats_payload
+                                stat_obj.save(update_fields=['stats'])
+                            else:
+                                EventStatistics.objects.create(event=event, team=team, stats=stats_payload)
+                    elif event.sport in ('basketball', 'nba'):
+                        for side, team in [('home', event.home_entity), ('away', event.away_entity)]:
+                            if not team:
+                                continue
+                            score_val = event.home_score if side == 'home' else event.away_score
+                            stats_payload = {
+                                'side': side,
+                                'sport': 'basketball',
+                                'points': score_val if score_val is not None else 0,
+                                'is_fallback': True,
+                            }
+                            stat_obj = EventStatistics.objects.filter(event=event, team=team).first()
+                            if stat_obj:
+                                stat_obj.stats = stats_payload
+                                stat_obj.save(update_fields=['stats'])
+                            else:
+                                EventStatistics.objects.create(event=event, team=team, stats=stats_payload)
+                    elif event.sport in ('soccer', 'football'):
+                        for side, team in [('home', event.home_entity), ('away', event.away_entity)]:
+                            if not team:
+                                continue
+                            team_tl = event.timeline.filter(team=team)
+                            score_val = event.home_score if side == 'home' else event.away_score
+
+                            stats_payload = {
+                                'side': side,
+                                'sport': 'soccer',
+                                'goals': str(score_val if score_val is not None else 0),
+                                'yellowcards': str(team_tl.filter(event_type='yellow_card').count()),
+                                'redcards': str(team_tl.filter(event_type='red_card').count()),
+                                'substitutions': str(team_tl.filter(event_type='substitution').count()),
+                                'ft_home': str(event.home_score or 0),
+                                'ft_away': str(event.away_score or 0),
+                                'is_fallback': True,
+                            }
+                            stat_obj = EventStatistics.objects.filter(event=event, team=team).first()
+                            if stat_obj:
+                                stat_obj.stats = stats_payload
+                                stat_obj.save(update_fields=['stats'])
+                            else:
+                                EventStatistics.objects.create(event=event, team=team, stats=stats_payload)
                     event = Event.objects.select_related(
                         "home_entity", "away_entity", "league"
                     ).prefetch_related(
                         "timeline", "lineups", "statistics",
                         "player_stats", "highlights"
                     ).get(id=event_id)
-                except Exception:
-                    pass
-
-        # Auto-ensure EventStatistics exist for any sport if scores exist
-        if (event.home_score is not None or event.away_score is not None) and event.home_entity and event.away_entity:
-            from apps.event.utils_stats import normalize_event_stats
-            is_baseball = event.sport in ('baseball', 'mlb')
-            has_valid = any(normalize_event_stats(s.stats, sport=event.sport, event=event) for s in event.statistics.all() if s.stats)
-            
-            # If sport is baseball, ensure baseball stats with hits/errors/innings are present
-            needs_update = not has_valid
-            if is_baseball and not any(isinstance(s.stats, dict) and ('hits' in s.stats or s.stats.get('sport') == 'baseball') for s in event.statistics.all()):
-                needs_update = True
-
-            if needs_update:
-                if is_baseball:
-                    meta = event.metadata if isinstance(event.metadata, dict) else {}
-                    for side, team in [('home', event.home_entity), ('away', event.away_entity)]:
-                        side_meta = meta.get(side, {}) if isinstance(meta.get(side), dict) else {}
-                        innings = {}
-                        for i in range(1, 10):
-                            k = f'in{i}'
-                            if k in side_meta and side_meta[k] != '':
-                                try:
-                                    innings[str(i)] = int(side_meta[k])
-                                except (ValueError, TypeError):
-                                    innings[str(i)] = side_meta[k]
-                        if side_meta.get('extra'):
-                            innings['extra'] = side_meta['extra']
-
-                        score_val = event.home_score if side == 'home' else event.away_score
-                        runs = int(side_meta.get('totalscore') or (score_val if score_val is not None else 0))
-                        hits = int(side_meta.get('hits') or 0)
-                        errors = int(side_meta.get('errors') or 0)
-
-                        stats_payload = {
-                            'side': side,
-                            'sport': 'baseball',
-                            'runs': runs,
-                            'hits': hits,
-                            'errors': errors,
-                            'innings': innings,
-                            'is_fallback': False if side_meta else True,
-                        }
-                        stat_obj = EventStatistics.objects.filter(event=event, team=team).first()
-                        if stat_obj:
-                            stat_obj.stats = stats_payload
-                            stat_obj.save(update_fields=['stats'])
-                        else:
-                            EventStatistics.objects.create(event=event, team=team, stats=stats_payload)
-                elif event.sport == 'cricket':
-                    for side, team in [('home', event.home_entity), ('away', event.away_entity)]:
-                        score_val = event.home_score if side == 'home' else event.away_score
-                        stats_payload = {
-                            'side': side,
-                            'sport': 'cricket',
-                            'runs': score_val if score_val is not None else 0,
-                            'is_fallback': True,
-                        }
-                        stat_obj = EventStatistics.objects.filter(event=event, team=team).first()
-                        if stat_obj:
-                            stat_obj.stats = stats_payload
-                            stat_obj.save(update_fields=['stats'])
-                        else:
-                            EventStatistics.objects.create(event=event, team=team, stats=stats_payload)
-                elif event.sport in ('basketball', 'nba'):
-                    for side, team in [('home', event.home_entity), ('away', event.away_entity)]:
-                        score_val = event.home_score if side == 'home' else event.away_score
-                        stats_payload = {
-                            'side': side,
-                            'sport': 'basketball',
-                            'points': score_val if score_val is not None else 0,
-                            'is_fallback': True,
-                        }
-                        stat_obj = EventStatistics.objects.filter(event=event, team=team).first()
-                        if stat_obj:
-                            stat_obj.stats = stats_payload
-                            stat_obj.save(update_fields=['stats'])
-                        else:
-                            EventStatistics.objects.create(event=event, team=team, stats=stats_payload)
-                else:
-                    for side, team in [('home', event.home_entity), ('away', event.away_entity)]:
-                        team_tl = event.timeline.filter(team=team)
-                        score_val = event.home_score if side == 'home' else event.away_score
-
-                        stats_payload = {
-                            'side': side,
-                            'sport': 'soccer',
-                            'goals': str(score_val if score_val is not None else 0),
-                            'yellowcards': str(team_tl.filter(event_type='yellow_card').count()),
-                            'redcards': str(team_tl.filter(event_type='red_card').count()),
-                            'substitutions': str(team_tl.filter(event_type='substitution').count()),
-                            'ft_home': str(event.home_score or 0),
-                            'ft_away': str(event.away_score or 0),
-                            'is_fallback': True,
-                        }
-                        stat_obj = EventStatistics.objects.filter(event=event, team=team).first()
-                        if stat_obj:
-                            stat_obj.stats = stats_payload
-                            stat_obj.save(update_fields=['stats'])
-                        else:
-                            EventStatistics.objects.create(event=event, team=team, stats=stats_payload)
-                event = Event.objects.select_related(
-                    "home_entity", "away_entity", "league"
-                ).prefetch_related(
-                    "timeline", "lineups", "statistics",
-                    "player_stats", "highlights"
-                ).get(id=event_id)
+        except Exception as prep_err:
+            import logging
+            logging.getLogger(__name__).warning(f"Event {event_id} detail prep failed: {prep_err}")
 
         user_tz = _resolve_timezone(request)
         try:
