@@ -65,9 +65,11 @@ def _resolve_timezone(request):
 
 
 def _deduplicate_events(events_list: list) -> list:
-    """Deduplicate a list of Event objects by (home_team, away_team, start_time_date).
+    """Deduplicate a list of Event objects by canonical entity IDs and start time.
 
     Prefers 'statpal' api source over other providers when duplicate fixture records exist.
+    Matches events that share the same home/away teams (via canonical mapping) and start
+    within 12 hours of each other.
 
     Args:
         events_list (list): List of Event model instances.
@@ -75,22 +77,52 @@ def _deduplicate_events(events_list: list) -> list:
     Returns:
         list: Deduplicated list of Event instances.
     """
-    seen_matches = {}
     unique_events = []
     for event in events_list:
-        home_name = event.home_entity.name.lower() if event.home_entity else ''
-        away_name = event.away_entity.name.lower() if event.away_entity else ''
-        match_key = (home_name, away_name, event.start_time.date())
-        
-        existing = seen_matches.get(match_key)
-        if existing is None:
-            seen_matches[match_key] = event
-            unique_events.append(event)
+        if event.home_entity:
+            home_key = event.home_entity.canonical_entity_id or event.home_entity_id
         else:
-            if event.api_source == 'statpal' and existing.api_source != 'statpal':
-                unique_events.remove(existing)
-                seen_matches[match_key] = event
-                unique_events.append(event)
+            home_key = 'none'
+
+        if event.away_entity:
+            away_key = event.away_entity.canonical_entity_id or event.away_entity_id
+        else:
+            away_key = 'none'
+
+        duplicate_found = False
+        for idx, existing in enumerate(unique_events):
+            if existing.home_entity:
+                ext_home_key = existing.home_entity.canonical_entity_id or existing.home_entity_id
+            else:
+                ext_home_key = 'none'
+
+            if existing.away_entity:
+                ext_away_key = existing.away_entity.canonical_entity_id or existing.away_entity_id
+            else:
+                ext_away_key = 'none'
+
+            names_match = False
+            if home_key == ext_home_key and away_key == ext_away_key:
+                names_match = True
+            else:
+                h1 = event.home_entity.name.lower() if event.home_entity else ''
+                h2 = existing.home_entity.name.lower() if existing.home_entity else ''
+                a1 = event.away_entity.name.lower() if event.away_entity else ''
+                a2 = existing.away_entity.name.lower() if existing.away_entity else ''
+                if h1 == h2 and a1 == a2 and h1 != '' and a1 != '':
+                    names_match = True
+
+            if names_match:
+                time_diff = abs((event.start_time - existing.start_time).total_seconds())
+                if time_diff <= 12 * 3600:  # 12 hours
+                    duplicate_found = True
+                    if event.api_source == 'statpal' and existing.api_source != 'statpal':
+                        unique_events[idx] = event
+                    break
+
+        if not duplicate_found:
+            unique_events.append(event)
+
     return unique_events
 
 

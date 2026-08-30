@@ -151,7 +151,15 @@ class FeedItemCompactSerializer(serializers.ModelSerializer):
     def get_entity_logo(self, obj):
         """Return the primary entity logo URL."""
         entity = self._get_primary_entity(obj)
-        return entity.logo_url if entity else ''
+        if not entity:
+            return ''
+        logo = entity.logo_url
+        is_invalid_logo = logo and "statpal.io" in logo
+        if (not logo or is_invalid_logo) and entity.type == 'team':
+            from apps.entity.utils.matcher import find_team_logo_by_name
+            logo = find_team_logo_by_name(entity.name)
+        from apps.entity.serializers import make_logo_url_absolute
+        return make_logo_url_absolute(logo, self.context.get('request'))
 
     def get_entity_names(self, obj):
         """Return filtered list of associated entity names."""
@@ -179,8 +187,15 @@ class FeedItemCompactSerializer(serializers.ModelSerializer):
     def get_source_logo(self, obj):
         """Return source/entity display badge."""
         entity = self._get_primary_entity(obj)
-        if entity and entity.logo_url:
-            return entity.logo_url
+        if entity:
+            logo = entity.logo_url
+            is_invalid_logo = logo and "statpal.io" in logo
+            if (not logo or is_invalid_logo) and entity.type == 'team':
+                from apps.entity.utils.matcher import find_team_logo_by_name
+                logo = find_team_logo_by_name(entity.name)
+            if logo:
+                from apps.entity.serializers import make_logo_url_absolute
+                return make_logo_url_absolute(logo, self.context.get('request'))
         return self.get_publisher_logo(obj)
 
     def get_publisher_name(self, obj):
