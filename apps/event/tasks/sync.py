@@ -177,9 +177,9 @@ def update_soccer_live_scores_only():
 
 @shared_task(name='apps.event.tasks.sync_thesportsdb_upcoming_fixtures', bind=True, max_retries=2, default_retry_delay=300)
 def sync_thesportsdb_upcoming_fixtures(self):
-    """Fetch long-range soccer fixtures for the next 30 days from TheSportsDB (eventsday.php).
+    """Fetch long-range sports fixtures for the next 180 days (6 months) from TheSportsDB (eventsday.php).
 
-    Fills the scheduling horizon beyond StatPal's ±7 day window.
+    Fills the long-term scheduling horizon beyond StatPal's ±7 day window across all supported sports.
 
     Args:
         self: Bound Celery task instance.
@@ -190,7 +190,7 @@ def sync_thesportsdb_upcoming_fixtures(self):
     from apps.sports_apis.services.thesportsdb import thesportsdb_service
 
     lock_id = 'sync_thesportsdb_upcoming_fixtures_lock'
-    if not cache.add(lock_id, 'true', timeout=3600):
+    if not cache.add(lock_id, 'true', timeout=7200):
         logger.info('sync_thesportsdb_upcoming_fixtures already running, skipping')
         return 'skipped — already running'
 
@@ -198,12 +198,13 @@ def sync_thesportsdb_upcoming_fixtures(self):
         today = timezone.now().date()
         saved, skipped, errors = 0, 0, 0
 
-        for day_offset in range(1, 31):
+        # Fetch fixtures for the next 180 days (6 months ahead)
+        for day_offset in range(1, 181):
             target_date = today + timedelta(days=day_offset)
             date_str = target_date.strftime('%Y-%m-%d')
 
             try:
-                events = thesportsdb_service.get_soccer_fixtures_for_date(date_str)
+                events = thesportsdb_service.get_events_on_day(date_str)
             except Exception as exc:
                 errors += 1
                 logger.warning(
@@ -231,6 +232,8 @@ def sync_thesportsdb_upcoming_fixtures(self):
                         '[TSDB Fixtures] save failed for event %s: %s',
                         ev.get('idEvent'), exc
                     )
+
+            time.sleep(0.05)
 
         msg = (
             f'sync_thesportsdb_upcoming_fixtures — '

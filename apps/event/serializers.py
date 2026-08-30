@@ -18,9 +18,18 @@ from apps.entity.models import Entity
 
 class EntityMinimalSerializer(serializers.ModelSerializer):
     """Minimal entity serializer for lightweight embedding within event participant responses."""
+    logo_url = serializers.SerializerMethodField()
+
     class Meta:
         model = Entity
         fields = ['id', 'name', 'logo_url', 'type', 'sport']
+
+    def get_logo_url(self, obj):
+        if not obj:
+            return ''
+        from apps.entity.serializers import find_entity_logo, make_logo_url_absolute
+        logo = find_entity_logo(obj)
+        return make_logo_url_absolute(logo, self.context.get('request'))
 
 
 class EventTimelineSerializer(serializers.ModelSerializer):
@@ -233,40 +242,42 @@ class EventSerializer(serializers.ModelSerializer):
         )
 
         # Highlight followed Nest entity logo and ID for calendar entries (agent_task.md Section 14)
+        from apps.entity.serializers import find_entity_logo, make_logo_url_absolute
+        req_ctx = self.context.get('request')
         nest_entity_ids = self.context.get('nest_entity_ids')
         if nest_entity_ids:
             if instance.home_entity_id in nest_entity_ids:
                 data['nest_entity_id'] = instance.home_entity_id
                 data['nest_entity_name'] = instance.home_entity.name if instance.home_entity else ''
-                data['nest_entity_logo'] = instance.home_entity.logo_url if instance.home_entity else ''
+                data['nest_entity_logo'] = make_logo_url_absolute(find_entity_logo(instance.home_entity), req_ctx)
                 data['is_nest_entity_home'] = True
                 data['opponent_entity_id'] = instance.away_entity_id
                 data['opponent_entity_name'] = instance.away_entity.name if instance.away_entity else ''
-                data['opponent_entity_logo'] = instance.away_entity.logo_url if instance.away_entity else ''
+                data['opponent_entity_logo'] = make_logo_url_absolute(find_entity_logo(instance.away_entity), req_ctx)
             elif instance.away_entity_id in nest_entity_ids:
                 data['nest_entity_id'] = instance.away_entity_id
                 data['nest_entity_name'] = instance.away_entity.name if instance.away_entity else ''
-                data['nest_entity_logo'] = instance.away_entity.logo_url if instance.away_entity else ''
+                data['nest_entity_logo'] = make_logo_url_absolute(find_entity_logo(instance.away_entity), req_ctx)
                 data['is_nest_entity_home'] = False
                 data['opponent_entity_id'] = instance.home_entity_id
                 data['opponent_entity_name'] = instance.home_entity.name if instance.home_entity else ''
-                data['opponent_entity_logo'] = instance.home_entity.logo_url if instance.home_entity else ''
+                data['opponent_entity_logo'] = make_logo_url_absolute(find_entity_logo(instance.home_entity), req_ctx)
             else:
                 data['nest_entity_id'] = instance.home_entity_id
                 data['nest_entity_name'] = instance.home_entity.name if instance.home_entity else ''
-                data['nest_entity_logo'] = instance.home_entity.logo_url if instance.home_entity else ''
+                data['nest_entity_logo'] = make_logo_url_absolute(find_entity_logo(instance.home_entity), req_ctx)
                 data['is_nest_entity_home'] = True
                 data['opponent_entity_id'] = instance.away_entity_id
                 data['opponent_entity_name'] = instance.away_entity.name if instance.away_entity else ''
-                data['opponent_entity_logo'] = instance.away_entity.logo_url if instance.away_entity else ''
+                data['opponent_entity_logo'] = make_logo_url_absolute(find_entity_logo(instance.away_entity), req_ctx)
         else:
             data['nest_entity_id'] = instance.home_entity_id
             data['nest_entity_name'] = instance.home_entity.name if instance.home_entity else ''
-            data['nest_entity_logo'] = instance.home_entity.logo_url if instance.home_entity else ''
+            data['nest_entity_logo'] = make_logo_url_absolute(find_entity_logo(instance.home_entity), req_ctx)
             data['is_nest_entity_home'] = True
             data['opponent_entity_id'] = instance.away_entity_id
             data['opponent_entity_name'] = instance.away_entity.name if instance.away_entity else ''
-            data['opponent_entity_logo'] = instance.away_entity.logo_url if instance.away_entity else ''
+            data['opponent_entity_logo'] = make_logo_url_absolute(find_entity_logo(instance.away_entity), req_ctx)
 
         data['primary_logo_url'] = data.get('nest_entity_logo') or (instance.home_entity.logo_url if instance.home_entity else '')
 

@@ -569,9 +569,24 @@ def _tsdb_soccer_row(event: dict) -> dict:
     except (ValueError, TypeError):
         pass
 
+    sport_raw = str(event.get('strSport', '') or 'Soccer').lower().strip()
+    sport_map = {
+        'soccer': 'soccer',
+        'basketball': 'basketball',
+        'american football': 'american_football',
+        'baseball': 'baseball',
+        'ice hockey': 'ice_hockey',
+        'cricket': 'cricket',
+        'rugby': 'rugby',
+        'motorsport': 'motorsports',
+        'golf': 'golf',
+        'tennis': 'tennis',
+    }
+    sport = sport_map.get(sport_raw, 'soccer')
+
     return {
         'external_id': f"tsdb_{event.get('idEvent', '')}",
-        'sport':        'soccer',
+        'sport':        sport,
         'league_id':    f"tsdb_league_{event.get('idLeague', '')}",
         'league_name':  event.get('strLeague', ''),
         'home_id':      f"tsdb_team_{event.get('idHomeTeam', '')}",
