@@ -1,11 +1,9 @@
 https://api.mysportsnest.com/api/calendar/events/54096/
 
-
-
 {
     "success": true,
     "message": "Success",
-    "timestamp": "2026-08-31T04:28:34.266224+00:00",
+    "timestamp": "2026-08-31T04:42:50.836687+00:00",
     "status_code": 200,
     "data": {
         "id": 54096,
@@ -141,7 +139,16 @@ https://api.mysportsnest.com/api/calendar/events/54096/
                     "runs": 6,
                     "hits": 10,
                     "errors": 2,
-                    "innings": {},
+                    "innings": {
+                        "1": 1,
+                        "2": 0,
+                        "3": 0,
+                        "4": 0,
+                        "5": 0,
+                        "6": 4,
+                        "7": 0,
+                        "8": 1
+                    },
                     "is_fallback": false
                 }
             },
@@ -159,7 +166,17 @@ https://api.mysportsnest.com/api/calendar/events/54096/
                     "runs": 4,
                     "hits": 5,
                     "errors": 0,
-                    "innings": {},
+                    "innings": {
+                        "1": 0,
+                        "2": 1,
+                        "3": 0,
+                        "4": 0,
+                        "5": 1,
+                        "6": 1,
+                        "7": 0,
+                        "8": 1,
+                        "9": 0
+                    },
                     "is_fallback": false
                 }
             }

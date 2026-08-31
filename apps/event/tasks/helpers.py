@@ -146,6 +146,28 @@ def _save_event(row: dict, api_source: str = "statpal") -> Event | None:
             merged_meta.update(row["raw"])
         metadata_val = merged_meta
 
+    # Normalize baseball in1..in9 flat keys from nested innings.inning list
+    # StatPal API always sends in1..in9 as empty strings; real data is in innings.inning list
+    if isinstance(metadata_val, dict) and row.get("sport") in ("baseball", "mlb"):
+        for side in ("home", "away"):
+            side_data = metadata_val.get(side)
+            if not isinstance(side_data, dict):
+                continue
+            # Only fill if all in1..in9 are empty
+            flat_keys_empty = all(side_data.get(f"in{i}", "") == "" for i in range(1, 10))
+            if flat_keys_empty:
+                nested = side_data.get("innings", {})
+                inning_list = nested.get("inning", []) if isinstance(nested, dict) else []
+                if isinstance(inning_list, dict):
+                    inning_list = [inning_list]
+                for inn in inning_list:
+                    num = inn.get("number")
+                    score = inn.get("score")
+                    if num and score is not None:
+                        key = f"in{num}"
+                        if key in side_data:
+                            side_data[key] = score
+
     # Extract venue fields from row or metadata
     venue_val = row.get("venue") or (existing_event.venue_name if existing_event else "")
     venue_city_val = row.get("venue_city") or (existing_event.venue_city if existing_event else "")
