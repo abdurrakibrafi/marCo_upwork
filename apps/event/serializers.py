@@ -151,13 +151,13 @@ def _extract_event_venue_info(instance, data) -> dict:
                 if stad_name and not v_name:
                     v_name = stad_name
 
-        # Generic top-level metadata keys
+        # Generic top-level metadata keys (StatPal & TheSportsDB keys)
         if not v_name:
-            v_name = meta.get('venue') or meta.get('stadium') or meta.get('venue_name') or ''
+            v_name = meta.get('venue') or meta.get('stadium') or meta.get('venue_name') or meta.get('strVenue') or ''
         if not v_city:
-            v_city = meta.get('city') or meta.get('location') or meta.get('venue_city') or ''
+            v_city = meta.get('city') or meta.get('location') or meta.get('venue_city') or meta.get('strCity') or ''
         if not v_country:
-            v_country = meta.get('country') or meta.get('venue_country') or ''
+            v_country = meta.get('country') or meta.get('venue_country') or meta.get('strCountry') or ''
 
     # 2. Fallback: Fast home team venue resolution from DB / TheSportsDB
     if not v_name or not v_city or not v_country:
