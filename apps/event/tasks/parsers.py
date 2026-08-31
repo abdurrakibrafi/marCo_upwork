@@ -511,6 +511,10 @@ def _horse_racing_rows(data: dict) -> list:
         if not isinstance(races, list):
             races = [races]
 
+        tour_name = str(tour.get("name", "Horse Racing") or "Horse Racing").strip()
+        tour_id_raw = str(tour.get("id", "") or "").strip()
+        tour_id = f"hr_tour_{tour_id_raw}" if tour_id_raw and tour_id_raw.lower() not in ("none", "null", "0") else f"hr_tour_{re.sub(r'[^a-zA-Z0-9]', '', tour_name.lower()) or 'course'}"
+
         for race in races:
             race_id = str(race.get("id", ""))
             race_name = race.get("name", "Horse Race")
@@ -518,8 +522,8 @@ def _horse_racing_rows(data: dict) -> list:
             rows.append({
                 "external_id": f"hr_{race_id}",
                 "sport": "horse_racing",
-                "league_id": str(tour.get("id", "")),
-                "league_name": tour.get("name", "Racecourse"),
+                "league_id": tour_id,
+                "league_name": tour_name,
                 "home_id": f"hr_{race_id}",
                 "home_name": race_name,
                 "away_id": None,
@@ -529,7 +533,7 @@ def _horse_racing_rows(data: dict) -> list:
                 "status_raw": race.get("status", "NS"),
                 "date": tour.get("date", ""),
                 "time": race.get("time", "00:00"),
-                "venue": tour.get("name", ""),
+                "venue": tour_name,
                 "raw": race,
             })
     return rows

@@ -473,30 +473,34 @@ def get_or_create_precise_entity(
     # Guard against empty/blank names
     if not name or not str(name).strip():
         # Try to find existing entity by ID to reuse it (avoiding overwrite/placeholder name)
-        existing = Entity.objects.filter(
-            api_source="statpal",
-            external_id=statpal_id,
-            type=entity_type
-        ).first()
-        if existing:
-            return existing
+        if statpal_id and str(statpal_id).strip() and str(statpal_id).strip().lower() not in ("none", "null", "undefined", "0", ""):
+            existing = Entity.objects.filter(
+                api_source="statpal",
+                external_id=str(statpal_id).strip(),
+                sport=entity_sport,
+                type=entity_type
+            ).first()
+            if existing:
+                return existing
         # Fallback to placeholder name if it does not exist
         name = f"Unknown {entity_type.capitalize()}"
 
-    # 1 — exact StatPal ID match
-    entity = Entity.objects.filter(
-        api_source="statpal", 
-        external_id=statpal_id,
-        type=entity_type
-    ).first()
-    if entity:
-        if _needs_logo(entity, sport):
-            entity.logo_url = logo
-            entity.save(update_fields=["logo_url"])
-        elif _needs_logo_update(entity, logo):
-            entity.logo_url = logo
-            entity.save(update_fields=["logo_url"])
-        return entity
+    # 1 — exact StatPal ID match (must match sport to prevent cross-sport collisions)
+    if statpal_id and str(statpal_id).strip() and str(statpal_id).strip().lower() not in ("none", "null", "undefined", "0", ""):
+        entity = Entity.objects.filter(
+            api_source="statpal", 
+            external_id=str(statpal_id).strip(),
+            sport=entity_sport,
+            type=entity_type
+        ).first()
+        if entity:
+            if _needs_logo(entity, sport):
+                entity.logo_url = logo
+                entity.save(update_fields=["logo_url"])
+            elif _needs_logo_update(entity, logo):
+                entity.logo_url = logo
+                entity.save(update_fields=["logo_url"])
+            return entity
 
     # 1.1 — Try matching through CanonicalEntity mappings
     from apps.entity.models import CanonicalEntity

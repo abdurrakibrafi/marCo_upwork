@@ -285,7 +285,12 @@ class EventSerializer(serializers.ModelSerializer):
             data['opponent_entity_name'] = instance.away_entity.name if instance.away_entity else ''
             data['opponent_entity_logo'] = make_logo_url_absolute(find_entity_logo(instance.away_entity), req_ctx)
 
-        data['primary_logo_url'] = data.get('nest_entity_logo') or (instance.home_entity.logo_url if instance.home_entity else '')
+        # Prevent displaying cross-sport mismatched league (e.g., horse_racing event with baseball league)
+        if instance.league and instance.league.sport and instance.sport:
+            ev_sport = instance.sport.lower()
+            lg_sport = instance.league.sport.lower()
+            if ev_sport != lg_sport and not (ev_sport in ('baseball', 'mlb') and lg_sport in ('baseball', 'mlb')) and not (ev_sport in ('basketball', 'nba') and lg_sport in ('basketball', 'nba')):
+                data['league'] = None
 
         # Auto-fill missing venue name/city/country from metadata / home team lookup
         data = _extract_event_venue_info(instance, data)
@@ -374,6 +379,13 @@ class EventDetailSerializer(serializers.ModelSerializer):
                 raw_data=meta,
                 game=instance
             )
+
+            # Prevent displaying cross-sport mismatched league (e.g., horse_racing event with baseball league)
+            if instance.league and instance.league.sport and instance.sport:
+                ev_sport = instance.sport.lower()
+                lg_sport = instance.league.sport.lower()
+                if ev_sport != lg_sport and not (ev_sport in ('baseball', 'mlb') and lg_sport in ('baseball', 'mlb')) and not (ev_sport in ('basketball', 'nba') and lg_sport in ('basketball', 'nba')):
+                    data['league'] = None
 
             # Auto-fill missing venue name/city/country from metadata / home team lookup
             data = _extract_event_venue_info(instance, data)
