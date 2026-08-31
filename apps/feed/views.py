@@ -154,11 +154,37 @@ def get_nest_feed(request):
     hidden_source_ids = list(hidden_sources_qs.filter(source__isnull=False).values_list('source_id', flat=True))
     hidden_publishers = list(hidden_sources_qs.exclude(publisher_name='').values_list('publisher_name', flat=True))
  
-    # Subquery lookup for max performance
+    # Build a sport-aware entity lookup to prevent cross-sport news contamination.
+    # Group the user's followed entities by sport so we can enforce that a FeedItem
+    # tagged with e.g. "France (soccer)" is NOT returned when the tag actually belongs
+    # to a different sport entity like "France (tennis)".
     if nest_entity_ids:
-        nest_item_ids_qs = list(FeedItem.entities.through.objects.filter(
-            entity_id__in=nest_entity_ids
-        ).values_list('feeditem_id', flat=True).distinct())
+        from apps.entity.models import Entity as _Entity
+        nest_entities_qs = _Entity.objects.filter(
+            id__in=nest_entity_ids
+        ).values('id', 'sport')
+
+        # Build per-sport entity id sets for the sport-match filter below
+        nest_entity_sport_map = {}  # sport -> set of entity_ids
+        for row in nest_entities_qs:
+            nest_entity_sport_map.setdefault(row['sport'], set()).add(row['id'])
+
+        # Fetch candidate FeedItem IDs via the M2M through table, but only keep those
+        # where at least one tagged entity matches both the followed entity ID AND its sport.
+        # This is done sport-by-sport and unioned together.
+        through_model = FeedItem.entities.through
+        valid_item_ids = set()
+        for sport, sport_entity_ids in nest_entity_sport_map.items():
+            # FeedItems tagged with a nest entity of this sport AND also tagged with
+            # any entity of the SAME sport (prevents a wrong-sport entity sneaking in)
+            matching_ids = through_model.objects.filter(
+                entity_id__in=sport_entity_ids
+            ).filter(
+                feeditem__entities__sport=sport  # at least one tag must belong to this sport
+            ).values_list('feeditem_id', flat=True).distinct()
+            valid_item_ids.update(matching_ids)
+
+        nest_item_ids_qs = list(valid_item_ids)
     else:
         nest_item_ids_qs = []
 

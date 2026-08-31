@@ -265,30 +265,50 @@ def _entity_matches_text(entity: Entity, text: str) -> bool:
     # Enforce sports context for national team entities (e.g. country names)
     from apps.entity.utils.matcher import is_national_team
     sport_clean = (getattr(entity, 'sport', '') or '').strip().lower()
+    is_nat_team = is_national_team(entity.name)
 
-    # Cross-sport negative checks to prevent cricket/basketball/volleyball leaking into soccer and vice-versa
+    # ── Per-sport cross-contamination guards ────────────────────────────
+    # Each block: (a) rejects articles dominated by other sports,
+    #             (b) requires a sport-specific keyword for national teams.
+
     if sport_clean == 'soccer':
         other_sports_pattern = re.compile(
             r'\b(cricket|wicket|batsman|batter|bowler|ipl|bcci|bbl|psl|cpl|odi|t20|t20i|test match|century|'
             r'nba|wnba|basketball|slam dunk|three-pointer|triple-double|'
             r'volleyball|vnl|'
             r'baseball|mlb|home run|strikeout|'
-            r'tennis|wimbledon|us open|french open|australian open|atp|wta|'
+            r'tennis|wimbledon|us open|french open|australian open|roland garros|atp|wta|'
             r'formula 1|f1|grand prix)\b', re.I
         )
         soccer_specific_pattern = re.compile(
             r'\b(soccer|football|fifa|uefa|copa|conmebol|concacaf|champions league|world cup|striker|midfield|'
             r'defend|goalkeep|goal|penalty|clean sheet|red card|yellow card|hat-trick|neymar|messi|ronaldo|'
             r'vinicius|mbappe|rodrygo|alisson|ederson|pele|dorival|club|squad|rost|nwsl|premier league|'
-            r'la liga|serie a|bundesliga|ligue 1|mls)\b', re.I
+            r'la liga|serie a|bundesliga|ligue 1|ligue1|mls)\b', re.I
         )
-        # Reject if text is dominated by another sport and lacks soccer context
         if other_sports_pattern.search(text_norm) and not soccer_specific_pattern.search(text_norm):
             return False
+        # National teams require positive soccer context even without other-sport keywords
+        if is_nat_team and not soccer_specific_pattern.search(text_norm):
+            return False
 
-        if is_national_team(entity.name):
-            if not soccer_specific_pattern.search(text_norm):
-                return False
+    elif sport_clean == 'tennis':
+        other_sports_pattern = re.compile(
+            r'\b(fifa|uefa|premier league|la liga|serie a|bundesliga|ligue 1|soccer|football goal|'
+            r'nba|wnba|basketball|slam dunk|three-pointer|'
+            r'cricket|ipl|bcci|wicket|batsman|'
+            r'baseball|mlb|home run|'
+            r'formula 1|f1|grand prix)\b', re.I
+        )
+        tennis_specific_pattern = re.compile(
+            r'\b(tennis|atp|wta|wimbledon|us open|french open|australian open|roland garros|'
+            r'grand slam|set|serve|deuce|ace|forehand|backhand|racket|court|match point|'
+            r'djokovic|federer|nadal|sinner|alcaraz|swiatek|sabalenka)\b', re.I
+        )
+        if other_sports_pattern.search(text_norm) and not tennis_specific_pattern.search(text_norm):
+            return False
+        if is_nat_team and not tennis_specific_pattern.search(text_norm):
+            return False
 
     elif sport_clean == 'cricket':
         other_sports_pattern = re.compile(
@@ -296,7 +316,7 @@ def _entity_matches_text(entity: Entity, text: str) -> bool:
             r'nba|wnba|basketball|slam dunk|three-pointer|'
             r'volleyball|vnl|'
             r'baseball|mlb|home run|'
-            r'tennis|wimbledon|'
+            r'tennis|wimbledon|atp|wta|'
             r'formula 1|f1)\b', re.I
         )
         cricket_specific_pattern = re.compile(
@@ -306,26 +326,47 @@ def _entity_matches_text(entity: Entity, text: str) -> bool:
         )
         if other_sports_pattern.search(text_norm) and not cricket_specific_pattern.search(text_norm):
             return False
-
-        if is_national_team(entity.name):
-            if not cricket_specific_pattern.search(text_norm):
-                return False
+        if is_nat_team and not cricket_specific_pattern.search(text_norm):
+            return False
 
     elif sport_clean == 'basketball':
         other_sports_pattern = re.compile(
-            r'\b(cricket|wicket|batsman|bowler|ipl|bcci|fifa|uefa|soccer|premier league)\b', re.I
+            r'\b(cricket|wicket|batsman|bowler|ipl|bcci|fifa|uefa|soccer|premier league|tennis|atp|wta)\b', re.I
         )
         basket_specific_pattern = re.compile(
             r'\b(basketball|nba|wnba|fiba|dunk|three-pointer|3-pointer|rebound|assist|triple-double|free throw|playoffs|lebron|curry|giannis)\b', re.I
         )
         if other_sports_pattern.search(text_norm) and not basket_specific_pattern.search(text_norm):
             return False
+        if is_nat_team and not basket_specific_pattern.search(text_norm):
+            return False
 
-        if is_national_team(entity.name):
-            if not basket_specific_pattern.search(text_norm):
-                return False
+    elif sport_clean in ('american_football', 'football'):
+        amfoot_specific_pattern = re.compile(
+            r'\b(nfl|touchdown|quarterback|super bowl|american football|gridiron|wide receiver|offensive line|'
+            r'defensive end|tight end|running back|field goal|kickoff|punter|mahomes|brady|manning)\b', re.I
+        )
+        if is_nat_team and not amfoot_specific_pattern.search(text_norm):
+            return False
 
-    elif is_national_team(entity.name):
+    elif sport_clean in ('ice_hockey', 'hockey'):
+        hockey_specific_pattern = re.compile(
+            r'\b(hockey|nhl|puck|goalie|power play|penalty shot|hat trick|icing|face-off|slapshot|'
+            r'ovechkin|crosby|mcdavid|stanley cup)\b', re.I
+        )
+        if is_nat_team and not hockey_specific_pattern.search(text_norm):
+            return False
+
+    elif sport_clean == 'baseball':
+        baseball_specific_pattern = re.compile(
+            r'\b(baseball|mlb|home run|strikeout|pitcher|batter|inning|shortstop|outfield|bullpen|'
+            r'world series|yankees|dodgers|mets|cubs|braves)\b', re.I
+        )
+        if is_nat_team and not baseball_specific_pattern.search(text_norm):
+            return False
+
+    elif is_nat_team:
+        # Generic guard for other sports: require any general sports vocabulary
         sports_pattern = re.compile(
             r'\b(sport|game|match|play|coach|stadium|cup|tourn|leagu|champ|win|won|lost|lose|beat|defeat|'
             r'scor|goal|team|club|squad|rost|train|seaso|jersey|manag|quali|friend|vs|draw|lineup|transf|'
@@ -350,13 +391,18 @@ def _entity_matches_text(entity: Entity, text: str) -> bool:
         'psg': {'psg', 'paris sg', 'paris saint-germain'},
         'inter milan': {'inter', 'internazionale', 'inter milan'},
     }
-    
+
     aliases = aliases_map.get(name, set())
     for alias in aliases:
         if re.search(r'\b' + re.escape(alias) + r'\b', text_norm):
             return True
 
-    # 3. Individual word matching (only for words NOT in generic/ambiguous list)
+    # 3. Individual word matching (only for words NOT in generic/ambiguous list).
+    #    For national team entities, skip word-level matching entirely —
+    #    country names are too ambiguous without an exact phrase hit.
+    if is_nat_team:
+        return False
+
     GENERIC_WORDS = {
         'fc', 'ac', 'sc', 'cf', 'utd', 'united', 'city', 'town', 'county', 'club', 'sports',
         'miami', 'manchester', 'madrid', 'milan', 'london', 'york', 'los', 'angeles', 'boston',
@@ -484,8 +530,8 @@ def poll_single_source(self, source_id: int):
     from apps.feed.utils_url import resolve_real_article_url
 
     new_items = 0
-    # Process only top 20 most recent entries per feed to avoid 200s+ worker freezes
-    entries = result.get('entries', [])[:20]
+    # Process top 30 most recent entries per feed (balanced: more data without freezing workers)
+    entries = result.get('entries', [])[:30]
 
     for entry in entries:
         raw_url = entry.get('url')
@@ -680,24 +726,44 @@ def ensure_entity_has_rss_source(entity_id: int):
         return f"Entity {entity_id} not found"
 
     from apps.entity.utils.matcher import is_national_team
-    sport_term = (entity.sport or '').strip().lower()
-    if is_national_team(entity.name) and sport_term and sport_term != 'none':
-        if sport_term == 'soccer':
-            sport_term = 'soccer OR football'
-        elif sport_term in ('football', 'american_football', 'nfl'):
-            sport_term = 'nfl OR "american football"'
-        elif sport_term in ('basketball', 'nba'):
-            sport_term = 'nba OR basketball'
-        elif sport_term in ('baseball', 'mlb'):
-            sport_term = 'mlb OR baseball'
-        elif sport_term in ('hockey', 'ice_hockey', 'nhl'):
-            sport_term = 'nhl OR hockey'
-        query_str = f'"{entity.name}" AND ({sport_term})'
+
+    # Build a sport-aware Google News query for ALL entities (not just national teams).
+    # This dramatically increases relevant article volume because the RSS feed is scoped
+    # to the correct sport, so more articles pass _entity_matches_text and fewer get dropped.
+    _SPORT_QUERY_MAP = {
+        'soccer':             'soccer OR football OR FIFA OR UEFA OR "Premier League" OR "La Liga" OR "Serie A" OR "Bundesliga" OR "Ligue 1"',
+        'football':           'NFL OR "American football" OR touchdown OR quarterback',
+        'american_football':  'NFL OR "American football" OR touchdown OR quarterback',
+        'basketball':         'NBA OR basketball OR FIBA',
+        'baseball':           'MLB OR baseball',
+        'ice_hockey':         'NHL OR hockey OR "ice hockey"',
+        'hockey':             'NHL OR hockey OR "ice hockey"',
+        'cricket':            'cricket OR ICC OR IPL OR "Test match" OR ODI OR T20',
+        'tennis':             'tennis OR ATP OR WTA OR "Grand Slam" OR Wimbledon OR "US Open" OR "French Open" OR "Australian Open"',
+        'rugby':              'rugby OR "Six Nations" OR "Rugby World Cup" OR RWC',
+        'f1':                 'F1 OR "Formula 1" OR "Formula One" OR "Grand Prix" OR FIA',
+        'formula1':           'F1 OR "Formula 1" OR "Formula One" OR "Grand Prix" OR FIA',
+        'golf':               'golf OR PGA OR "Masters" OR "US Open golf" OR "The Open Championship"',
+        'mma':                'MMA OR UFC OR "mixed martial arts"',
+        'combat_sports':      'MMA OR UFC OR boxing OR "combat sports"',
+        'motorsports':        'motorsport OR racing OR NASCAR OR "Formula E"',
+        'volleyball':         'volleyball OR VNL OR FIVB',
+        'handball':           'handball OR IHF',
+    }
+
+    raw_sport = (entity.sport or '').strip().lower()
+    sport_keywords = _SPORT_QUERY_MAP.get(raw_sport, '')
+
+    if sport_keywords:
+        query_str = f'"{entity.name}" AND ({sport_keywords})'
     else:
         query_str = f'"{entity.name}"'
 
     query = urllib.parse.quote(query_str)
     google_news_url = f"https://news.google.com/rss/search?q={query}&hl=en&gl=US&ceid=US:en"
+
+    # Keep backward-compat: sport_term used later for YouTube query
+    sport_term = raw_sport
 
     source, created = Source.objects.get_or_create(
         rss_url=google_news_url,
