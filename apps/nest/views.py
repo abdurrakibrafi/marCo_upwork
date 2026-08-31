@@ -33,7 +33,8 @@ def get_user_nest(request):
     total_count = nest_items.count()
     paginated_items = nest_items[offset:offset + limit]
     
-    serializer = UserNestSerializer(paginated_items, many=True, context={'request': request})
+    user_nest_ids = set(item.entity_id for item in paginated_items)
+    serializer = UserNestSerializer(paginated_items, many=True, context={'request': request, 'user_nest_entity_ids': user_nest_ids})
     
     return Response({
         'total_count': total_count,
@@ -162,12 +163,13 @@ def get_nest_summary(request):
     athletes = [item for item in nest_items if item.entity.type == 'athlete']
     leagues = [item for item in nest_items if item.entity.type == 'league']
     
+    user_nest_ids = set(item.entity_id for item in nest_items)
     return Response({
         'total_count': nest_items.count(),
         'teams_count': len(teams),
         'athletes_count': len(athletes),
         'leagues_count': len(leagues),
-        'entities': UserNestSerializer(nest_items, many=True, context={'request': request}).data
+        'entities': UserNestSerializer(nest_items, many=True, context={'request': request, 'user_nest_entity_ids': user_nest_ids}).data
     })
 
 
@@ -207,8 +209,9 @@ def recent_searches(request):
     Returns:
         Response: List of serialized recent search entries.
     """
-    searches = RecentSearch.objects.filter(user=request.user)[:10]
-    serializer = RecentSearchSerializer(searches, many=True)
+    searches = RecentSearch.objects.filter(user=request.user).select_related('entity')[:10]
+    user_nest_ids = set(UserNest.objects.filter(user=request.user).values_list('entity_id', flat=True))
+    serializer = RecentSearchSerializer(searches, many=True, context={'request': request, 'user_nest_entity_ids': user_nest_ids})
     return Response(serializer.data)
 
 

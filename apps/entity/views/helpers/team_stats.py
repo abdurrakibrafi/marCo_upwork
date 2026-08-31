@@ -969,6 +969,22 @@ def _fetch_team_fixtures_live(team_entity):
         last_data = tsdb._get('eventslast.php', {'id': team_id})
         
         raw_events = (last_data.get('results') or []) + (next_data.get('events') or [])
+        
+        all_team_names = set()
+        for ev in raw_events:
+            h = str(ev.get('strHomeTeam') or '').strip()
+            a = str(ev.get('strAwayTeam') or '').strip()
+            if h:
+                all_team_names.add(h)
+            if a:
+                all_team_names.add(a)
+
+        name_to_ent = {}
+        if all_team_names:
+            found_entities = Entity.objects.filter(name__in=all_team_names)
+            for ent in found_entities:
+                name_to_ent[ent.name.lower().strip()] = ent
+
         fixtures = []
         for ev in raw_events:
             try:
@@ -979,8 +995,8 @@ def _fetch_team_fixtures_live(team_entity):
                 league_name = ev.get('strLeague', '')
                 league_logo = ev.get('strLeagueBadge', '')
 
-                home_ent = Entity.objects.filter(name__iexact=home_name).first()
-                away_ent = Entity.objects.filter(name__iexact=away_name).first()
+                home_ent = name_to_ent.get(str(home_name).lower().strip())
+                away_ent = name_to_ent.get(str(away_name).lower().strip())
 
                 h_score = ev.get('intHomeScore')
                 a_score = ev.get('intAwayScore')

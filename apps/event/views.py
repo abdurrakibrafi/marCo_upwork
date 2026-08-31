@@ -194,30 +194,27 @@ def get_nest_calendar(request):
 
         # Include duplicate / canonical entities to handle cross-source data variations robustly
         from apps.entity.models import Entity
-        nest_entities = Entity.objects.filter(id__in=base_entity_ids)
+        nest_entities = list(Entity.objects.filter(id__in=base_entity_ids))
         nest_entity_ids = set(base_entity_ids)
+
+        canonical_ids = {ent.canonical_entity_id for ent in nest_entities if ent.canonical_entity_id}
+        ent_ids = {ent.id for ent in nest_entities}
+
+        dup_q = Q()
         for ent in nest_entities:
-            # Match by name, sport, type (fuzzy/exact fallback)
-            duplicates = Entity.objects.filter(
-                name__iexact=ent.name,
-                sport=ent.sport,
-                type=ent.type
-            ).values_list("id", flat=True)
-            nest_entity_ids.update(duplicates)
-            
-            # Match by explicit canonical mapping
-            if ent.canonical_entity_id:
-                nest_entity_ids.add(ent.canonical_entity_id)
-                other_dups = Entity.objects.filter(
-                    canonical_entity_id=ent.canonical_entity_id
-                ).values_list("id", flat=True)
-                nest_entity_ids.update(other_dups)
-            
-            child_dups = Entity.objects.filter(
-                canonical_entity_id=ent.id
-            ).values_list("id", flat=True)
-            nest_entity_ids.update(child_dups)
-            
+            dup_q |= Q(name__iexact=ent.name, sport=ent.sport, type=ent.type)
+
+        batch_filter = dup_q
+        if canonical_ids:
+            batch_filter |= Q(canonical_entity_id__in=canonical_ids)
+        if ent_ids:
+            batch_filter |= Q(canonical_entity_id__in=ent_ids)
+
+        if batch_filter:
+            all_dups = Entity.objects.filter(batch_filter).values_list("id", flat=True)
+            nest_entity_ids.update(all_dups)
+        nest_entity_ids.update(canonical_ids)
+
         nest_entity_ids = list(nest_entity_ids)
 
         # Classify nest entities by type to support leagues and athletes
@@ -390,6 +387,7 @@ def get_event_detail(request, event_id: int):
                                 continue
                             side_meta = meta.get(side, {}) if isinstance(meta.get(side), dict) else {}
                             innings = {}
+                            # 1st attempt: flat in1..in9 keys
                             for i in range(1, 10):
                                 k = f'in{i}'
                                 if k in side_meta and side_meta[k] != '':
@@ -397,6 +395,20 @@ def get_event_detail(request, event_id: int):
                                         innings[str(i)] = int(side_meta[k])
                                     except (ValueError, TypeError):
                                         innings[str(i)] = side_meta[k]
+                            # 2nd attempt: nested innings.inning list (StatPal format)
+                            if not innings:
+                                nested = side_meta.get('innings', {})
+                                inning_list = nested.get('inning', []) if isinstance(nested, dict) else []
+                                if isinstance(inning_list, dict):
+                                    inning_list = [inning_list]
+                                for inn in inning_list:
+                                    num = inn.get('number')
+                                    score = inn.get('score')
+                                    if num and score is not None:
+                                        try:
+                                            innings[str(num)] = int(score)
+                                        except (ValueError, TypeError):
+                                            innings[str(num)] = score
                             if side_meta.get('extra'):
                                 innings['extra'] = side_meta['extra']
 
@@ -534,25 +546,26 @@ def get_matches_of_day(request):
 
         # Include duplicate / canonical entities to handle cross-source data variations robustly
         from apps.entity.models import Entity
-        resolved_entities = Entity.objects.filter(id__in=nest_entities)
+        resolved_entities = list(Entity.objects.filter(id__in=nest_entities))
         nest_entity_ids = set(nest_entities)
+
+        canonical_ids = {ent.canonical_entity_id for ent in resolved_entities if ent.canonical_entity_id}
+        ent_ids = {ent.id for ent in resolved_entities}
+
+        dup_q = Q()
         for ent in resolved_entities:
-            duplicates = Entity.objects.filter(
-                name__iexact=ent.name,
-                sport=ent.sport,
-                type=ent.type
-            ).values_list("id", flat=True)
-            nest_entity_ids.update(duplicates)
-            if ent.canonical_entity_id:
-                nest_entity_ids.add(ent.canonical_entity_id)
-                other_dups = Entity.objects.filter(
-                    canonical_entity_id=ent.canonical_entity_id
-                ).values_list("id", flat=True)
-                nest_entity_ids.update(other_dups)
-            child_dups = Entity.objects.filter(
-                canonical_entity_id=ent.id
-            ).values_list("id", flat=True)
-            nest_entity_ids.update(child_dups)
+            dup_q |= Q(name__iexact=ent.name, sport=ent.sport, type=ent.type)
+
+        batch_filter = dup_q
+        if canonical_ids:
+            batch_filter |= Q(canonical_entity_id__in=canonical_ids)
+        if ent_ids:
+            batch_filter |= Q(canonical_entity_id__in=ent_ids)
+
+        if batch_filter:
+            all_dups = Entity.objects.filter(batch_filter).values_list("id", flat=True)
+            nest_entity_ids.update(all_dups)
+        nest_entity_ids.update(canonical_ids)
 
         resolved_entities = Entity.objects.filter(id__in=nest_entity_ids)
         team_ids = set()
@@ -600,7 +613,7 @@ def get_matches_of_day(request):
         upcoming = [e for e in matches if e.status == 'upcoming']
         completed = [e for e in matches if e.status == 'completed']
 
-        serializer_context = {'request': request, 'timezone': user_tz}
+        serializer_context = {'request': request, 'timezone': user_tz, 'nest_entity_ids': nest_entity_ids}
         data = {
             'date': query_date.isoformat(),
             'total_count': len(matches),
@@ -729,17 +742,22 @@ def get_live_events(request):
             if not user_nest_ids:
                 return mixin.success_response(data={'count': 0, 'events': []})
 
-            nest_entities = Entity.objects.filter(id__in=user_nest_ids)
+            nest_entities = list(Entity.objects.filter(id__in=user_nest_ids).select_related('athlete_details'))
             all_ids = set(user_nest_ids)
+            canonical_ids = {ent.canonical_entity_id for ent in nest_entities if ent.canonical_entity_id}
+
+            dup_q = Q()
             for ent in nest_entities:
-                dups = Entity.objects.filter(name__iexact=ent.name, sport=ent.sport, type=ent.type).values_list("id", flat=True)
-                all_ids.update(dups)
-                if ent.canonical_entity_id:
-                    all_ids.add(ent.canonical_entity_id)
+                dup_q |= Q(name__iexact=ent.name, sport=ent.sport, type=ent.type)
                 if ent.type == 'athlete':
                     ad = getattr(ent, 'athlete_details', None)
                     if ad and ad.current_team_id:
                         all_ids.add(ad.current_team_id)
+
+            if dup_q:
+                dups = Entity.objects.filter(dup_q).values_list("id", flat=True)
+                all_ids.update(dups)
+            all_ids.update(canonical_ids)
 
             events = events.filter(
                 Q(home_entity_id__in=all_ids)

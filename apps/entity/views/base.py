@@ -20,6 +20,13 @@ from .common import _current_season, resolve_team_venue
 logger = logging.getLogger(__name__)
 
 
+def _get_user_nest_ids(request):
+    if request and getattr(request, 'user', None) and request.user.is_authenticated:
+        from apps.nest.models import UserNest
+        return set(UserNest.objects.filter(user=request.user).values_list('entity_id', flat=True))
+    return set()
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Search / list / detail
 # ─────────────────────────────────────────────────────────────────────────────
@@ -49,7 +56,8 @@ def search_entities(request):
             )
 
         results = EntitySearchService.search(query, entity_type, sport, country)
-        serializer = EntitySerializer(results, many=True, context={'request': request})
+        user_nest_ids = _get_user_nest_ids(request)
+        serializer = EntitySerializer(results, many=True, context={'request': request, 'user_nest_entity_ids': user_nest_ids})
         data = {'query': query, 'count': len(results), 'results': serializer.data}
         return mixin.success_response(data=data)
     except Exception as exc:
@@ -131,10 +139,11 @@ def get_trending(request):
         athletes = base_qs.filter(type='athlete').order_by('-follower_count')[:10]
         leagues  = base_qs.filter(type='league').order_by('-follower_count')[:10]
 
+    user_nest_ids = _get_user_nest_ids(request)
     return Response({
-        'teams':    EntitySerializer(teams,    many=True, context={'request': request}).data,
-        'athletes': EntitySerializer(athletes, many=True, context={'request': request}).data,
-        'leagues':  EntitySerializer(leagues,  many=True, context={'request': request}).data,
+        'teams':    EntitySerializer(teams,    many=True, context={'request': request, 'user_nest_entity_ids': user_nest_ids}).data,
+        'athletes': EntitySerializer(athletes, many=True, context={'request': request, 'user_nest_entity_ids': user_nest_ids}).data,
+        'leagues':  EntitySerializer(leagues,  many=True, context={'request': request, 'user_nest_entity_ids': user_nest_ids}).data,
     })
 
 
@@ -454,5 +463,6 @@ def list_entities(request):
     paginator.max_page_size = 100
     paginated = paginator.paginate_queryset(queryset, request)
 
-    serializer = EntitySerializer(paginated, many=True, context={'request': request})
+    user_nest_ids = _get_user_nest_ids(request)
+    serializer = EntitySerializer(paginated, many=True, context={'request': request, 'user_nest_entity_ids': user_nest_ids})
     return paginator.get_paginated_response(serializer.data)

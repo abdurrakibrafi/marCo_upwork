@@ -16,6 +16,13 @@ from apps.entity.serializers import EntitySerializer
 logger = logging.getLogger(__name__)
 
 
+def _get_user_nest_ids(request):
+    if request and getattr(request, 'user', None) and request.user.is_authenticated:
+        from apps.nest.models import UserNest
+        return set(UserNest.objects.filter(user=request.user).values_list('entity_id', flat=True))
+    return set()
+
+
 @api_view(['GET'])
 @permission_classes([AllowAny])
 def search_entities(request):
@@ -100,7 +107,7 @@ def search_entities(request):
         result = {
             'query': query,
             'match_type': 'exact',
-            'results': EntitySerializer(exact, many=True, context={'request': request}).data,
+            'results': EntitySerializer(exact, many=True, context={'request': request, 'user_nest_entity_ids': _get_user_nest_ids(request)}).data,
             'suggestions': []
         }
         try:
@@ -229,7 +236,7 @@ def search_entities(request):
         result = {
             'query': query,
             'match_type': 'fuzzy',
-            'results': EntitySerializer(matched_entities, many=True, context={'request': request}).data,
+            'results': EntitySerializer(matched_entities, many=True, context={'request': request, 'user_nest_entity_ids': _get_user_nest_ids(request)}).data,
             'suggestions': [f"{e.name} ({e.sport})" for e in matched_entities]
         }
     else:
@@ -327,7 +334,7 @@ def search_entities_ai(request):
             result = {
                 'query': query,
                 'match_type': 'ai_semantic',
-                'results': EntitySerializer(top_matches, many=True, context={'request': request}).data,
+                'results': EntitySerializer(top_matches, many=True, context={'request': request, 'user_nest_entity_ids': _get_user_nest_ids(request)}).data,
                 'suggestions': [f"{e.name} ({e.sport})" for e in top_matches],
                 'scores': [c['score'] for c in candidates[:limit]]
             }

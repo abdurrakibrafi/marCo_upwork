@@ -155,10 +155,17 @@ def _get_standings_for_league(request, league_entity, season, highlight_team_id=
 
     standings = []
     valid_db_teams_count = 0
+    if teams_in_league:
+        team_entities = [team.entity for team in teams_in_league if team.entity]
+        stats_qs = EntityStats.objects.filter(
+            entity__in=team_entities, season=str(season), stat_type='season'
+        )
+        stats_map = {s.entity_id: s for s in stats_qs}
+    else:
+        stats_map = {}
+
     for team in teams_in_league:
-        stats = EntityStats.objects.filter(
-            entity=team.entity, season=str(season), stat_type='season'
-        ).first()
+        stats = stats_map.get(team.entity_id) if team.entity else None
         if stats and stats.stats_data and stats.stats_data.get('rank'):
             p_val = stats.stats_data.get('played') or stats.stats_data.get('points') or 0
             if p_val > 0 and stats.updated_at and (timezone.now() - stats.updated_at).total_seconds() < 86400:

@@ -53,6 +53,7 @@ def normalize_event_stats(stats_dict: dict, sport: str = None, event = None) -> 
         innings = stats_dict.get('innings')
         if not innings and side_meta:
             innings = {}
+            # 1st attempt: flat in1..in9 keys
             for i in range(1, 10):
                 k = f'in{i}'
                 if k in side_meta and side_meta[k] != '':
@@ -60,6 +61,20 @@ def normalize_event_stats(stats_dict: dict, sport: str = None, event = None) -> 
                         innings[str(i)] = int(side_meta[k])
                     except (ValueError, TypeError):
                         innings[str(i)] = side_meta[k]
+            # 2nd attempt: nested innings.inning list (StatPal format)
+            if not innings:
+                nested = side_meta.get('innings', {})
+                inning_list = nested.get('inning', []) if isinstance(nested, dict) else []
+                if isinstance(inning_list, dict):
+                    inning_list = [inning_list]
+                for inn in inning_list:
+                    num = inn.get('number')
+                    score = inn.get('score')
+                    if num and score is not None:
+                        try:
+                            innings[str(num)] = int(score)
+                        except (ValueError, TypeError):
+                            innings[str(num)] = score
             if side_meta.get('extra'):
                 innings['extra'] = side_meta['extra']
 

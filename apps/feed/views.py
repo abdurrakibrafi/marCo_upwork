@@ -725,7 +725,9 @@ def get_bookmarks(request):
  
     paginator = FeedPagination()
     paginated = paginator.paginate_queryset(bookmarks, request)
-    serializer = BookmarkSerializer(paginated, many=True, context={'request': request})
+    feed_items = [b.feed_item for b in paginated if b.feed_item]
+    context = build_feed_serializer_context(request, feed_items)
+    serializer = BookmarkSerializer(paginated, many=True, context=context)
     return paginator.get_paginated_response(serializer.data)
  
  
@@ -840,7 +842,9 @@ def get_likes(request):
  
     paginator = FeedPagination()
     paginated = paginator.paginate_queryset(likes, request)
-    serializer = LikeSerializer(paginated, many=True, context={'request': request})
+    feed_items = [l.feed_item for l in paginated if l.feed_item]
+    context = build_feed_serializer_context(request, feed_items)
+    serializer = LikeSerializer(paginated, many=True, context=context)
     return paginator.get_paginated_response(serializer.data)
  
  

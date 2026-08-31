@@ -74,18 +74,14 @@ def _get_user_live_scores_queryset(user, sport=None):
         return LiveScore.objects.none()
 
     # Expand canonical, child duplicates, and athlete teams
-    nest_entities = Entity.objects.filter(id__in=user_nest_entity_ids)
+    nest_entities = list(Entity.objects.filter(id__in=user_nest_entity_ids).select_related('canonical_entity', 'athlete_details__current_team'))
     all_entity_ids = set(user_nest_entity_ids)
     team_names = set()
 
+    dup_filters = Q()
     for ent in nest_entities:
         team_names.add(ent.name.lower().strip())
-        duplicates = Entity.objects.filter(
-            name__iexact=ent.name,
-            sport=ent.sport,
-            type=ent.type
-        ).values_list("id", flat=True)
-        all_entity_ids.update(duplicates)
+        dup_filters |= Q(name__iexact=ent.name, sport=ent.sport, type=ent.type)
         if ent.canonical_entity_id:
             all_entity_ids.add(ent.canonical_entity_id)
             if ent.canonical_entity:
@@ -96,6 +92,10 @@ def _get_user_live_scores_queryset(user, sport=None):
                 all_entity_ids.add(ad.current_team_id)
                 if ad.current_team:
                     team_names.add(ad.current_team.name.lower().strip())
+
+    if dup_filters:
+        duplicates = Entity.objects.filter(dup_filters).values_list("id", flat=True)
+        all_entity_ids.update(duplicates)
 
     all_entity_ids = list(all_entity_ids)
 
