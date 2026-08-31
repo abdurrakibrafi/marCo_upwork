@@ -388,6 +388,28 @@ class EventDetailSerializer(serializers.ModelSerializer):
                 data['has_stats'] = len(valid_stats) > 0
             else:
                 data['has_stats'] = False
+
+            # Normalize baseball metadata in1..in9 flat keys from nested innings.inning list
+            # StatPal API sends in1..in9 as empty strings; real data is in innings.inning list
+            # This fixes existing events without needing a re-sync
+            if isinstance(data.get('metadata'), dict) and instance.sport in ('baseball', 'mlb'):
+                for side in ('home', 'away'):
+                    side_data = data['metadata'].get(side)
+                    if not isinstance(side_data, dict):
+                        continue
+                    flat_keys_empty = all(side_data.get(f'in{i}', '') == '' for i in range(1, 10))
+                    if flat_keys_empty:
+                        nested = side_data.get('innings', {})
+                        inning_list = nested.get('inning', []) if isinstance(nested, dict) else []
+                        if isinstance(inning_list, dict):
+                            inning_list = [inning_list]
+                        for inn in inning_list:
+                            num = inn.get('number')
+                            score = inn.get('score')
+                            if num and score is not None:
+                                key = f'in{num}'
+                                if key in side_data:
+                                    data['metadata'][side][key] = score
         except Exception:
             pass
 
