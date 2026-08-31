@@ -292,6 +292,8 @@ class EventSerializer(serializers.ModelSerializer):
             if ev_sport != lg_sport and not (ev_sport in ('baseball', 'mlb') and lg_sport in ('baseball', 'mlb')) and not (ev_sport in ('basketball', 'nba') and lg_sport in ('basketball', 'nba')):
                 data['league'] = None
 
+        data['primary_logo_url'] = data.get('nest_entity_logo') or make_logo_url_absolute(find_entity_logo(instance.home_entity), req_ctx) or (make_logo_url_absolute(find_entity_logo(instance.league), req_ctx) if data.get('league') else '') or ''
+
         # Auto-fill missing venue name/city/country from metadata / home team lookup
         data = _extract_event_venue_info(instance, data)
         return data
@@ -389,6 +391,10 @@ class EventDetailSerializer(serializers.ModelSerializer):
 
             # Auto-fill missing venue name/city/country from metadata / home team lookup
             data = _extract_event_venue_info(instance, data)
+
+            from apps.entity.serializers import find_entity_logo, make_logo_url_absolute
+            req_ctx = self.context.get('request')
+            data['primary_logo_url'] = make_logo_url_absolute(find_entity_logo(instance.home_entity), req_ctx) or (make_logo_url_absolute(find_entity_logo(instance.league), req_ctx) if data.get('league') else '') or ''
 
             # Exclude empty stats objects (e.g. when API has no stats for a minor league match)
             if data.get('statistics'):
