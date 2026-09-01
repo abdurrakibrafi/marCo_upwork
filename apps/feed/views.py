@@ -89,9 +89,10 @@ def fast_serialize_feed_items(items, request, selected_entity_types=None) -> lis
 
     item_ids = [item.id for item in items_list]
 
-    # Pre-fetch user interaction state in 3 fast indexed queries
+    # Pre-fetch user interaction state and nest entities
     user_bookmarked_ids = set()
     user_liked_ids = set()
+    user_nest_entity_ids = set()
     if request and request.user and request.user.is_authenticated:
         user_bookmarked_ids = set(
             Bookmark.objects.filter(user=request.user, feed_item_id__in=item_ids)
@@ -100,6 +101,10 @@ def fast_serialize_feed_items(items, request, selected_entity_types=None) -> lis
         user_liked_ids = set(
             Like.objects.filter(user=request.user, feed_item_id__in=item_ids)
             .values_list('feed_item_id', flat=True)
+        )
+        user_nest_entity_ids = set(
+            UserNest.objects.filter(user=request.user)
+            .values_list('entity_id', flat=True)
         )
 
     likes_qs = Like.objects.filter(feed_item_id__in=item_ids).values('feed_item_id').annotate(c=Count('id'))
@@ -133,12 +138,19 @@ def fast_serialize_feed_items(items, request, selected_entity_types=None) -> lis
     results = []
     for item in items_list:
         all_ents = list(item.entities.all())
+        user_followed = [e for e in all_ents if e.id in user_nest_entity_ids]
+
         if selected_entity_types:
             matching_ents = [e for e in all_ents if e.type in selected_entity_types]
-            primary_ent = matching_ents[0] if matching_ents else (all_ents[0] if all_ents else None)
+            user_matching = [e for e in user_followed if e.type in selected_entity_types]
+            primary_ent = user_matching[0] if user_matching else (matching_ents[0] if matching_ents else (all_ents[0] if all_ents else None))
         else:
             matching_ents = all_ents
-            primary_ent = all_ents[0] if all_ents else None
+            if user_followed:
+                primary_ent = user_followed[0]
+            else:
+                teams_athletes = [e for e in all_ents if e.type in ('team', 'athlete')]
+                primary_ent = teams_athletes[0] if teams_athletes else (all_ents[0] if all_ents else None)
 
         ent_name = primary_ent.name if primary_ent else ''
         ent_logo = ''

@@ -167,15 +167,21 @@ def _fetch_stats_from_db_events(team_entity):
 
 
 def _normalize_team_stats(stats_data, team_entity=None):
-    """
-    Ensure all team stats responses contain standard fields across all sports:
-    - matches_played, win_percentage, draws, goals_for, goals_against, points, goal_diff, rank
+    """Ensure team stats responses contain structured, sport-specific fields matching each sport's conventions:
+
+    - Soccer: played, wins, draws, losses, goals_for, goals_against, goal_diff, points, form, rank.
+    - Baseball (MLB): wins, losses, win_percentage, runs_scored, runs_allowed, run_diff, gb, strk, division.
+    - Basketball (NBA): wins, losses, win_percentage, points_for, points_against, gb, streak, conference.
+    - Football (NFL): wins, losses, ties, win_percentage, points_for, points_against, net_points, streak.
+    - Hockey (NHL): games_played, wins, losses, ot_losses, points, goals_for, goals_against, goal_diff.
     """
     if not isinstance(stats_data, dict) or not stats_data:
         return stats_data
 
     if 'rankings' in stats_data or 'leaderboard' in stats_data or 'position' in stats_data or 'date_of_birth' in stats_data:
         return stats_data
+
+    sport = (getattr(team_entity, 'sport', '') or '').lower() if team_entity else ''
 
     wins = int(stats_data.get('wins') or 0)
     losses = int(stats_data.get('losses') or 0)
@@ -198,52 +204,91 @@ def _normalize_team_stats(stats_data, team_entity=None):
         except (ValueError, TypeError):
             win_perc = 0.0
 
-    goals_for = int(stats_data.get('goals_for') or stats_data.get('points_for') or 0)
-    goals_against = int(stats_data.get('goals_against') or stats_data.get('points_against') or 0)
-
-    # points
-    pts = stats_data.get('points')
-    if pts is None:
-        pts = (wins * 3) + (draws * 1)
-    else:
-        try:
-            pts = int(pts)
-        except (ValueError, TypeError):
-            pts = (wins * 3) + (draws * 1)
-
-    # goal_diff
-    g_diff = stats_data.get('goal_diff')
-    if g_diff is None:
-        g_diff = stats_data.get('difference')
-    if g_diff is None or isinstance(g_diff, str):
-        g_diff = goals_for - goals_against
-    else:
-        try:
-            g_diff = int(g_diff)
-        except (ValueError, TypeError):
-            g_diff = goals_for - goals_against
-
-    # rank
-    rnk = stats_data.get('rank')
-    if rnk is None:
-        rnk = stats_data.get('position')
-    if rnk is not None:
-        try:
-            rnk = int(rnk)
-        except (ValueError, TypeError):
-            rnk = 0
-    else:
+    rnk = stats_data.get('rank') or stats_data.get('position') or 0
+    try:
+        rnk = int(rnk)
+    except (ValueError, TypeError):
         rnk = 0
 
     stats_data['matches_played'] = matches_played
     stats_data['played'] = matches_played
+    stats_data['wins'] = wins
+    stats_data['losses'] = losses
     stats_data['win_percentage'] = win_perc
-    stats_data['draws'] = draws
-    stats_data['goals_for'] = goals_for
-    stats_data['goals_against'] = goals_against
-    stats_data['points'] = pts
-    stats_data['goal_diff'] = g_diff
     stats_data['rank'] = rnk
+
+    # ── Sport-specific enhancements ──
+    if sport in ('baseball', 'mlb'):
+        runs_for = int(stats_data.get('runs_for') or stats_data.get('runs_scored') or stats_data.get('goals_for') or 0)
+        runs_against = int(stats_data.get('runs_against') or stats_data.get('runs_allowed') or stats_data.get('goals_against') or 0)
+        stats_data['runs_scored'] = runs_for
+        stats_data['runs_allowed'] = runs_against
+        stats_data['run_diff'] = runs_for - runs_against
+        stats_data['w'] = wins
+        stats_data['l'] = losses
+        stats_data['pct'] = f"{win_perc/100:.3f}".lstrip('0') if win_perc else '.000'
+        stats_data['gb'] = stats_data.get('games_behind', stats_data.get('gb', '0.0'))
+        stats_data['strk'] = stats_data.get('streak', stats_data.get('form', ''))
+        # Remove soccer-specific concepts from baseball
+        stats_data.pop('goals_for', None)
+        stats_data.pop('goals_against', None)
+        stats_data.pop('goal_diff', None)
+        stats_data.pop('points', None)
+        stats_data.pop('draws', None)
+
+    elif sport in ('basketball', 'nba'):
+        pts_for = float(stats_data.get('points_for') or stats_data.get('ppg') or stats_data.get('goals_for') or 0)
+        pts_against = float(stats_data.get('points_against') or stats_data.get('oppg') or stats_data.get('goals_against') or 0)
+        stats_data['points_for'] = pts_for
+        stats_data['points_against'] = pts_against
+        stats_data['point_diff'] = round(pts_for - pts_against, 1)
+        stats_data['pct'] = f"{win_perc/100:.3f}".lstrip('0') if win_perc else '.000'
+        stats_data['gb'] = stats_data.get('games_behind', stats_data.get('gb', '0.0'))
+        stats_data['streak'] = stats_data.get('streak', stats_data.get('form', ''))
+        # Remove soccer-specific concepts from basketball
+        stats_data.pop('goals_for', None)
+        stats_data.pop('goals_against', None)
+        stats_data.pop('goal_diff', None)
+        stats_data.pop('points', None)
+        stats_data.pop('draws', None)
+
+    elif sport in ('football', 'american_football', 'nfl'):
+        pf = int(stats_data.get('points_for') or stats_data.get('pf') or stats_data.get('goals_for') or 0)
+        pa = int(stats_data.get('points_against') or stats_data.get('pa') or stats_data.get('goals_against') or 0)
+        stats_data['points_for'] = pf
+        stats_data['points_against'] = pa
+        stats_data['net_points'] = pf - pa
+        stats_data['ties'] = int(stats_data.get('ties', stats_data.get('draws', 0)))
+        stats_data['streak'] = stats_data.get('streak', stats_data.get('form', ''))
+        # Remove soccer-specific concepts from NFL
+        stats_data.pop('goals_for', None)
+        stats_data.pop('goals_against', None)
+        stats_data.pop('goal_diff', None)
+        stats_data.pop('points', None)
+        stats_data.pop('draws', None)
+
+    elif sport in ('hockey', 'ice_hockey', 'nhl'):
+        gf = int(stats_data.get('goals_for') or stats_data.get('gf') or 0)
+        ga = int(stats_data.get('goals_against') or stats_data.get('ga') or 0)
+        otl = int(stats_data.get('ot_losses') or stats_data.get('otl') or 0)
+        stats_data['goals_for'] = gf
+        stats_data['goals_against'] = ga
+        stats_data['goal_diff'] = gf - ga
+        stats_data['ot_losses'] = otl
+        stats_data['points'] = int(stats_data.get('points') or (wins * 2 + otl * 1))
+        stats_data['streak'] = stats_data.get('streak', stats_data.get('form', ''))
+        stats_data.pop('draws', None)
+
+    elif sport == 'soccer':
+        gf = int(stats_data.get('goals_for') or 0)
+        ga = int(stats_data.get('goals_against') or 0)
+        pts = int(stats_data.get('points') or (wins * 3 + draws * 1))
+        stats_data['goals_for'] = gf
+        stats_data['goals_against'] = ga
+        stats_data['goal_diff'] = int(stats_data.get('goal_diff') or (gf - ga))
+        stats_data['points'] = pts
+        stats_data['draws'] = draws
+        stats_data['form'] = stats_data.get('form', '')
 
     # Cricket readable aliases
     team_name = ''

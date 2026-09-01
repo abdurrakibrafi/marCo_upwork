@@ -124,17 +124,19 @@ def clean_national_team_name(name: str) -> str:
         return ""
     name_clean = name.strip()
     suffixes = [
-        " women", " men", " emerging team", " under-19s", " u19", " u-19",
-        " under-23s", " u23", " u-23", " a team", " emerging",
+        " women's", " men's", " women", " men", " emerging team", " under-19s", " u19", " u-19",
+        " under-20s", " u20", " u-20", " under-21s", " u21", " u-21", " under-23s", " u23", " u-23",
+        " under-17s", " u17", " u-17", " a team", " emerging",
         " cricket team", " national cricket team", " national team",
-        " xi", " under-19", " under-23"
+        " xi", " under-19", " under-20", " under-21", " under-23",
+        " w", " m"
     ]
     name_lower = name_clean.lower()
     for suffix in suffixes:
         if name_lower.endswith(suffix):
             return name_clean[:-len(suffix)].strip()
             
-    if len(name_clean) > 2 and name_clean[-2] == " " and name_clean[-1] in ("A", "B"):
+    if len(name_clean) > 2 and name_clean[-2] == " " and name_clean[-1] in ("A", "B", "W", "M"):
         return name_clean[:-2].strip()
         
     return name_clean

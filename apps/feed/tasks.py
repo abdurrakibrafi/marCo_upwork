@@ -397,10 +397,9 @@ def _entity_matches_text(entity: Entity, text: str) -> bool:
         if re.search(r'\b' + re.escape(alias) + r'\b', text_norm):
             return True
 
-    # 3. Individual word matching (only for words NOT in generic/ambiguous list).
-    #    For national team entities, skip word-level matching entirely —
-    #    country names are too ambiguous without an exact phrase hit.
-    if is_nat_team:
+    # 3. Individual word matching (only for clubs/athletes, NOT for leagues or national teams).
+    #    Leagues and national teams must match by exact phrase or alias to avoid mass false positives.
+    if is_nat_team or entity.type == 'league':
         return False
 
     GENERIC_WORDS = {
@@ -410,7 +409,8 @@ def _entity_matches_text(entity: Entity, text: str) -> bool:
         'real', 'atletico', 'athletic', 'sporting', 'racing', 'union', 'saint', 'st', 'germain',
         'inter', 'sheffield', 'west', 'north', 'south', 'east', 'port', 'rovers', 'wanderers',
         'rangers', 'celtic', 'hearts', 'hibernian', 'albion', 'forest', 'villa', 'palace', 'team',
-        'division', 'championship', 'cup', 'state', 'green', 'white', 'red', 'blue', 'black'
+        'division', 'championship', 'cup', 'state', 'green', 'white', 'red', 'blue', 'black',
+        'super', 'shield', 'league', 'asian', 'nations', 'primera', 'women', 'womens', 'sudamericano'
     }
 
     words = [w for w in name.split() if len(w) >= 4]

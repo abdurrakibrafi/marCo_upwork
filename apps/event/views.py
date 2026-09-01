@@ -73,10 +73,28 @@ def _clean_entity_name_for_match(name: str) -> str:
     s = re.sub(r'\bind\.?\b', 'independiente', s)
     s = re.sub(r'\batl\.?\b', 'atletico', s)
     s = re.sub(r'\bdep\.?\b', 'deportivo', s)
+    # Transliteration normalizations (e.g. Al Taawon vs Al-Taawoun, Al Ahli vs Al-Ahly)
+    s = s.replace('ou', 'o').replace('ee', 'i').replace('y', 'i')
     s = re.sub(r'[^a-z0-9]', '', s)
     if s.startswith('real') and s != 'realmadrid':
         s = s[4:]
     return s
+
+
+def _teams_name_match(n1: str, n2: str) -> bool:
+    c1 = _clean_entity_name_for_match(n1)
+    c2 = _clean_entity_name_for_match(n2)
+    if not c1 or not c2:
+        return False
+    if c1 == c2:
+        return True
+    if len(c1) >= 4 and len(c2) >= 4:
+        if c1 in c2 or c2 in c1:
+            return True
+        from difflib import SequenceMatcher
+        if SequenceMatcher(None, c1, c2).ratio() >= 0.80:
+            return True
+    return False
 
 
 def _deduplicate_events(events_list: list) -> list:
@@ -102,11 +120,10 @@ def _deduplicate_events(events_list: list) -> list:
         h_key = str(h_ent.canonical_entity_id or h_ent.id) if h_ent else ''
         a_key = str(a_ent.canonical_entity_id or a_ent.id) if a_ent else ''
 
-        h_name = _clean_entity_name_for_match(h_ent.name) if h_ent else ''
-        a_name = _clean_entity_name_for_match(a_ent.name) if a_ent else ''
+        h_name = h_ent.name if h_ent else ''
+        a_name = a_ent.name if a_ent else ''
 
         team_sig = tuple(sorted([h_key, a_key])) if (h_key or a_key) else ()
-        name_sig = tuple(sorted([h_name, a_name])) if (h_name or a_name) else ()
 
         st = event.start_time
 
@@ -118,19 +135,19 @@ def _deduplicate_events(events_list: list) -> list:
             eh_key = str(eh_ent.canonical_entity_id or eh_ent.id) if eh_ent else ''
             ea_key = str(ea_ent.canonical_entity_id or ea_ent.id) if ea_ent else ''
 
-            eh_name = _clean_entity_name_for_match(eh_ent.name) if eh_ent else ''
-            ea_name = _clean_entity_name_for_match(ea_ent.name) if ea_ent else ''
+            eh_name = eh_ent.name if eh_ent else ''
+            ea_name = ea_ent.name if ea_ent else ''
 
             ex_team_sig = tuple(sorted([eh_key, ea_key])) if (eh_key or ea_key) else ()
-            ex_name_sig = tuple(sorted([eh_name, ea_name])) if (eh_name or ea_name) else ()
 
             # Match criteria: same sport AND (matching team IDs or matching normalized names)
             teams_matched = False
             if team_sig and ex_team_sig and team_sig == ex_team_sig:
                 teams_matched = True
-            elif name_sig and ex_name_sig and name_sig == ex_name_sig and any(name_sig):
+            elif (_teams_name_match(h_name, eh_name) and _teams_name_match(a_name, ea_name)) or \
+                 (_teams_name_match(h_name, ea_name) and _teams_name_match(a_name, eh_name)):
                 teams_matched = True
-            elif (h_name and eh_name and h_name == eh_name) and (not a_name and not ea_name):
+            elif (h_name and eh_name and _teams_name_match(h_name, eh_name)) and (not a_name and not ea_name):
                 teams_matched = True
 
             if teams_matched and event.sport == existing.sport:
