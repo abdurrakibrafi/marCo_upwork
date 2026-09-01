@@ -94,6 +94,7 @@ def get_nest_feed(request):
     Returns:
         Response: Paginated JSON response containing serialized feed articles.
     """
+    limit_param = request.GET.get('limit', '100').strip().lower()
     sort = request.GET.get('sort', 'newest').strip().lower()
     raw_filter_str = request.GET.get('filter', '')
     raw_type_str = request.GET.get('type', '')
@@ -101,7 +102,7 @@ def get_nest_feed(request):
     q_str = request.GET.get('q', '').strip()
 
     # 1. Fast Cache Layer (Sub-10ms response for repeated requests)
-    cache_key = f"nest_feed:{request.user.id}:s{sort}:f{raw_filter_str}:t{raw_type_str}:src{source_id_str}:q{q_str}"
+    cache_key = f"nest_feed:{request.user.id}:lim_{limit_param}:s_{sort}:f_{raw_filter_str}:t_{raw_type_str}:src_{source_id_str}:q_{q_str}"
     cached_data = cache.get(cache_key)
     if cached_data:
         return Response(cached_data)
@@ -251,6 +252,14 @@ def get_nest_feed(request):
         feed = feed.annotate(like_count=Count('liked_by')).order_by('like_count', '-published_at')
     else:
         feed = feed.order_by('-published_at')
+
+    # Apply limit slice (default 100 latest items to avoid memory/timeout issues)
+    if limit_param != 'all':
+        try:
+            limit_val = max(1, min(int(limit_param), 500))
+            feed = feed[:limit_val]
+        except (ValueError, TypeError):
+            feed = feed[:100]
 
     context = build_feed_serializer_context(request, feed, selected_entity_types=selected_entity_types)
     serializer = FeedItemCompactSerializer(feed, many=True, context=context)
