@@ -212,7 +212,7 @@ def get_nest_feed(request):
         page = 1
 
     try:
-        limit = max(1, min(int(request.GET.get('limit', 100)), 200))
+        limit = max(1, min(int(request.GET.get('limit', 100)), 1000))
     except (ValueError, TypeError):
         limit = 100
 

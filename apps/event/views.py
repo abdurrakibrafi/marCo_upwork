@@ -68,16 +68,15 @@ def _clean_entity_name_for_match(name: str) -> str:
     if not name:
         return ''
     s = name.lower().strip()
-    s = re.sub(r'\b(fc|cf|club|united|utd|sc|afc|the)\b', '', s)
+    s = re.sub(r'\b(fc|cf|club|united|utd|sc|afc|the|city|town)\b', '', s)
     return re.sub(r'[^a-z0-9]', '', s)
 
 
 def _deduplicate_events(events_list: list) -> list:
-    """Deduplicate a list of Event objects by canonical entity IDs, cleaned names, and start time.
+    """Deduplicate a list of Event objects by canonical entity IDs, cleaned names, flipped teams, and start time.
 
-    Prefers 'statpal' api source over other providers when duplicate fixture records exist.
-    Matches events that share the same home/away teams (via canonical mapping or normalized name) and start
-    within 12 hours of each other.
+    Prefers 'statpal' or records with live/completed status/scores when duplicate fixture records exist.
+    Matches events that share the same home/away teams (even if flipped or with timezone shift up to 24h).
 
     Args:
         events_list (list): List of Event model instances.
@@ -85,59 +84,70 @@ def _deduplicate_events(events_list: list) -> list:
     Returns:
         list: Deduplicated list of Event instances.
     """
+    if not events_list:
+        return []
+
     unique_events = []
     for event in events_list:
-        if event.home_entity:
-            home_key = event.home_entity.canonical_entity_id or event.home_entity_id
-        else:
-            home_key = 'none'
+        h_ent = event.home_entity
+        a_ent = event.away_entity
 
-        if event.away_entity:
-            away_key = event.away_entity.canonical_entity_id or event.away_entity_id
-        else:
-            away_key = 'none'
+        h_key = str(h_ent.canonical_entity_id or h_ent.id) if h_ent else ''
+        a_key = str(a_ent.canonical_entity_id or a_ent.id) if a_ent else ''
 
-        duplicate_found = False
+        h_name = _clean_entity_name_for_match(h_ent.name) if h_ent else ''
+        a_name = _clean_entity_name_for_match(a_ent.name) if a_ent else ''
+
+        team_sig = tuple(sorted([h_key, a_key])) if (h_key or a_key) else ()
+        name_sig = tuple(sorted([h_name, a_name])) if (h_name or a_name) else ()
+
+        st = event.start_time
+
+        duplicate_idx = None
         for idx, existing in enumerate(unique_events):
-            if existing.home_entity:
-                ext_home_key = existing.home_entity.canonical_entity_id or existing.home_entity_id
-            else:
-                ext_home_key = 'none'
+            eh_ent = existing.home_entity
+            ea_ent = existing.away_entity
 
-            if existing.away_entity:
-                ext_away_key = existing.away_entity.canonical_entity_id or existing.away_entity_id
-            else:
-                ext_away_key = 'none'
+            eh_key = str(eh_ent.canonical_entity_id or eh_ent.id) if eh_ent else ''
+            ea_key = str(ea_ent.canonical_entity_id or ea_ent.id) if ea_ent else ''
 
-            names_match = False
-            if home_key == ext_home_key and away_key == ext_away_key and home_key != 'none':
-                names_match = True
-            else:
-                h1 = event.home_entity.name.lower().strip() if event.home_entity else ''
-                h2 = existing.home_entity.name.lower().strip() if existing.home_entity else ''
-                a1 = event.away_entity.name.lower().strip() if event.away_entity else ''
-                a2 = existing.away_entity.name.lower().strip() if existing.away_entity else ''
-                if h1 == h2 and a1 == a2 and h1 != '':
-                    names_match = True
-                elif _clean_entity_name_for_match(h1) == _clean_entity_name_for_match(h2) and \
-                     _clean_entity_name_for_match(a1) == _clean_entity_name_for_match(a2) and \
-                     _clean_entity_name_for_match(h1) != '':
-                    names_match = True
-                elif h1 and h2 and not a1 and not a2 and (h1 == h2 or _clean_entity_name_for_match(h1) == _clean_entity_name_for_match(h2)):
-                    names_match = True
+            eh_name = _clean_entity_name_for_match(eh_ent.name) if eh_ent else ''
+            ea_name = _clean_entity_name_for_match(ea_ent.name) if ea_ent else ''
 
-            if names_match:
-                time_diff = abs((event.start_time - existing.start_time).total_seconds()) if (event.start_time and existing.start_time) else 0
-                if time_diff <= 12 * 3600:  # 12 hours
-                    duplicate_found = True
-                    # Prefer statpal over other sources, or prefer event with scores/live status
-                    if (event.api_source == 'statpal' and existing.api_source != 'statpal') or \
-                       (existing.home_score is None and event.home_score is not None) or \
-                       (existing.status == 'upcoming' and event.status in ('live', 'completed')):
-                        unique_events[idx] = event
+            ex_team_sig = tuple(sorted([eh_key, ea_key])) if (eh_key or ea_key) else ()
+            ex_name_sig = tuple(sorted([eh_name, ea_name])) if (eh_name or ea_name) else ()
+
+            # Match criteria: same sport AND (matching team IDs or matching normalized names)
+            teams_matched = False
+            if team_sig and ex_team_sig and team_sig == ex_team_sig:
+                teams_matched = True
+            elif name_sig and ex_name_sig and name_sig == ex_name_sig and any(name_sig):
+                teams_matched = True
+            elif (h_name and eh_name and h_name == eh_name) and (not a_name and not ea_name):
+                teams_matched = True
+
+            if teams_matched and event.sport == existing.sport:
+                # Time proximity: within 24 hours to catch UTC/local timezone shifts
+                if st and existing.start_time:
+                    time_diff = abs((st - existing.start_time).total_seconds())
+                    if time_diff <= 24 * 3600:
+                        duplicate_idx = idx
+                        break
+                elif not st and not existing.start_time:
+                    duplicate_idx = idx
                     break
 
-        if not duplicate_found:
+        if duplicate_idx is not None:
+            existing = unique_events[duplicate_idx]
+            # Replace if new event has richer information (scores, live status, or preferred provider)
+            score_existing = (existing.home_score is not None or existing.away_score is not None)
+            score_new = (event.home_score is not None or event.away_score is not None)
+
+            if (not score_existing and score_new) or \
+               (existing.status == 'upcoming' and event.status in ('live', 'completed')) or \
+               (event.api_source == 'statpal' and existing.api_source != 'statpal' and not score_existing):
+                unique_events[duplicate_idx] = event
+        else:
             unique_events.append(event)
 
     return unique_events
@@ -802,6 +812,12 @@ def get_upcoming_events(request):
         sport = request.GET.get('sport')
         end_date = timezone.now() + timedelta(days=days)
 
+        limit_param = request.GET.get('limit', '100')
+        try:
+            limit = max(1, min(int(limit_param), 500))
+        except (ValueError, TypeError):
+            limit = 100
+
         events = Event.objects.filter(
             status='upcoming',
             start_time__lte=end_date,
@@ -814,7 +830,7 @@ def get_upcoming_events(request):
             else:
                 events = events.filter(sport=sport.lower())
 
-        events_list = _deduplicate_events(list(events))
+        events_list = _deduplicate_events(list(events[:limit * 2]))[:limit]
 
         serializer_context = {'request': request, 'timezone': user_tz}
         data = {
