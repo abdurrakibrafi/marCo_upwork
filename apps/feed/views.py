@@ -94,8 +94,6 @@ def get_nest_feed(request):
     Returns:
         Response: Paginated JSON response containing serialized feed articles.
     """
-    page = request.GET.get('page', '1')
-    limit = request.GET.get('limit', '10')
     sort = request.GET.get('sort', 'newest').strip().lower()
     raw_filter_str = request.GET.get('filter', '')
     raw_type_str = request.GET.get('type', '')
@@ -103,7 +101,7 @@ def get_nest_feed(request):
     q_str = request.GET.get('q', '').strip()
 
     # 1. Fast Cache Layer (Sub-10ms response for repeated requests)
-    cache_key = f"nest_feed:{request.user.id}:p{page}:l{limit}:s{sort}:f{raw_filter_str}:t{raw_type_str}:src{source_id_str}:q{q_str}"
+    cache_key = f"nest_feed:{request.user.id}:s{sort}:f{raw_filter_str}:t{raw_type_str}:src{source_id_str}:q{q_str}"
     cached_data = cache.get(cache_key)
     if cached_data:
         return Response(cached_data)
@@ -144,8 +142,6 @@ def get_nest_feed(request):
         return Response({
             'message': 'No matching entities in your nest',
             'count': 0,
-            'next': None,
-            'previous': None,
             'results': []
         })
     
@@ -256,14 +252,13 @@ def get_nest_feed(request):
     else:
         feed = feed.order_by('-published_at')
 
-    # Paginate
-    paginator = FeedPagination()
-    paginated_feed = paginator.paginate_queryset(feed, request)
+    context = build_feed_serializer_context(request, feed, selected_entity_types=selected_entity_types)
+    serializer = FeedItemCompactSerializer(feed, many=True, context=context)
     
-    context = build_feed_serializer_context(request, paginated_feed, selected_entity_types=selected_entity_types)
-    serializer = FeedItemCompactSerializer(paginated_feed, many=True, context=context)
-    
-    res_data = paginator.get_paginated_response(serializer.data).data
+    res_data = {
+        'count': len(serializer.data),
+        'results': serializer.data,
+    }
     cache.set(cache_key, res_data, timeout=300)
     return Response(res_data)
 
