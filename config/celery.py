@@ -76,10 +76,10 @@ app.conf.beat_schedule = {
         'schedule': crontab(minute=0),  # every hour
     },
 
-    # ── Stats (weekly) ──────────────────────────────────────────────────
-    'team-stats-weekly': {
+    # ── Stats & Standings (Every 2 hours) ───────────────────────────────
+    'team-stats-every-2-hours': {
         'task': 'apps.entity.tasks.update_all_team_stats',
-        'schedule': crontab(hour=5, minute=0, day_of_week=0),  # Sunday 5am
+        'schedule': crontab(hour='*/2', minute=0),  # Runs every 2 hours to keep standings fresh
     },
 
     # ── Logos + highlights ───────────────────────────────────────────────

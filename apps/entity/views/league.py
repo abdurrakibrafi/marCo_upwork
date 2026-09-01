@@ -460,10 +460,10 @@ def _fetch_statpal_hierarchical_standings(sport: str, cache_key: str) -> list:
 
 
 def _fetch_soccer_standings(external_id, season) -> list:
-    """Fetch soccer league standings table from API-Football.
+    """Fetch soccer league standings table from StatPal or fallback to API-Sports.
 
     Args:
-        external_id (str or int): League external ID in API-Football.
+        external_id (str or int): League external ID.
         season (int or str): Season year.
 
     Returns:
@@ -474,6 +474,52 @@ def _fetch_soccer_standings(external_id, season) -> list:
     if cached:
         return cached
 
+    # 1. Try StatPal first
+    try:
+        from apps.sports_apis.services.statpal import statpal_service
+        sp_res = statpal_service.get_soccer_standings(external_id)
+        if sp_res.get('success'):
+            data = sp_res.get('data', {})
+            standings_list = data.get('standings', {}).get('tournament', {}).get('team', [])
+            if isinstance(standings_list, dict):
+                standings_list = [standings_list]
+
+            if standings_list:
+                result = []
+                for s in standings_list:
+                    overall = s.get('overall', {})
+                    total = s.get('total', {})
+                    wins = int(overall.get('wins') or 0)
+                    losses = int(overall.get('losses') or 0)
+                    draws = int(overall.get('draws') or 0)
+                    played = int(overall.get('games_played') or 0)
+                    points = int(total.get('points') or 0)
+                    gf = int(overall.get('goals_scored') or 0)
+                    ga = int(overall.get('goals_allowed') or 0)
+                    gd = int(total.get('goal_difference') or (gf - ga))
+
+                    result.append({
+                        'rank':             int(s.get('position') or 0),
+                        'team_external_id': str(s.get('id', '')),
+                        'team_name':        s.get('name', ''),
+                        'team_logo':        '',
+                        'points':           points,
+                        'played':           played,
+                        'win':              wins,
+                        'draw':             draws,
+                        'lose':             losses,
+                        'goals_for':        gf,
+                        'goals_against':    ga,
+                        'goal_diff':        gd,
+                        'form':             s.get('recent_form', ''),
+                    })
+                if result:
+                    cache.set(cache_key, result, timeout=1800)  # 30 min cache
+                    return result
+    except Exception as exc:
+        logger.warning(f"StatPal soccer standings error for league {external_id}: {exc}")
+
+    # 2. Fallback to API-Sports
     try:
         resp = requests.get(
             'https://v3.football.api-sports.io/standings',
@@ -509,7 +555,7 @@ def _fetch_soccer_standings(external_id, season) -> list:
                 'form':            s.get('form', ''),
             })
 
-        cache.set(cache_key, result, timeout=3600)
+        cache.set(cache_key, result, timeout=1800)
         return result
 
     except Exception:
