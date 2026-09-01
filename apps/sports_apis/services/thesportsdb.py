@@ -508,6 +508,43 @@ class TheSportsDBService:
                 continue
         return results
 
+    def get_league_season_events(self, league_id: str, season: str = '2026') -> list[dict]:
+        """Fetch all fixtures for an entire sports league season.
+
+        Args:
+            league_id (str): TheSportsDB league identifier.
+            season (str): Season string e.g. '2026' or '2025-2026'.
+
+        Returns:
+            list[dict]: List of raw event dictionary objects.
+        """
+        data = self._get('eventsseason.php', {'id': str(league_id), 's': str(season)}, timeout=30)
+        return data.get('events') or []
+
+    def get_team_next_events(self, team_id: str) -> list[dict]:
+        """Fetch upcoming scheduled fixtures for a team.
+
+        Args:
+            team_id (str): TheSportsDB team identifier.
+
+        Returns:
+            list[dict]: List of upcoming match fixtures.
+        """
+        data = self._get('eventsnext.php', {'id': str(team_id)}, timeout=20)
+        return data.get('events') or []
+
+    def get_team_last_events(self, team_id: str) -> list[dict]:
+        """Fetch recently played fixtures for a team.
+
+        Args:
+            team_id (str): TheSportsDB team identifier.
+
+        Returns:
+            list[dict]: List of recent match fixtures.
+        """
+        data = self._get('eventslast.php', {'id': str(team_id)}, timeout=20)
+        return data.get('results') or []
+
 
 # Global instance
 thesportsdb_service = TheSportsDBService()
