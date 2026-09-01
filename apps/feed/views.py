@@ -78,7 +78,118 @@ def build_feed_serializer_context(request, paginated_feed, selected_entity_types
         likes_qs = Like.objects.filter(feed_item_id__in=page_item_ids).values('feed_item_id').annotate(c=Count('id'))
         context['like_counts_map'] = {row['feed_item_id']: row['c'] for row in likes_qs}
 
-    return context
+def fast_serialize_feed_items(items, request, selected_entity_types=None) -> list:
+    """High-performance batch serializer for large feed item querysets."""
+    if not items:
+        return []
+
+    items_list = list(items) if not isinstance(items, list) else items
+    if not items_list:
+        return []
+
+    item_ids = [item.id for item in items_list]
+
+    # Pre-fetch user interaction state in 3 fast indexed queries
+    user_bookmarked_ids = set()
+    user_liked_ids = set()
+    if request and request.user and request.user.is_authenticated:
+        user_bookmarked_ids = set(
+            Bookmark.objects.filter(user=request.user, feed_item_id__in=item_ids)
+            .values_list('feed_item_id', flat=True)
+        )
+        user_liked_ids = set(
+            Like.objects.filter(user=request.user, feed_item_id__in=item_ids)
+            .values_list('feed_item_id', flat=True)
+        )
+
+    likes_qs = Like.objects.filter(feed_item_id__in=item_ids).values('feed_item_id').annotate(c=Count('id'))
+    like_counts_map = {row['feed_item_id']: row['c'] for row in likes_qs}
+
+    from apps.entity.serializers import find_entity_logo, make_logo_url_absolute
+    from apps.feed.serializers import _PUBLISHER_DOMAIN
+
+    entity_logo_cache = {}
+    entity_dict_cache = {}
+    publisher_logo_cache = {}
+
+    def get_pub_logo(publisher, source):
+        pub_clean = (publisher or '').strip().lower()
+        if pub_clean:
+            if pub_clean not in publisher_logo_cache:
+                domain = _PUBLISHER_DOMAIN.get(pub_clean)
+                if domain:
+                    publisher_logo_cache[pub_clean] = f'https://www.google.com/s2/favicons?domain={domain}&sz=64'
+                else:
+                    guessed = pub_clean.replace(' ', '').replace('.', '') + '.com'
+                    publisher_logo_cache[pub_clean] = f'https://www.google.com/s2/favicons?domain={guessed}&sz=64'
+            return publisher_logo_cache[pub_clean]
+        if source and getattr(source, 'favicon_url', None):
+            return source.favicon_url
+        if source and getattr(source, 'domain', None) and source.domain != 'news.google.com':
+            clean = source.domain.replace('https://', '').replace('http://', '').rstrip('/')
+            return f'https://www.google.com/s2/favicons?domain={clean}&sz=64'
+        return ''
+
+    results = []
+    for item in items_list:
+        all_ents = list(item.entities.all())
+        if selected_entity_types:
+            matching_ents = [e for e in all_ents if e.type in selected_entity_types]
+            primary_ent = matching_ents[0] if matching_ents else (all_ents[0] if all_ents else None)
+        else:
+            matching_ents = all_ents
+            primary_ent = all_ents[0] if all_ents else None
+
+        ent_name = primary_ent.name if primary_ent else ''
+        ent_logo = ''
+        if primary_ent:
+            if primary_ent.id not in entity_logo_cache:
+                logo = find_entity_logo(primary_ent)
+                entity_logo_cache[primary_ent.id] = make_logo_url_absolute(logo, request)
+            ent_logo = entity_logo_cache[primary_ent.id]
+
+        src_name = primary_ent.name if primary_ent else (item.source.name if item.source else '')
+        pub_name = item.publisher_name or (item.source.name if item.source else '')
+        pub_logo = get_pub_logo(item.publisher_name, item.source)
+        src_logo = ent_logo if primary_ent else pub_logo
+
+        ents_serialized = []
+        for e in matching_ents:
+            if e.id not in entity_dict_cache:
+                logo = find_entity_logo(e)
+                entity_dict_cache[e.id] = {
+                    'id': e.id,
+                    'name': e.name,
+                    'type': e.type,
+                    'logo_url': make_logo_url_absolute(logo, request),
+                    'sport': e.sport,
+                }
+            ents_serialized.append(entity_dict_cache[e.id])
+
+        results.append({
+            'id': item.id,
+            'source_name': src_name,
+            'source_logo': src_logo,
+            'publisher_name': pub_name,
+            'publisher_logo': pub_logo,
+            'entity_name': ent_name,
+            'entity_logo': ent_logo,
+            'entity_names': [e.name for e in matching_ents],
+            'entities': ents_serialized,
+            'title': item.title,
+            'summary': item.summary,
+            'thumbnail_url': item.thumbnail_url,
+            'url': item.url,
+            'published_at': item.published_at.isoformat() if item.published_at else None,
+            'is_breaking': item.is_breaking,
+            'is_trending': item.is_trending,
+            'views': item.views,
+            'is_bookmarked': item.id in user_bookmarked_ids,
+            'is_liked': item.id in user_liked_ids,
+            'like_count': like_counts_map.get(item.id, 0),
+        })
+
+    return results
 
 
 @api_view(['GET'])
@@ -89,12 +200,11 @@ def get_nest_feed(request):
     Supports search queries, entity filtering (team, athlete, league), content type exclusions, and multiple sort modes.
 
     Args:
-        request: HTTP request with query parameters (page, limit, sort, filter, type, q, source_id).
+        request: HTTP request with query parameters (sort, filter, type, q, source_id).
 
     Returns:
-        Response: Paginated JSON response containing serialized feed articles.
+        Response: JSON response containing all matching serialized feed articles.
     """
-    limit_param = request.GET.get('limit', '100').strip().lower()
     sort = request.GET.get('sort', 'newest').strip().lower()
     raw_filter_str = request.GET.get('filter', '')
     raw_type_str = request.GET.get('type', '')
@@ -102,7 +212,7 @@ def get_nest_feed(request):
     q_str = request.GET.get('q', '').strip()
 
     # 1. Fast Cache Layer (Sub-10ms response for repeated requests)
-    cache_key = f"nest_feed:{request.user.id}:lim_{limit_param}:s_{sort}:f_{raw_filter_str}:t_{raw_type_str}:src_{source_id_str}:q_{q_str}"
+    cache_key = f"nest_feed:{request.user.id}:s_{sort}:f_{raw_filter_str}:t_{raw_type_str}:src_{source_id_str}:q_{q_str}"
     cached_data = cache.get(cache_key)
     if cached_data:
         return Response(cached_data)
@@ -253,22 +363,14 @@ def get_nest_feed(request):
     else:
         feed = feed.order_by('-published_at')
 
-    # Apply limit slice (default 100 latest items to avoid memory/timeout issues)
-    if limit_param != 'all':
-        try:
-            limit_val = max(1, min(int(limit_param), 500))
-            feed = feed[:limit_val]
-        except (ValueError, TypeError):
-            feed = feed[:100]
+    # Serialize all matching feed items with ultra-fast batch serialization
+    serialized_results = fast_serialize_feed_items(feed, request, selected_entity_types=selected_entity_types)
 
-    context = build_feed_serializer_context(request, feed, selected_entity_types=selected_entity_types)
-    serializer = FeedItemCompactSerializer(feed, many=True, context=context)
-    
     res_data = {
-        'count': len(serializer.data),
-        'results': serializer.data,
+        'count': len(serialized_results),
+        'results': serialized_results,
     }
-    cache.set(cache_key, res_data, timeout=300)
+    cache.set(cache_key, res_data, timeout=600)
     return Response(res_data)
 
 
