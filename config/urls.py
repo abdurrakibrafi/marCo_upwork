@@ -43,6 +43,7 @@ urlpatterns = [
     path('api/feed/', include('apps.feed.urls')),
     path('api/core/', include('apps.core.urls')),
     path('api/source/', include('apps.source.urls')),
+    path('api/notifications/', include('apps.notification.urls')),
 
     # Health & Status
     path('api/health/', views.health_check, name='health_check'),

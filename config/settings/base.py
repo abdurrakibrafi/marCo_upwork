@@ -60,7 +60,8 @@ INSTALLED_APPS = [
     "apps.nest",
     "apps.score",
     "apps.source",
-    "apps.sports_apis"
+    "apps.sports_apis",
+    "apps.notification",
 ]
 
 MIDDLEWARE = [
@@ -239,6 +240,7 @@ CELERY_IMPORTS = (
     'apps.entity.tasks',
     'apps.score.tasks',
     'apps.source.tasks',
+    'apps.notification.tasks',
 )
 
 # ── Celery Task Priority Routing ─────────────────────────────────────────────
@@ -271,7 +273,9 @@ BRAVESEARCH_KEY = env('BRAVESEARCH_KEY', default='')
 NEWSAPI_KEY = env('NEWSAPI_KEY', default='')
 THESPORTSDB_KEY = env('THESPORTSDB_KEY', default='')
 
-
+# Firebase Push Notification Settings
+FIREBASE_CREDENTIALS_PATH = env('FIREBASE_CREDENTIALS_PATH', default='')
+FIREBASE_CREDENTIALS_JSON = env('FIREBASE_CREDENTIALS_JSON', default='')
 
 STATPAL_ACCESS_KEY = os.environ.get("STATPAL_API_KEY")
 
