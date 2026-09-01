@@ -127,10 +127,9 @@ def _deduplicate_events(events_list: list) -> list:
                 teams_matched = True
 
             if teams_matched and event.sport == existing.sport:
-                # Time proximity: within 24 hours to catch UTC/local timezone shifts
+                # Deduplicate ONLY when start time is exactly the same or external IDs match
                 if st and existing.start_time:
-                    time_diff = abs((st - existing.start_time).total_seconds())
-                    if time_diff <= 24 * 3600:
+                    if st == existing.start_time or (event.external_id and event.external_id == existing.external_id):
                         duplicate_idx = idx
                         break
                 elif not st and not existing.start_time:
