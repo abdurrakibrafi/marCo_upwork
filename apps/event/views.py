@@ -67,16 +67,23 @@ def _resolve_timezone(request):
 def _clean_entity_name_for_match(name: str) -> str:
     if not name:
         return ''
-    s = name.lower().strip()
-    s = re.sub(r'\b(fc|cf|club|united|utd|sc|afc|the|city|town)\b', '', s)
-    return re.sub(r'[^a-z0-9]', '', s)
+    import unicodedata
+    s = unicodedata.normalize('NFKD', name).encode('ASCII', 'ignore').decode('utf-8').lower().strip()
+    s = re.sub(r'\b(fc|cf|club|united|utd|sc|afc|the|city|town|de|la|baloncesto|basket)\b', '', s)
+    s = re.sub(r'\bind\.?\b', 'independiente', s)
+    s = re.sub(r'\batl\.?\b', 'atletico', s)
+    s = re.sub(r'\bdep\.?\b', 'deportivo', s)
+    s = re.sub(r'[^a-z0-9]', '', s)
+    if s.startswith('real') and s != 'realmadrid':
+        s = s[4:]
+    return s
 
 
 def _deduplicate_events(events_list: list) -> list:
     """Deduplicate a list of Event objects by canonical entity IDs, cleaned names, flipped teams, and start time.
 
     Prefers 'statpal' or records with live/completed status/scores when duplicate fixture records exist.
-    Matches events that share the same home/away teams (even if flipped or with timezone shift up to 24h).
+    Matches events that share the same home/away teams (even if flipped or with timezone shift).
 
     Args:
         events_list (list): List of Event model instances.
