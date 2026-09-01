@@ -205,6 +205,17 @@ def get_nest_feed(request):
     Returns:
         Response: JSON response containing all matching serialized feed articles.
     """
+    # Parse pagination params
+    try:
+        page = max(1, int(request.GET.get('page', 1)))
+    except (ValueError, TypeError):
+        page = 1
+
+    try:
+        limit = max(1, min(int(request.GET.get('limit', 100)), 200))
+    except (ValueError, TypeError):
+        limit = 100
+
     sort = request.GET.get('sort', 'newest').strip().lower()
     raw_filter_str = request.GET.get('filter', '')
     raw_type_str = request.GET.get('type', '')
@@ -212,7 +223,7 @@ def get_nest_feed(request):
     q_str = request.GET.get('q', '').strip()
 
     # 1. Fast Cache Layer (Sub-10ms response for repeated requests)
-    cache_key = f"nest_feed:{request.user.id}:s_{sort}:f_{raw_filter_str}:t_{raw_type_str}:src_{source_id_str}:q_{q_str}"
+    cache_key = f"nest_feed:{request.user.id}:p_{page}:lim_{limit}:s_{sort}:f_{raw_filter_str}:t_{raw_type_str}:src_{source_id_str}:q_{q_str}"
     cached_data = cache.get(cache_key)
     if cached_data:
         return Response(cached_data)
@@ -252,8 +263,14 @@ def get_nest_feed(request):
     if not nest_entity_ids and not user_custom_source_ids:
         return Response({
             'message': 'No matching entities in your nest',
+            'total_count': 0,
             'count': 0,
-            'results': []
+            'page': page,
+            'limit': limit,
+            'has_more': False,
+            'next_page': None,
+            'prev_page': None,
+            'results': [],
         })
     
     # Get hidden sources and publishers
@@ -363,11 +380,29 @@ def get_nest_feed(request):
     else:
         feed = feed.order_by('-published_at')
 
-    # Serialize all matching feed items with ultra-fast batch serialization
-    serialized_results = fast_serialize_feed_items(feed, request, selected_entity_types=selected_entity_types)
+    # Total matching count across entire nest
+    total_count = feed.count()
+
+    # Apply page slicing
+    start = (page - 1) * limit
+    end = start + limit
+    page_queryset = feed[start:end]
+
+    # Serialize only requested page items with ultra-fast batch serialization
+    serialized_results = fast_serialize_feed_items(page_queryset, request, selected_entity_types=selected_entity_types)
+
+    has_more = end < total_count
+    next_page = page + 1 if has_more else None
+    prev_page = page - 1 if page > 1 else None
 
     res_data = {
+        'total_count': total_count,
         'count': len(serialized_results),
+        'page': page,
+        'limit': limit,
+        'has_more': has_more,
+        'next_page': next_page,
+        'prev_page': prev_page,
         'results': serialized_results,
     }
     cache.set(cache_key, res_data, timeout=600)
