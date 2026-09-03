@@ -124,6 +124,14 @@ class FeedItemCompactSerializer(serializers.ModelSerializer):
             'published_at', 'is_breaking', 'is_trending', 'views', 'is_bookmarked', 'is_liked', 'like_count'
         ]
 
+    @property
+    def context(self):
+        return getattr(self, '_context', None) or {}
+
+    @context.setter
+    def context(self, value):
+        self._context = value
+
     def get_url(self, obj):
         """Resolve canonical publisher URL for redirect items."""
         if obj.url and "news.google.com" in obj.url:

@@ -78,6 +78,8 @@ def build_feed_serializer_context(request, paginated_feed, selected_entity_types
         likes_qs = Like.objects.filter(feed_item_id__in=page_item_ids).values('feed_item_id').annotate(c=Count('id'))
         context['like_counts_map'] = {row['feed_item_id']: row['c'] for row in likes_qs}
 
+    return context
+
 def fast_serialize_feed_items(items, request, selected_entity_types=None) -> list:
     """High-performance batch serializer for large feed item querysets."""
     if not items:
