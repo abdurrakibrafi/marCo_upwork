@@ -209,10 +209,13 @@ def add_source(request):
             user_source.is_active = True
             user_source.save(update_fields=['is_active'])
             message = f'{source.name} re-added to your sources'
+            resp_status = status.HTTP_200_OK
         else:
             message = f'{source.name} is already in your sources'
+            resp_status = status.HTTP_400_BAD_REQUEST
     else:
         message = f'{source.name} added to your sources'
+        resp_status = status.HTTP_201_CREATED
 
     # Fire async task: discover RSS feed + poll immediately
     from .tasks import discover_and_poll_user_source
@@ -220,11 +223,11 @@ def add_source(request):
 
     serializer = UserCustomSourceSerializer(user_source)
     return Response({
-        'success': True,
+        'success': resp_status != status.HTTP_400_BAD_REQUEST,
         'message': message,
         'source': serializer.data,
         'created': was_created,
-    }, status=status.HTTP_201_CREATED if was_created else status.HTTP_200_OK)
+    }, status=resp_status)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
