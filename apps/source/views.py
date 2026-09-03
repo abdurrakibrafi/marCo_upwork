@@ -79,19 +79,52 @@ def search_sources(request):
         timeout = 6 * 3600 if suggestions else 1800
         cache.set(cache_key, suggestions or [], timeout=timeout)
 
-    # Enrich with DB info (source_id, is_added)
-    user_custom_domains = set(
+    # Enrich with DB info (source_id, is_added) per specific source
+    user_custom_sources = list(
         UserCustomSource.objects.filter(
             user=request.user, is_active=True
-        ).values_list('source__domain', flat=True)
+        ).select_related('source')
     )
+    user_custom_source_ids = {ucs.source_id for ucs in user_custom_sources}
+    user_custom_rss_urls = {ucs.source.rss_url for ucs in user_custom_sources if ucs.source and ucs.source.rss_url}
+    user_custom_domains = {ucs.source.domain for ucs in user_custom_sources if ucs.source and ucs.source.domain}
+
+    GENERIC_DOMAINS = {'youtube.com', 'youtu.be', 'news.google.com', 'google.com', 'twitter.com', 'x.com'}
 
     enriched = []
     for s in (suggestions or []):
-        domain = s.get('domain', '')
-        existing_source = Source.objects.filter(domain=domain).first()
-        s['source_id'] = existing_source.id if existing_source else None
-        s['is_added'] = domain in user_custom_domains
+        domain = s.get('domain', '').strip()
+        name = s.get('name', '').strip()
+        rss_url = s.get('rss_url', '').strip()
+        source_id = s.get('source_id')
+
+        clean_domain = domain.replace('https://', '').replace('http://', '').split('/')[0].lower()
+        is_generic = any(gd in clean_domain for gd in GENERIC_DOMAINS)
+
+        # 1. Resolve source_id if not already present
+        if not source_id:
+            existing_source = None
+            if rss_url:
+                existing_source = Source.objects.filter(rss_url=rss_url).first()
+            if not existing_source and name and domain:
+                existing_source = Source.objects.filter(name__iexact=name, domain__icontains=clean_domain).first()
+            if not existing_source and not is_generic and domain:
+                existing_source = Source.objects.filter(domain=domain).first()
+
+            source_id = existing_source.id if existing_source else None
+
+        s['source_id'] = source_id
+
+        # 2. Check if this specific source is added by the user
+        if source_id:
+            s['is_added'] = source_id in user_custom_source_ids
+        elif rss_url:
+            s['is_added'] = rss_url in user_custom_rss_urls
+        elif not is_generic:
+            s['is_added'] = domain in user_custom_domains or clean_domain in user_custom_domains
+        else:
+            s['is_added'] = False
+
         enriched.append(s)
 
     serializer = SourceSuggestionSerializer(enriched, many=True)
@@ -150,11 +183,19 @@ def add_source(request):
         if rss_url:
             source = Source.objects.filter(rss_url=rss_url).first()
 
-        # 2. Second attempt: Find by domain if not found by rss_url
-        if not source:
-            source = Source.objects.filter(domain=domain).first()
+        # 2. Second attempt: Find by name and domain if provided
+        if not source and name:
+            clean_domain = domain.replace('https://', '').replace('http://', '').split('/')[0].lower()
+            source = Source.objects.filter(name__iexact=name, domain__icontains=clean_domain).first()
 
-        # 3. Third attempt: If still not found, create a new one
+        # 3. Third attempt: Find by domain if not a generic shared platform
+        if not source:
+            GENERIC_DOMAINS = {'youtube.com', 'youtu.be', 'news.google.com', 'google.com', 'twitter.com', 'x.com'}
+            clean_domain = domain.replace('https://', '').replace('http://', '').split('/')[0].lower()
+            if not any(gd in clean_domain for gd in GENERIC_DOMAINS):
+                source = Source.objects.filter(domain=domain).first()
+
+        # 4. Fourth attempt: If still not found, create a new one
         if not source:
             from django.db import IntegrityError
             try:

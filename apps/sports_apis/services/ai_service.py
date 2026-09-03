@@ -97,6 +97,7 @@ class SourceAIService:
                 
             for src in db_sources:
                 ai_suggestions.append({
+                    "source_id": src.id,
                     "name": src.name,
                     "domain": src.domain,
                     "description": f"News articles covering sports from {src.name}.",
@@ -258,13 +259,15 @@ class SourceAIService:
         favicon_url = f"https://www.google.com/s2/favicons?domain={parsed.netloc}&sz=64"
 
         # Skip RSS discovery to reduce HTTP requests
+        rss_url = suggestion.get("rss_url", "")
         return {
+            "source_id": suggestion.get("source_id"),
             "name": suggestion.get("name", parsed.netloc.replace("www.", "")),
             "domain": domain,
             "description": suggestion.get("description", ""),
             "favicon_url": favicon_url,
-            "rss_url": "",  # Will be discovered later if user adds the source
-            "has_rss": False,  # Assume false for now
+            "rss_url": rss_url,
+            "has_rss": bool(rss_url),
             "tags": suggestion.get("tags", []),
         }
     
