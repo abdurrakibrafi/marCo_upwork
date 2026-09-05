@@ -1,0 +1,29 @@
+{% extends "emails/base_email.html" %}
+
+{% block title %}{{ title }}{% endblock %}
+
+{% block content %}
+<div style="margin-bottom: 14px;">
+    <span class="badge">{{ notification_type_label|default:"App Alert" }}</span>
+</div>
+
+<h2 style="color: #0f172a; font-size: 19px; font-weight: 700; margin-top: 0; margin-bottom: 14px;">
+    {{ title }}
+</h2>
+
+<p style="font-size: 15px; color: #334155; line-height: 1.6; margin-top: 0; margin-bottom: 18px;">
+    {{ body }}
+</p>
+
+{% if image_url %}
+<div style="margin: 20px 0;">
+    <img src="{{ image_url }}" alt="Notification Media" style="max-width: 100%; border-radius: 6px; border: 1px solid #e2e8f0; display: block;">
+</div>
+{% endif %}
+
+<div style="border-top: 1px solid #f1f5f9; padding-top: 16px; margin-top: 24px;">
+    <p style="color: #64748b; font-size: 13px; margin: 0;">
+        Tap to open the <strong>MarCo App</strong> to view the full discussion and related updates.
+    </p>
+</div>
+{% endblock %}

@@ -171,14 +171,16 @@ class NotificationService:
         data: Optional[Dict[str, Any]] = None,
         image_url: Optional[str] = None,
         send_push: bool = True,
+        send_email: bool = True,
     ) -> Optional[Notification]:
-        """Create an in-app notification and optionally trigger a push notification."""
+        """Create an in-app notification and optionally trigger push and email notifications."""
         if not user or not user.is_authenticated:
             return None
 
         # Check notification preference
         pref, _ = NotificationPreference.objects.get_or_create(user=user)
         allow_push = pref.is_type_allowed(notification_type)
+        allow_email = pref.email_enabled and pref.is_type_allowed(notification_type)
 
         # Create in-app notification record
         notification = Notification.objects.create(
@@ -198,6 +200,15 @@ class NotificationService:
                 send_push_notification_task.delay(notification.id)
             except Exception as exc:
                 logger.warning("Failed to queue push notification task: %s", exc)
+
+        # Dispatch email notification if allowed
+        if send_email and allow_email:
+            try:
+                from apps.notification.tasks import send_notification_email_task
+
+                send_notification_email_task.delay(notification.id)
+            except Exception as exc:
+                logger.warning("Failed to queue email notification task: %s", exc)
 
         return notification
 

@@ -1,0 +1,40 @@
+{% extends "emails/base_email.html" %}
+
+{% block title %}Match Day Alert: {{ home_team }} vs {{ away_team }}{% endblock %}
+
+{% block content %}
+<div style="margin-bottom: 14px;">
+    <span class="badge">Match Reminder</span>
+</div>
+
+<h2 style="color: #0f172a; font-size: 20px; font-weight: 700; margin-top: 0; margin-bottom: 8px;">
+    {{ home_team }} <span style="color: #94a3b8; font-weight: 400;">vs</span> {{ away_team }}
+</h2>
+
+<p style="color: #64748b; font-size: 14px; margin-top: 0; margin-bottom: 20px;">
+    One of your followed teams is playing today.
+</p>
+
+<div class="card">
+    <table style="width: 100%; border-collapse: collapse;">
+        <tr>
+            <td style="padding: 6px 0; color: #64748b; font-size: 13px; width: 35%;">Competition:</td>
+            <td style="padding: 6px 0; color: #0f172a; font-size: 14px; font-weight: 600;">{{ league_name|default:"Scheduled Match" }}</td>
+        </tr>
+        <tr>
+            <td style="padding: 6px 0; color: #64748b; font-size: 13px;">Kick-off Time:</td>
+            <td style="padding: 6px 0; color: #2563eb; font-size: 14px; font-weight: 700;">{{ start_time_display|default:"Starting Soon" }}</td>
+        </tr>
+        {% if venue %}
+        <tr>
+            <td style="padding: 6px 0; color: #64748b; font-size: 13px;">Venue:</td>
+            <td style="padding: 6px 0; color: #0f172a; font-size: 14px;">{{ venue }}</td>
+        </tr>
+        {% endif %}
+    </table>
+</div>
+
+<p style="color: #475569; font-size: 14px; line-height: 1.6; margin-top: 20px; margin-bottom: 0;">
+    Follow live scores, real-time commentary, and player statistics directly in the <strong>MarCo App</strong>.
+</p>
+{% endblock %}

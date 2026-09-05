@@ -27,10 +27,11 @@ def live_scores(request):
         sport = request.query_params.get('sport')
         live_games = get_user_live_scores_queryset(request.user, sport=sport)
         serializer = LiveScoreSerializer(live_games, many=True)
+        games_data = serializer.data
 
         data = {
-            'count': live_games.count(),
-            'games': serializer.data
+            'count': len(games_data),
+            'games': games_data
         }
         return mixin.success_response(data=data, message='Live scores retrieved successfully')
     except Exception as exc:
@@ -53,8 +54,9 @@ def nest_live_scores(request):
         sport = request.query_params.get('sport')
         live_games = get_user_live_scores_queryset(request.user, sport=sport)
         serializer = LiveScoreSerializer(live_games, many=True)
+        games_data = serializer.data
         return mixin.success_response(
-            data={'count': live_games.count(), 'games': serializer.data}
+            data={'count': len(games_data), 'games': games_data}
         )
     except Exception as exc:
         return mixin.handle_exception(exc)

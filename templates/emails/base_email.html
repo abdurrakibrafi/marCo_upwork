@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}MarCo Sports{% endblock %}</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            background-color: #f4f6f8;
+            color: #1e293b;
+            margin: 0;
+            padding: 0;
+            -webkit-text-size-adjust: 100%;
+            -ms-text-size-adjust: 100%;
+        }
+        .wrapper {
+            width: 100%;
+            background-color: #f4f6f8;
+            padding: 40px 15px;
+            box-sizing: border-box;
+        }
+        .container {
+            max-width: 580px;
+            margin: 0 auto;
+            background-color: #ffffff;
+            border-radius: 8px;
+            border: 1px solid #e2e8f0;
+            overflow: hidden;
+        }
+        .header {
+            background-color: #ffffff;
+            padding: 28px 32px 20px 32px;
+            border-bottom: 1px solid #f1f5f9;
+        }
+        .logo {
+            font-size: 20px;
+            font-weight: 800;
+            letter-spacing: 1px;
+            color: #0f172a;
+            text-transform: uppercase;
+            text-decoration: none;
+            display: inline-block;
+        }
+        .logo span {
+            color: #2563eb;
+        }
+        .content {
+            padding: 32px;
+            line-height: 1.65;
+            font-size: 15px;
+            color: #334155;
+        }
+        .footer {
+            padding: 24px 32px;
+            text-align: center;
+            font-size: 12px;
+            color: #94a3b8;
+            border-top: 1px solid #f1f5f9;
+            background-color: #fafbfc;
+            line-height: 1.6;
+        }
+        .card {
+            background-color: #f8fafc;
+            border: 1px solid #e2e8f0;
+            border-radius: 6px;
+            padding: 16px 20px;
+            margin: 16px 0;
+        }
+        .badge {
+            display: inline-block;
+            padding: 3px 9px;
+            border-radius: 4px;
+            font-size: 11px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            background-color: #eff6ff;
+            color: #2563eb;
+            border: 1px solid #bfdbfe;
+        }
+    </style>
+    {% block extra_styles %}{% endblock %}
+</head>
+<body>
+    <div class="wrapper">
+        <div class="container">
+            <!-- Header -->
+            <div class="header">
+                <div class="logo">
+                    Mar<span>Co</span> App
+                </div>
+            </div>
+
+            <!-- Main Body -->
+            <div class="content">
+                {% block content %}{% endblock %}
+            </div>
+
+            <!-- Footer -->
+            <div class="footer">
+                <p style="margin: 0 0 6px 0;">© {{ year|default:"2026" }} MarCo App. All rights reserved.</p>
+                <p style="margin: 0;">
+                    You are receiving this notification because of your preferences in the MarCo app.
+                    <br>
+                    You can customize or turn off these notifications anytime directly from <strong>MarCo App → Settings → Notifications</strong>.
+                </p>
+            </div>
+        </div>
+    </div>
+</body>
+</html>

@@ -1,0 +1,59 @@
+{% extends "emails/base_email.html" %}
+
+{% block title %}Daily Sports Digest — MarCo{% endblock %}
+
+{% block content %}
+<div style="margin-bottom: 14px;">
+    <span class="badge">Daily Nest Briefing</span>
+</div>
+
+<h2 style="color: #0f172a; font-size: 20px; font-weight: 700; margin-top: 0; margin-bottom: 6px;">
+    Good morning, {{ user_name|default:"Sports Fan" }}
+</h2>
+<p style="color: #64748b; font-size: 14px; margin-top: 0; margin-bottom: 24px;">
+    Here are the key stories and upcoming games for the teams in your Nest.
+</p>
+
+{% if articles %}
+<h3 style="color: #0f172a; font-size: 15px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; border-bottom: 1px solid #e2e8f0; padding-bottom: 8px; margin-top: 24px; margin-bottom: 14px;">
+    Top Stories
+</h3>
+{% for article in articles %}
+<div class="card" style="margin-bottom: 12px;">
+    <h4 style="margin: 0 0 6px 0; font-size: 15px; font-weight: 600; color: #0f172a; line-height: 1.4;">
+        {{ article.title }}
+    </h4>
+    {% if article.summary %}
+    <p style="margin: 0 0 8px 0; font-size: 13px; color: #475569; line-height: 1.5;">
+        {{ article.summary|truncatechars:140 }}
+    </p>
+    {% endif %}
+    <div style="font-size: 12px; color: #64748b;">
+        <strong style="color: #2563eb;">{{ article.publisher_name|default:"Sports News" }}</strong> • {{ article.published_at|date:"M d, H:i" }}
+    </div>
+</div>
+{% endfor %}
+{% endif %}
+
+{% if upcoming_events %}
+<h3 style="color: #0f172a; font-size: 15px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; border-bottom: 1px solid #e2e8f0; padding-bottom: 8px; margin-top: 28px; margin-bottom: 14px;">
+    Upcoming Matches Today
+</h3>
+{% for event in upcoming_events %}
+<div class="card" style="margin-bottom: 10px;">
+    <div style="font-size: 14px; font-weight: 600; color: #0f172a;">
+        {{ event.home_team }} vs {{ event.away_team }}
+    </div>
+    <div style="font-size: 12px; color: #64748b; margin-top: 4px;">
+        {{ event.league_name }} • <span style="color: #2563eb; font-weight: 600;">{{ event.start_time_display }}</span>
+    </div>
+</div>
+{% endfor %}
+{% endif %}
+
+<div style="border-top: 1px solid #f1f5f9; padding-top: 16px; margin-top: 24px;">
+    <p style="color: #64748b; font-size: 13px; margin: 0;">
+        Open the <strong>MarCo App</strong> to see your full live feed and real-time updates.
+    </p>
+</div>
+{% endblock %}

@@ -1,8 +1,11 @@
+import logging
 from rest_framework import generics, status, permissions
 from rest_framework.response import Response
 from rest_framework.decorators import action, api_view, permission_classes
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework.views import APIView
+
+logger = logging.getLogger(__name__)
 from django.contrib.auth import authenticate, get_user_model
 from django.contrib.auth.hashers import check_password
 from allauth.socialaccount.providers.google.views import GoogleOAuth2Adapter
@@ -134,6 +137,13 @@ class VerifyEmailView(BaseResponseMixin, generics.GenericAPIView):
         serializer.is_valid(raise_exception=True)
 
         user = serializer.validated_data["user"]
+
+        # Queue onboarding welcome email asynchronously
+        try:
+            from apps.notification.tasks import send_welcome_email_task
+            send_welcome_email_task.delay(user.id)
+        except Exception as exc:
+            logger.warning("Failed to queue welcome email task for user %s: %s", user.id, exc)
 
         refresh = RefreshToken.for_user(user)
 

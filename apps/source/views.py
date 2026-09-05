@@ -2,21 +2,27 @@ import logging
 
 from django.shortcuts import get_object_or_404
 from django.core.cache import cache
-from django.db.models import Q
+from django.db.models import Prefetch
 from rest_framework import status
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.pagination import PageNumberPagination
 
-from apps.feed.models import Source, FeedItem
+from apps.feed.models import FeedItem
 from apps.feed.serializers import FeedItemCompactSerializer
+from apps.nest.models import UserNest
+from apps.entity.models import Entity
+from apps.entity.serializers import EntityCompactSerializer
+from apps.sports_apis.services.ai_service import source_ai_service
 
 from .models import UserCustomSource
 from .serializers import SourceSuggestionSerializer, UserCustomSourceSerializer
-from apps.sports_apis.services.ai_service import source_ai_service
-from apps.nest.models import UserNest
-from apps.entity.serializers import EntityCompactSerializer
+from .services import (
+    enrich_source_suggestions,
+    add_user_custom_source,
+    get_source_preview_data,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -72,69 +78,22 @@ def search_sources(request):
     cache_key = f"source_search:{query.lower().replace(' ', '_')}"
     suggestions = cache.get(cache_key)
 
-    # Cache miss — call AI synchronously right now (wait for result)
+    # Cache miss — call AI synchronously
     if suggestions is None:
-        from apps.sports_apis.services.ai_service import source_ai_service
         suggestions = source_ai_service.suggest_sources(query)
         timeout = 6 * 3600 if suggestions else 1800
         cache.set(cache_key, suggestions or [], timeout=timeout)
 
-    # Enrich with DB info (source_id, is_added) per specific source
-    user_custom_sources = list(
-        UserCustomSource.objects.filter(
-            user=request.user, is_active=True
-        ).select_related('source')
-    )
-    user_custom_source_ids = {ucs.source_id for ucs in user_custom_sources}
-    user_custom_rss_urls = {ucs.source.rss_url for ucs in user_custom_sources if ucs.source and ucs.source.rss_url}
-    user_custom_domains = {ucs.source.domain for ucs in user_custom_sources if ucs.source and ucs.source.domain}
-
-    GENERIC_DOMAINS = {'youtube.com', 'youtu.be', 'news.google.com', 'google.com', 'twitter.com', 'x.com'}
-
-    enriched = []
-    for s in (suggestions or []):
-        domain = s.get('domain', '').strip()
-        name = s.get('name', '').strip()
-        rss_url = s.get('rss_url', '').strip()
-        source_id = s.get('source_id')
-
-        clean_domain = domain.replace('https://', '').replace('http://', '').split('/')[0].lower()
-        is_generic = any(gd in clean_domain for gd in GENERIC_DOMAINS)
-
-        # 1. Resolve source_id if not already present
-        if not source_id:
-            existing_source = None
-            if rss_url:
-                existing_source = Source.objects.filter(rss_url=rss_url).first()
-            if not existing_source and name and domain:
-                existing_source = Source.objects.filter(name__iexact=name, domain__icontains=clean_domain).first()
-            if not existing_source and not is_generic and domain:
-                existing_source = Source.objects.filter(domain=domain).first()
-
-            source_id = existing_source.id if existing_source else None
-
-        s['source_id'] = source_id
-
-        # 2. Check if this specific source is added by the user
-        if source_id:
-            s['is_added'] = source_id in user_custom_source_ids
-        elif rss_url:
-            s['is_added'] = rss_url in user_custom_rss_urls
-        elif not is_generic:
-            s['is_added'] = domain in user_custom_domains or clean_domain in user_custom_domains
-        else:
-            s['is_added'] = False
-
-        enriched.append(s)
-
+    # Delegate database enrichment and subscription status to service layer
+    enriched = enrich_source_suggestions(request.user, suggestions or [])
     serializer = SourceSuggestionSerializer(enriched, many=True)
+
     return Response({
         'query': query,
         'count': len(enriched),
         'results': serializer.data,
         'status': 'ok',
     })
-
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -167,100 +126,15 @@ def add_source(request):
             status=status.HTTP_400_BAD_REQUEST
         )
 
-    # Get or create the Source object
-    if source_id:
-        source = get_object_or_404(Source, id=source_id)
-        created = False
-    else:
-        # Normalize domain
-        if not domain.startswith('http'):
-            domain = f'https://{domain}'
-
-        source = None
-        created = False
-
-        # 1. First attempt: Find by unique rss_url if provided
-        if rss_url:
-            source = Source.objects.filter(rss_url=rss_url).first()
-
-        # 2. Second attempt: Find by name and domain if provided
-        if not source and name:
-            clean_domain = domain.replace('https://', '').replace('http://', '').split('/')[0].lower()
-            source = Source.objects.filter(name__iexact=name, domain__icontains=clean_domain).first()
-
-        # 3. Third attempt: Find by domain if not a generic shared platform
-        if not source:
-            GENERIC_DOMAINS = {'youtube.com', 'youtu.be', 'news.google.com', 'google.com', 'twitter.com', 'x.com'}
-            clean_domain = domain.replace('https://', '').replace('http://', '').split('/')[0].lower()
-            if not any(gd in clean_domain for gd in GENERIC_DOMAINS):
-                source = Source.objects.filter(domain=domain).first()
-
-        # 4. Fourth attempt: If still not found, create a new one
-        if not source:
-            from django.db import IntegrityError
-            try:
-                source = Source.objects.create(
-                    domain=domain,
-                    name=name or domain,
-                    rss_url=rss_url or None,
-                    favicon_url=favicon_url,
-                    is_active=True,
-                    discovery_source='manual',
-                )
-                created = True
-            except IntegrityError:
-                # Handle concurrent creation or unexpected integrity clash
-                if rss_url:
-                    source = Source.objects.filter(rss_url=rss_url).first()
-                if not source:
-                    source = Source.objects.filter(domain=domain).first()
-                if not source:
-                    raise
-
-        # If source existed but had no rss_url and we now have one, update it
-        if not created and rss_url and not source.rss_url:
-            from django.db import IntegrityError
-            try:
-                source.rss_url = rss_url
-                source.save(update_fields=['rss_url'])
-            except IntegrityError:
-                # If this rss_url already exists under another source, use that source instead
-                other_source = Source.objects.filter(rss_url=rss_url).first()
-                if other_source:
-                    source = other_source
-
-        # If source existed but had no name, update it
-        if not created and name and not source.name:
-            source.name = name
-            source.save(update_fields=['name'])
-
-    # Link to user
-    user_source, was_created = UserCustomSource.objects.get_or_create(
+    user_source, was_created, message, resp_status = add_user_custom_source(
         user=request.user,
-        source=source,
-        defaults={
-            'search_query': search_query,
-            'is_active': True,
-        }
+        source_id=source_id,
+        domain=domain,
+        name=name,
+        rss_url=rss_url,
+        favicon_url=favicon_url,
+        search_query=search_query,
     )
-
-    if not was_created:
-        # Re-activate if it was deactivated
-        if not user_source.is_active:
-            user_source.is_active = True
-            user_source.save(update_fields=['is_active'])
-            message = f'{source.name} re-added to your sources'
-            resp_status = status.HTTP_200_OK
-        else:
-            message = f'{source.name} is already in your sources'
-            resp_status = status.HTTP_400_BAD_REQUEST
-    else:
-        message = f'{source.name} added to your sources'
-        resp_status = status.HTTP_201_CREATED
-
-    # Fire async task: discover RSS feed + poll immediately
-    from .tasks import discover_and_poll_user_source
-    discover_and_poll_user_source.delay(source.id)
 
     serializer = UserCustomSourceSerializer(user_source)
     return Response({
@@ -344,7 +218,6 @@ def refresh_source(request, source_id: int):
     Returns:
         Response: Task execution confirmation or rate-limiting error.
     """
-    # Check user owns this source
     user_source = get_object_or_404(
         UserCustomSource,
         user=request.user,
@@ -387,7 +260,6 @@ def get_source_feed(request, source_id: int):
     Returns:
         Response: Paginated feed item list with contextual entity tagging.
     """
-    # Verify user has this source
     user_source = get_object_or_404(
         UserCustomSource,
         user=request.user,
@@ -401,7 +273,6 @@ def get_source_feed(request, source_id: int):
     )
 
     if not user_entities:
-        # User has no entities in nest — return empty feed with helpful message
         return Response({
             'count': 0,
             'source': UserCustomSourceSerializer(user_source).data,
@@ -410,29 +281,37 @@ def get_source_feed(request, source_id: int):
         })
 
     # Get all feed items from this source that have entities matching user's nest
+    # Optimized: Prefetch matching entities into to_attr to eliminate N+1 SQL queries per item
+    matching_entities_prefetch = Prefetch(
+        'entities',
+        queryset=Entity.objects.filter(id__in=user_entities),
+        to_attr='matching_user_entities',
+    )
     feed = FeedItem.objects.filter(
         source_id=source_id,
-        entities__id__in=user_entities,  # Only articles about user's entities
-    ).distinct().order_by('-published_at')
+        entities__id__in=user_entities,
+    ).prefetch_related(matching_entities_prefetch).distinct().order_by('-published_at')
 
     paginator = SourceFeedPagination()
     paginated = paginator.paginate_queryset(feed, request)
-    
-    # Custom response: include matching entities for each item
+
     enriched_items = []
     for item in paginated:
         item_data = FeedItemCompactSerializer(item, context={'request': request}).data
-        
-        # Get entities that match user's nest for this item
-        matching_entities = item.entities.filter(id__in=user_entities)
+        matching_entities = getattr(item, 'matching_user_entities', [])
         item_data['matching_entities'] = EntityCompactSerializer(
             matching_entities, many=True
         ).data
-        
         enriched_items.append(item_data)
 
+    total_count = (
+        paginator.page.paginator.count
+        if (paginator.page and paginator.page.paginator)
+        else feed.count()
+    )
+
     return Response({
-        'count': feed.count(),
+        'count': total_count,
         'source': UserCustomSourceSerializer(user_source).data,
         'results': enriched_items,
         'message': f'Showing {len(enriched_items)} article(s) about your entities',
@@ -454,60 +333,15 @@ def preview_source(request):
     if not query:
         return Response({'error': 'query is required'}, status=status.HTTP_400_BAD_REQUEST)
 
-    # Check cache first
-    cache_key = f"source_preview:{query.lower().replace(' ', '_').replace('/', '_')}"
-    cached = cache.get(cache_key)
-    
-    if cached:
-        # Still check is_added fresh from DB — that can change
-        domain = cached.get('domain', '')
-        existing_source = Source.objects.filter(domain=domain).first()
-        cached['source_id'] = existing_source.id if existing_source else None
-        cached['is_added'] = False
-        if existing_source:
-            cached['is_added'] = UserCustomSource.objects.filter(
-                user=request.user,
-                source=existing_source,
-                is_active=True,
-            ).exists()
-        # Fresh headlines too
-        cached['recent_headlines'] = []
-        if existing_source:
-            headlines = FeedItem.objects.filter(
-                source=existing_source
-            ).order_by('-published_at')[:5].values('title', 'url', 'published_at', 'thumbnail_url')
-            cached['recent_headlines'] = list(headlines)
-        return Response({'success': True, 'preview': cached, 'status': 'cached'})
-
-    # Cache miss — call AI service
-    preview = source_ai_service.preview_source(query)
+    preview, is_cached = get_source_preview_data(request.user, query)
     if not preview:
         return Response(
             {'error': 'Could not validate this source. Please check the URL or name and try again.'},
             status=status.HTTP_404_NOT_FOUND
         )
 
-    # Cache the preview for 6 hours (domain/name won't change)
-    cache.set(cache_key, preview, timeout=6 * 3600)
+    response_data = {'success': True, 'preview': preview}
+    if is_cached:
+        response_data['status'] = 'cached'
 
-    # Dedup check
-    domain = preview.get('domain', '')
-    existing_source = Source.objects.filter(domain=domain).first()
-    preview['source_id'] = existing_source.id if existing_source else None
-    preview['is_added'] = False
-    if existing_source:
-        preview['is_added'] = UserCustomSource.objects.filter(
-            user=request.user,
-            source=existing_source,
-            is_active=True,
-        ).exists()
-
-    # Recent headlines
-    preview['recent_headlines'] = []
-    if existing_source:
-        headlines = FeedItem.objects.filter(
-            source=existing_source
-        ).order_by('-published_at')[:5].values('title', 'url', 'published_at', 'thumbnail_url')
-        preview['recent_headlines'] = list(headlines)
-
-    return Response({'success': True, 'preview': preview})
+    return Response(response_data)

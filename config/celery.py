@@ -13,6 +13,7 @@ app.autodiscover_tasks(lambda: [
     'apps.entity',
     'apps.score',
     'apps.source',
+    'apps.notification',
 ])
 
 app.conf.beat_schedule = {
@@ -143,6 +144,15 @@ app.conf.beat_schedule = {
     'cleanup-broken-logos-monthly': {
         'task': 'apps.sports_apis.tasks.cleanup_broken_logos_task',
         'schedule': crontab(hour=3, minute=0, day_of_month=1),
+    },
+    # ── Email Notifications & Digests ────────────────────────────────────
+    'daily-sports-digest-8am': {
+        'task': 'apps.notification.tasks.send_daily_digest_task',
+        'schedule': crontab(hour=8, minute=0),
+    },
+    'send-upcoming-match-reminders-30m': {
+        'task': 'apps.notification.tasks.send_upcoming_match_reminders_task',
+        'schedule': crontab(minute='*/30'),
     },
 }
 

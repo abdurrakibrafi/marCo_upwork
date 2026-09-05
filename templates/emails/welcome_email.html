@@ -1,0 +1,34 @@
+{% extends "emails/base_email.html" %}
+
+{% block title %}Welcome to MarCo App{% endblock %}
+
+{% block content %}
+<h1 style="color: #0f172a; font-size: 22px; font-weight: 700; margin-top: 0; margin-bottom: 16px;">
+    Welcome to MarCo, {{ user_name|default:"Sports Fan" }}
+</h1>
+
+<p style="margin-top: 0; margin-bottom: 18px; line-height: 1.6;">
+    Thank you for creating an account on the MarCo app. MarCo is built to keep you informed with personalized scores, breaking sports news, and community updates tailored exclusively to the teams and athletes you care about.
+</p>
+
+<div class="card">
+    <h3 style="color: #0f172a; font-size: 15px; font-weight: 600; margin-top: 0; margin-bottom: 12px;">
+        Quick Start in the App:
+    </h3>
+    <ul style="margin: 0; padding-left: 20px; color: #475569; font-size: 14px; line-height: 1.8;">
+        <li>
+            <strong>Build Your Nest:</strong> Search and follow your favorite football, basketball, cricket, and tennis teams.
+        </li>
+        <li>
+            <strong>Custom Feed:</strong> Add podcasts, YouTube channels, and local sports publications to your personal feed.
+        </li>
+        <li>
+            <strong>Instant Match Alerts:</strong> Receive notifications when your teams play and when games conclude.
+        </li>
+    </ul>
+</div>
+
+<p style="margin-top: 24px; margin-bottom: 0; color: #64748b; font-size: 14px;">
+    Open the <strong>MarCo App</strong> on your device to start personalizing your feed.
+</p>
+{% endblock %}
