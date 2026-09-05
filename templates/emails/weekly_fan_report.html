@@ -1,0 +1,100 @@
+{% extends "emails/base_email.html" %}
+
+{% block title %}Your Weekly Nest Report — MarCo{% endblock %}
+
+{% block content %}
+<div style="margin-bottom: 14px;">
+    <span class="badge">Weekly Nest Recap</span>
+</div>
+
+<h2 style="color: #0f172a; font-size: 20px; font-weight: 700; margin-top: 0; margin-bottom: 6px;">
+    Your Week in Sports, {{ user_name|default:"Sports Fan" }}
+</h2>
+
+<p style="color: #64748b; font-size: 14px; margin-top: 0; margin-bottom: 18px;">
+    Here is the complete performance recap for the teams and athletes you follow in MarCo over the past 7 days.
+</p>
+
+<!-- Overall Performance Summary Badge -->
+<div class="card" style="background-color: #f1f5f9; border-left: 4px solid #2563eb; padding: 14px 18px;">
+    <div style="font-size: 12px; font-weight: 700; text-transform: uppercase; color: #64748b; letter-spacing: 0.5px;">
+        Past 7 Days Record
+    </div>
+    <div style="font-size: 18px; font-weight: 800; color: #0f172a; margin-top: 4px;">
+        <span style="color: #16a34a;">{{ total_wins|default:0 }} Wins</span> • 
+        <span style="color: #64748b;">{{ total_draws|default:0 }} Draws</span> • 
+        <span style="color: #dc2626;">{{ total_losses|default:0 }} Losses</span>
+    </div>
+    <div style="font-size: 13px; color: #475569; margin-top: 4px;">
+        {{ summary_text }}
+    </div>
+</div>
+
+<!-- Match Results Section -->
+{% if team_results %}
+<h3 style="color: #0f172a; font-size: 15px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; border-bottom: 1px solid #e2e8f0; padding-bottom: 8px; margin-top: 26px; margin-bottom: 14px;">
+    Recent Match Results
+</h3>
+{% for match in team_results %}
+<div class="card" style="margin-bottom: 10px;">
+    <div style="display: flex; justify-content: space-between; align-items: center;">
+        <span style="font-size: 14px; font-weight: 600; color: #0f172a;">
+            {{ match.home_team }} {{ match.home_score }} - {{ match.away_score }} {{ match.away_team }}
+        </span>
+        {% if match.outcome == 'WIN' %}
+        <span style="font-size: 11px; font-weight: 700; color: #16a34a; background-color: #dcfce7; padding: 2px 8px; border-radius: 4px;">WIN</span>
+        {% elif match.outcome == 'LOSS' %}
+        <span style="font-size: 11px; font-weight: 700; color: #dc2626; background-color: #fee2e2; padding: 2px 8px; border-radius: 4px;">LOSS</span>
+        {% else %}
+        <span style="font-size: 11px; font-weight: 700; color: #475569; background-color: #f1f5f9; padding: 2px 8px; border-radius: 4px;">DRAW</span>
+        {% endif %}
+    </div>
+    <div style="font-size: 12px; color: #64748b; margin-top: 4px;">
+        {{ match.league_name }} • {{ match.date }}
+    </div>
+</div>
+{% endfor %}
+{% endif %}
+
+<!-- Top Headlines -->
+{% if top_articles %}
+<h3 style="color: #0f172a; font-size: 15px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; border-bottom: 1px solid #e2e8f0; padding-bottom: 8px; margin-top: 26px; margin-bottom: 14px;">
+    Week's Top Headlines
+</h3>
+{% for article in top_articles %}
+<div class="card" style="margin-bottom: 10px;">
+    <div style="font-size: 14px; font-weight: 600; color: #0f172a; line-height: 1.4;">
+        {{ article.title }}
+    </div>
+    {% if article.summary %}
+    <p style="margin: 6px 0 0 0; font-size: 13px; color: #475569; line-height: 1.4;">
+        {{ article.summary|truncatechars:120 }}
+    </p>
+    {% endif %}
+</div>
+{% endfor %}
+{% endif %}
+
+<!-- Next Week Preview -->
+{% if upcoming_matches %}
+<h3 style="color: #0f172a; font-size: 15px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; border-bottom: 1px solid #e2e8f0; padding-bottom: 8px; margin-top: 26px; margin-bottom: 14px;">
+    Upcoming Next Week
+</h3>
+{% for ev in upcoming_matches %}
+<div class="card" style="margin-bottom: 8px;">
+    <div style="font-size: 14px; font-weight: 600; color: #0f172a;">
+        {{ ev.home_team }} vs {{ ev.away_team }}
+    </div>
+    <div style="font-size: 12px; color: #64748b; margin-top: 2px;">
+        {{ ev.league_name }} • <span style="color: #2563eb; font-weight: 600;">{{ ev.start_time_display }}</span>
+    </div>
+</div>
+{% endfor %}
+{% endif %}
+
+<div style="border-top: 1px solid #f1f5f9; padding-top: 16px; margin-top: 24px;">
+    <p style="color: #64748b; font-size: 13px; margin: 0;">
+        Open the <strong>MarCo App</strong> to manage your followed teams or check in-depth box scores.
+    </p>
+</div>
+{% endblock %}

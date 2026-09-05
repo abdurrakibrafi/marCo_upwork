@@ -103,6 +103,60 @@ digest_ok = EmailService.send_daily_digest(
 )
 print(f" -> Daily Digest Status: {'✅ SUCCESS' if digest_ok else '❌ FAILED'}")
 
+# 5. Weekly Fan Performance Summary Report
+print("\n[5/5] Sending Weekly Fan Performance Report...")
+dummy_report_data = {
+    "total_wins": 3,
+    "total_draws": 1,
+    "total_losses": 0,
+    "summary_text": "An undefeated week! Your followed teams achieved 3 win(s) with 0 losses.",
+    "team_results": [
+        {
+            "home_team": "Real Madrid",
+            "away_team": "Barcelona",
+            "home_score": 3,
+            "away_score": 1,
+            "league_name": "La Liga",
+            "date": "Sep 02",
+            "outcome": "WIN",
+        },
+        {
+            "home_team": "Arsenal",
+            "away_team": "Chelsea",
+            "home_score": 2,
+            "away_score": 0,
+            "league_name": "Premier League",
+            "date": "Aug 31",
+            "outcome": "WIN",
+        },
+        {
+            "home_team": "Liverpool",
+            "away_team": "Manchester City",
+            "home_score": 2,
+            "away_score": 2,
+            "league_name": "Premier League",
+            "date": "Aug 29",
+            "outcome": "DRAW",
+        },
+    ],
+    "top_articles": [
+        {
+            "title": "Real Madrid extends lead at top of table after Clásico masterclass",
+            "summary": "Vinicius Jr and Bellingham starred as Madrid took a 5-point lead in Spain.",
+        },
+    ],
+    "upcoming_matches": [
+        {
+            "home_team": "Real Madrid",
+            "away_team": "Real Sociedad",
+            "league_name": "La Liga",
+            "start_time_display": "Sat 7:00 PM UTC",
+        },
+    ],
+}
+report_ok = EmailService.send_weekly_fan_report(dummy_user, dummy_report_data)
+print(f" -> Weekly Fan Report Status: {'✅ SUCCESS' if report_ok else '❌ FAILED'}")
+
 print(f"\n==================================================")
 print(f"🏁 Completed Dummy Email Test Batch!")
 print(f"==================================================")

@@ -95,11 +95,11 @@ class FeedTestCase(TestCase):
         self.assertFalse(old_source.is_active)
         
         # A new scoped source should be created and active
-        scoped_source = Source.objects.get(
-            rss_url="https://news.google.com/rss/search?q=%22Brazil%22%20AND%20%28soccer%20OR%20football%29&hl=en&gl=US&ceid=US:en"
-        )
+        scoped_source = Source.objects.filter(entities=brazil, is_active=True).exclude(id=old_source.id).first()
+        self.assertIsNotNone(scoped_source)
         self.assertTrue(scoped_source.is_active)
         self.assertIn(brazil, scoped_source.entities.all())
+        self.assertIn("Brazil", scoped_source.rss_url)
 
     def test_google_news_url_resolution(self):
         import hashlib

@@ -583,6 +583,14 @@ def check_completed_events():
         event.save(update_fields=['metadata'])
 
         fetch_event_details.delay(event.id)
+
+        # Trigger event-driven match win/completion notifications (zero polling)
+        try:
+            from apps.notification.tasks import send_match_result_alert_task
+            send_match_result_alert_task.delay(event.id)
+        except Exception as alert_err:
+            logger.debug(f"Failed to queue match result alert for event {event.id}: {alert_err}")
+
         count += 1
 
     if count > 0:

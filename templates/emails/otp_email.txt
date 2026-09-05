@@ -1,0 +1,9 @@
+Hi {{ user.name|default:"there" }},
+
+Your {{ purpose|title }} verification code is: {{ otp }}
+
+This code will expire in {{ valid_minutes|default:10 }} minutes. Please do not share it with anyone.
+
+If you did not request this, you can safely ignore this email.
+
+— MarCo App Team

@@ -89,8 +89,12 @@ class LiveScoreDetailAPITestCase(APITestCase):
         self.assertFalse(response.data.get('success'))
 
 
+from unittest.mock import patch
+
 class LiveScoreDetailWebSocketTestCase(TransactionTestCase):
     def setUp(self):
+        self.statpal_patcher = patch('apps.sports_apis.services.statpal.statpal_service.get_cricket_live', return_value={'success': False})
+        self.statpal_patcher.start()
         self.user = User.objects.create_user(
             email='wsuser@example.com',
             password='testpassword123',
@@ -123,6 +127,9 @@ class LiveScoreDetailWebSocketTestCase(TransactionTestCase):
                 ]
             }
         )
+
+    def tearDown(self):
+        self.statpal_patcher.stop()
 
     async def test_websocket_connect_and_receive_detail(self):
         communicator = WebsocketCommunicator(

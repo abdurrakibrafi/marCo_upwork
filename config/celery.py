@@ -154,6 +154,10 @@ app.conf.beat_schedule = {
         'task': 'apps.notification.tasks.send_upcoming_match_reminders_task',
         'schedule': crontab(minute='*/30'),
     },
+    'weekly-fan-report-sunday-night': {
+        'task': 'apps.notification.tasks.send_weekly_fan_report_task',
+        'schedule': crontab(hour=22, minute=0, day_of_week=0),  # Sunday 10:00 PM UTC (once weekly)
+    },
 }
 
 @app.task(bind=True)

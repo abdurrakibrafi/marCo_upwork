@@ -182,3 +182,24 @@ class EmailService:
                 "upcoming_events": upcoming_events or [],
             },
         )
+
+    @classmethod
+    def send_weekly_fan_report(cls, user, report_data: Dict[str, Any]) -> bool:
+        """Send a weekly fan performance report summarizing followed teams."""
+        if not user or not user.email:
+            return False
+
+        user_name = getattr(user, "name", "") or getattr(user, "username", "") or "Sports Fan"
+
+        wins = report_data.get("total_wins", 0)
+        losses = report_data.get("total_losses", 0)
+
+        return cls.send_html_email(
+            subject=f"Your Weekly Sports Recap ({wins}W - {losses}L) — MarCo",
+            recipient_email=user.email,
+            template_name="emails/weekly_fan_report.html",
+            context={
+                "user_name": user_name,
+                **report_data,
+            },
+        )
