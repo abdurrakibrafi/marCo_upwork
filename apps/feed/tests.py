@@ -50,6 +50,19 @@ class FeedTestCase(TestCase):
         self.assertEqual(len(ids), 1)
         self.assertEqual(ids[0], self.feed_item.id)
 
+    def test_nest_feed_drf_pagination_format(self):
+        url = "/api/feed/nest/"
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("count", response.data)
+        self.assertIn("next", response.data)
+        self.assertIn("previous", response.data)
+        self.assertIn("results", response.data)
+        self.assertEqual(response.data["count"], 1)
+        self.assertIsNone(response.data["next"])
+        self.assertIsNone(response.data["previous"])
+        self.assertIsInstance(response.data["results"], list)
+
     def test_nest_feed_type_parameter_support(self):
         # Test that ?type=teams correctly filters feed items
         url = "/api/feed/nest/?type=teams"

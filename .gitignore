@@ -344,18 +344,40 @@ local.py
 *.crt
 *.cert
 
-# Database backups
+# Database backups & dumps
 *.sql
+*.sql.gz
+*.gz
 *.dump
+*.tar
+*.zip
+backup*.sql*
+fresh_backup*.sql*
+latest_backup*.sql*
+vps_database_dump*.sql*
 
 # Compiled translations
 locale/*/LC_MESSAGES/django.po
 locale/*/LC_MESSAGES/django.mo
 
+# Celerybeat schedule runtime files
 celerybeat-schedule*
 celerybeat-schedule
+celerybeat-schedule.db
+celerybeat-schedule-shm
+celerybeat-schedule-wal
+
+# Local & test databases
 *.db
-*.sqlite3sync_log.txt
+*.sqlite3
+
+# Logs & test reports
+*.log
+sync_log.txt
+enrich_logos.log
+bulk_test_report.txt
+
+# Verification & temporary scripts
 sync_logos.py
 verify_backend*.py
 agent_task.md
@@ -363,9 +385,7 @@ agent_task.md
 # Documentation & API specs not needed on VPS
 The_sports_db_v1_doc.md
 the_sports_db_v2_doc.md
-
-# Large Database Dumps
-vps_database_dump.sql
+doc.md
 
 # Agent & Scratch directories
 .agents/

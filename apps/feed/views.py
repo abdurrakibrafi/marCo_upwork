@@ -32,7 +32,15 @@ class FeedPagination(PageNumberPagination):
     """Pagination configuration for article feed querysets."""
     page_size = 30
     page_size_query_param = 'limit'
-    max_page_size = 50
+    max_page_size = 100
+
+    def get_page_size(self, request):
+        if 'page_size' in request.query_params:
+            try:
+                return min(int(request.query_params['page_size']), self.max_page_size)
+            except (TypeError, ValueError):
+                pass
+        return super().get_page_size(request)
 
 
 def build_feed_serializer_context(request, paginated_feed, selected_entity_types=None) -> dict:
@@ -225,10 +233,11 @@ def get_nest_feed(request):
     except (ValueError, TypeError):
         page = 1
 
+    limit = request.GET.get('limit') or request.GET.get('page_size', 30)
     try:
-        limit = max(1, min(int(request.GET.get('limit', 100)), 1000))
+        limit = max(1, min(int(limit), 100))
     except (ValueError, TypeError):
-        limit = 100
+        limit = 30
 
     sort = request.GET.get('sort', 'newest').strip().lower()
     raw_filter_str = request.GET.get('filter', '')
@@ -276,14 +285,9 @@ def get_nest_feed(request):
 
     if not nest_entity_ids and not user_custom_source_ids:
         return Response({
-            'message': 'No matching entities in your nest',
-            'total_count': 0,
             'count': 0,
-            'page': page,
-            'limit': limit,
-            'has_more': False,
-            'next_page': None,
-            'prev_page': None,
+            'next': None,
+            'previous': None,
             'results': [],
         })
     
@@ -380,47 +384,28 @@ def get_nest_feed(request):
 
     # Apply sorting
     if sort == 'newest':
-        feed = feed.order_by('-published_at')
+        feed = feed.order_by('-published_at', '-id')
     elif sort == 'oldest':
-        feed = feed.order_by('published_at')
+        feed = feed.order_by('published_at', 'id')
     elif sort == 'popular':
-        feed = feed.order_by('-views', '-published_at')
+        feed = feed.order_by('-views', '-published_at', '-id')
     elif sort == 'trending':
-        feed = feed.order_by('-is_trending', '-views', '-published_at')
+        feed = feed.order_by('-is_trending', '-views', '-published_at', '-id')
     elif sort in ['least', 'likes', 'most_liked', 'most_likes', 'liked']:
-        feed = feed.annotate(like_count=Count('liked_by')).order_by('-like_count', '-published_at')
+        feed = feed.annotate(like_count=Count('liked_by')).order_by('-like_count', '-published_at', '-id')
     elif sort in ['least_liked', 'least_likes']:
-        feed = feed.annotate(like_count=Count('liked_by')).order_by('like_count', '-published_at')
+        feed = feed.annotate(like_count=Count('liked_by')).order_by('like_count', '-published_at', '-id')
     else:
-        feed = feed.order_by('-published_at')
+        feed = feed.order_by('-published_at', '-id')
 
-    # Total matching count across entire nest
-    total_count = feed.count()
-
-    # Apply page slicing
-    start = (page - 1) * limit
-    end = start + limit
-    page_queryset = feed[start:end]
-
-    # Serialize only requested page items with ultra-fast batch serialization
+    # Paginate using standard DRF FeedPagination
+    paginator = FeedPagination()
+    page_queryset = paginator.paginate_queryset(feed, request)
     serialized_results = fast_serialize_feed_items(page_queryset, request, selected_entity_types=selected_entity_types)
 
-    has_more = end < total_count
-    next_page = page + 1 if has_more else None
-    prev_page = page - 1 if page > 1 else None
-
-    res_data = {
-        'total_count': total_count,
-        'count': len(serialized_results),
-        'page': page,
-        'limit': limit,
-        'has_more': has_more,
-        'next_page': next_page,
-        'prev_page': prev_page,
-        'results': serialized_results,
-    }
-    cache.set(cache_key, res_data, timeout=600)
-    return Response(res_data)
+    response = paginator.get_paginated_response(serialized_results)
+    cache.set(cache_key, response.data, timeout=600)
+    return response
 
 
 @api_view(['GET'])
