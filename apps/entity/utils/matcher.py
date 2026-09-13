@@ -10,6 +10,7 @@ Entity.logo_url      : URLField  (blank=True)
 """
 import logging
 from django.conf import settings
+from django.core.cache import cache
 from apps.entity.models import Entity, Team
 
 logger = logging.getLogger(__name__)
@@ -363,6 +364,19 @@ def resolve_team_venue(team_name: str):
                 venue_name = info.get('strStadium') or ""
                 venue_city = info.get('strLocation') or info.get('strCity') or ""
                 venue_country = info.get('strCountry') or ""
+                try:
+                    for ent_obj in Entity.objects.filter(name__iexact=clean_name, type="team"):
+                        if not isinstance(ent_obj.metadata, dict):
+                            ent_obj.metadata = {}
+                        if venue_name:
+                            ent_obj.metadata['stadium'] = venue_name
+                        if venue_city:
+                            ent_obj.metadata['location'] = venue_city
+                        if venue_country:
+                            ent_obj.metadata['country'] = venue_country
+                        ent_obj.save(update_fields=['metadata'])
+                except Exception:
+                    pass
         except Exception:
             pass
 

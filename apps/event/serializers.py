@@ -162,10 +162,12 @@ def _extract_event_venue_info(instance, data) -> dict:
     # 2. Fallback: Fast home team venue resolution from DB / TheSportsDB
     if not v_name or not v_city or not v_country:
         try:
-            from apps.entity.utils.matcher import resolve_team_venue_fast
+            from apps.entity.utils.matcher import resolve_team_venue_fast, resolve_team_venue
             home_name = instance.home_entity.name if instance.home_entity else ''
             if home_name:
                 auto_name, auto_city, auto_country = resolve_team_venue_fast(home_name)
+                if not auto_name:
+                    auto_name, auto_city, auto_country = resolve_team_venue(home_name)
                 if not v_name and auto_name:
                     v_name = auto_name
                 if not v_city and auto_city:
@@ -184,6 +186,28 @@ def _extract_event_venue_info(instance, data) -> dict:
     data['venue_name'] = str(v_name).strip()
     data['venue_city'] = str(v_city).strip()
     data['venue_country'] = str(v_country).strip()
+
+    # If event in DB was missing venue, persist so future requests are instant
+    if v_name and not getattr(instance, 'venue_name', ''):
+        try:
+            instance.venue_name = str(v_name).strip()
+            if v_city and not getattr(instance, 'venue_city', ''):
+                instance.venue_city = str(v_city).strip()
+            if v_country and not getattr(instance, 'venue_country', ''):
+                instance.venue_country = str(v_country).strip()
+            instance.save(update_fields=['venue_name', 'venue_city', 'venue_country'])
+        except Exception:
+            pass
+
+    # Also mirror into metadata if metadata is present
+    if isinstance(data.get('metadata'), dict):
+        if v_name and not data['metadata'].get('venue_name'):
+            data['metadata']['venue_name'] = str(v_name).strip()
+        if v_city and not data['metadata'].get('venue_city'):
+            data['metadata']['venue_city'] = str(v_city).strip()
+        if v_country and not data['metadata'].get('venue_country'):
+            data['metadata']['venue_country'] = str(v_country).strip()
+
     return data
 
 

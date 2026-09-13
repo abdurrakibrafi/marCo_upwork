@@ -580,6 +580,10 @@ def get_event_detail(request, event_id: int):
                 serialized_data['metadata'].pop('innings', None)
                 serialized_data.pop('innings', None)
 
+        if isinstance(serialized_data.get('metadata'), dict):
+            if serialized_data.get('venue_name') and not serialized_data['metadata'].get('venue_name'):
+                serialized_data['metadata']['venue_name'] = serialized_data['venue_name']
+
         return mixin.success_response(data=serialized_data)
     except Exception as exc:
         return mixin.handle_exception(exc)
