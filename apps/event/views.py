@@ -450,6 +450,17 @@ def get_event_detail(request, event_id: int):
                             hits = int(side_meta.get('hits') or 0)
                             errors = int(side_meta.get('errors') or 0)
 
+                            from apps.event.utils_baseball import extract_baseball_details
+                            bb_data = extract_baseball_details(meta)
+                            if bb_data:
+                                if not isinstance(event.metadata, dict):
+                                    event.metadata = {}
+                                event.metadata.update(bb_data)
+                                event.metadata.pop('baseball_boxscore', None)
+                                event.metadata.pop('baseball_stats', None)
+                                event.metadata.pop('innings', None)
+                                event.save(update_fields=['metadata'])
+
                             stats_payload = {
                                 'side': side,
                                 'sport': 'baseball',
@@ -459,6 +470,11 @@ def get_event_detail(request, event_id: int):
                                 'innings': innings,
                                 'is_fallback': False if side_meta else True,
                             }
+                            if bb_data and 'baseball_stats' in bb_data:
+                                match_stats = bb_data['baseball_stats'].get('match', {})
+                                for k, v in match_stats.items():
+                                    stats_payload[k] = v.get(side, 0)
+
                             stat_obj = EventStatistics.objects.filter(event=event, team=team).first()
                             if stat_obj:
                                 stat_obj.stats = stats_payload
@@ -538,6 +554,31 @@ def get_event_detail(request, event_id: int):
             serialized_data = EventDetailSerializer(event, context={'request': request, 'timezone': user_tz}).data
         except Exception:
             serialized_data = EventSerializer(event, context={'request': request, 'timezone': user_tz}).data
+
+        if event.sport in ('baseball', 'mlb') and isinstance(serialized_data.get('metadata'), dict):
+            for side in ('home', 'away'):
+                side_data = serialized_data['metadata'].get(side)
+                if isinstance(side_data, dict):
+                    total_sc = side_data.get('totalscore')
+                    if total_sc in ('', None):
+                        total_sc = str(event.home_score if side == 'home' else event.away_score)
+                    if str(side_data.get('r', '')).strip() == '' and total_sc not in ('', None):
+                        serialized_data['metadata'][side]['r'] = str(total_sc)
+                    if str(side_data.get('h', '')).strip() == '' and side_data.get('hits') not in ('', None):
+                        serialized_data['metadata'][side]['h'] = str(side_data.get('hits'))
+                    if str(side_data.get('e', '')).strip() == '' and side_data.get('errors') not in ('', None):
+                        serialized_data['metadata'][side]['e'] = str(side_data.get('errors'))
+
+            from apps.event.utils_baseball import extract_baseball_details
+            bb_data = extract_baseball_details(serialized_data['metadata'])
+            if bb_data:
+                serialized_data['metadata'].update(bb_data)
+                serialized_data['metadata'].pop('baseball_boxscore', None)
+                serialized_data.pop('baseball_boxscore', None)
+                serialized_data['metadata'].pop('baseball_stats', None)
+                serialized_data.pop('baseball_stats', None)
+                serialized_data['metadata'].pop('innings', None)
+                serialized_data.pop('innings', None)
 
         return mixin.success_response(data=serialized_data)
     except Exception as exc:

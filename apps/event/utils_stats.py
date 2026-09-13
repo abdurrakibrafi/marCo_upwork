@@ -100,7 +100,7 @@ def normalize_event_stats(stats_dict: dict, sport: str = None, event = None) -> 
         except (ValueError, TypeError):
             errors = 0
 
-        return {
+        baseball_res = {
             'side': side,
             'sport': 'baseball',
             'runs': runs,
@@ -109,6 +109,13 @@ def normalize_event_stats(stats_dict: dict, sport: str = None, event = None) -> 
             'innings': innings or {},
             'is_fallback': bool(stats_dict.get('is_fallback', False)) and not bool(side_meta),
         }
+        for metric in [
+            'doubles', 'triples', 'home_runs', 'runs_batted_in',
+            'base_on_balls', 'strikeouts', 'stolen_bases', 'at_bats', 'batting_average'
+        ]:
+            if metric in stats_dict:
+                baseball_res[metric] = stats_dict[metric]
+        return baseball_res
 
     # -------------------------------------------------------------------------
     # 2. BASKETBALL / NBA

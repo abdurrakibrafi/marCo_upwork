@@ -407,27 +407,51 @@ class EventDetailSerializer(serializers.ModelSerializer):
             else:
                 data['has_stats'] = False
 
-            # Normalize baseball metadata in1..in9 flat keys from nested innings.inning list
-            # StatPal API sends in1..in9 as empty strings; real data is in innings.inning list
-            # This fixes existing events without needing a re-sync
+            # Normalize baseball metadata (runs 'r', hits 'h', errors 'e', in1..in9, pitchers, boxscore & stats)
             if isinstance(data.get('metadata'), dict) and instance.sport in ('baseball', 'mlb'):
                 for side in ('home', 'away'):
                     side_data = data['metadata'].get(side)
                     if not isinstance(side_data, dict):
                         continue
-                    flat_keys_empty = all(side_data.get(f'in{i}', '') == '' for i in range(1, 10))
-                    if flat_keys_empty:
-                        nested = side_data.get('innings', {})
-                        inning_list = nested.get('inning', []) if isinstance(nested, dict) else []
-                        if isinstance(inning_list, dict):
-                            inning_list = [inning_list]
-                        for inn in inning_list:
-                            num = inn.get('number')
-                            score = inn.get('score')
-                            if num and score is not None:
-                                key = f'in{num}'
-                                if key in side_data:
-                                    data['metadata'][side][key] = score
+
+                    # 1. Populate 'r' (Runs / Total score)
+                    total_sc = side_data.get('totalscore')
+                    if total_sc in ('', None):
+                        total_sc = str(instance.home_score if side == 'home' else instance.away_score)
+                    if str(side_data.get('r', '')).strip() == '' and total_sc not in ('', None):
+                        data['metadata'][side]['r'] = str(total_sc)
+
+                    # 2. Populate 'h' (Hits) and 'e' (Errors)
+                    if str(side_data.get('h', '')).strip() == '' and side_data.get('hits') not in ('', None):
+                        data['metadata'][side]['h'] = str(side_data.get('hits'))
+                    if str(side_data.get('e', '')).strip() == '' and side_data.get('errors') not in ('', None):
+                        data['metadata'][side]['e'] = str(side_data.get('errors'))
+                    if str(side_data.get('ei', '')).strip() == '' and side_data.get('extra') not in ('', None):
+                        data['metadata'][side]['ei'] = str(side_data.get('extra'))
+
+                    # 3. Ensure flat in1..in9 are populated from nested innings.inning list
+                    nested = side_data.get('innings', {})
+                    inning_list = nested.get('inning', []) if isinstance(nested, dict) else []
+                    if isinstance(inning_list, dict):
+                        inning_list = [inning_list]
+                    for inn in inning_list:
+                        num = inn.get('number')
+                        score = inn.get('score')
+                        if num and score is not None:
+                            key = f'in{num}'
+                            if str(side_data.get(key, '')).strip() == '':
+                                data['metadata'][side][key] = str(score)
+
+                from apps.event.utils_baseball import extract_baseball_details
+                bb_data = extract_baseball_details(data['metadata'])
+                if bb_data:
+                    data['metadata'].update(bb_data)
+                    data['metadata'].pop('baseball_boxscore', None)
+                    data.pop('baseball_boxscore', None)
+                    data['metadata'].pop('baseball_stats', None)
+                    data.pop('baseball_stats', None)
+                    data['metadata'].pop('innings', None)
+                    data.pop('innings', None)
         except Exception:
             pass
 
