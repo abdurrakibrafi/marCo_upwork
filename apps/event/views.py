@@ -515,6 +515,26 @@ def get_event_detail(request, event_id: int):
                                 stat_obj.save(update_fields=['stats'])
                             else:
                                 EventStatistics.objects.create(event=event, team=team, stats=stats_payload)
+                    elif event.sport == 'tennis':
+                        for idx, (side, team) in enumerate([('home', event.home_entity), ('away', event.away_entity)]):
+                            if not team:
+                                continue
+                            meta = event.metadata if isinstance(event.metadata, dict) else {}
+                            players = meta.get('player', [])
+                            p_data = players[idx] if len(players) > idx else {}
+                            if p_data.get('stats'):
+                                stats_payload = {
+                                    'side': side,
+                                    'sport': 'tennis',
+                                    'period': p_data.get('stats', {}).get('period', []),
+                                    'is_fallback': False,
+                                }
+                                stat_obj = EventStatistics.objects.filter(event=event, team=team).first()
+                                if stat_obj:
+                                    stat_obj.stats = stats_payload
+                                    stat_obj.save(update_fields=['stats'])
+                                else:
+                                    EventStatistics.objects.create(event=event, team=team, stats=stats_payload)
                     elif event.sport in ('soccer', 'football'):
                         for side, team in [('home', event.home_entity), ('away', event.away_entity)]:
                             if not team:

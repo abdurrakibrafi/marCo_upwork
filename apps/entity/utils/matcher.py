@@ -256,7 +256,7 @@ def find_team_logo_by_name(name):
     from django.core.cache import cache
     try:
         cached_logo = cache.get(cache_key)
-        if cached_logo is not None:
+        if cached_logo:
             return cached_logo
     except Exception:
         pass
@@ -268,7 +268,7 @@ def find_team_logo_by_name(name):
                 type="team"
             ).exclude(logo_url="").values_list("logo_url", flat=True)
             for l in logos:
-                if l:
+                if l and "statpal.io" not in l:
                     return l
         except Exception:
             pass
@@ -286,7 +286,7 @@ def find_team_logo_by_name(name):
     # 3. Live provider fallback: query TheSportsDB if still empty in DB
     if not logo_val:
         try:
-            from apps.sports_apis.services.thesportsdb import TheSportsDBService
+            from apps.sports_apis.services.thesportsdb import TheSportsDBService, thesportsdb_service
             tsdb = TheSportsDBService()
             info = tsdb.search_team(name_clean)
             if not info and name_clean != clean_national_team_name(name_clean):
@@ -302,12 +302,33 @@ def find_team_logo_by_name(name):
                         ).update(logo_url=badge)
                     except Exception:
                         pass
+
+            # 4. If not found as team, check player details (e.g. tennis / golf individual players)
+            if not logo_val:
+                p_info = thesportsdb_service.get_player_details(name_clean) or {}
+                headshot = p_info.get('headshot_url') or p_info.get('thumb_url') or ''
+                if not headshot and '.' in name_clean:
+                    parts = name_clean.split()
+                    if len(parts) >= 2:
+                        p_info2 = thesportsdb_service.get_player_details(parts[-1]) or {}
+                        headshot = p_info2.get('headshot_url') or p_info2.get('thumb_url') or ''
+                if headshot:
+                    logo_val = headshot
+                    try:
+                        Entity.objects.filter(
+                            name__iexact=name_clean
+                        ).update(logo_url=headshot)
+                    except Exception:
+                        pass
         except Exception:
             pass
 
-    # Cache for 24 hours (86400 seconds)
+    # Cache for 24 hours if found, or 5 minutes if empty to prevent repeated hammering
     try:
-        cache.set(cache_key, logo_val, timeout=86400)
+        if logo_val:
+            cache.set(cache_key, logo_val, timeout=86400)
+        else:
+            cache.set(cache_key, "", timeout=300)
     except Exception:
         pass
     return logo_val

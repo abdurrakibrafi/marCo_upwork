@@ -104,12 +104,13 @@ class EventHighlightSerializer(serializers.ModelSerializer):
         fields = ['id', 'title', 'video_url', 'thumbnail_url', 'duration_seconds', 'views']
 
 
-def _extract_event_venue_info(instance, data) -> dict:
+def _extract_event_venue_info(instance, data, is_detail=False) -> dict:
     """Extract venue_name, venue_city, venue_country with metadata and home-team fallbacks.
 
     Args:
         instance (Event): Event instance.
         data (dict): Serialized event dictionary.
+        is_detail (bool): If True, falls back to synchronous TheSportsDB lookup on miss.
 
     Returns:
         dict: Updated data dictionary with guaranteed venue attributes.
@@ -166,7 +167,7 @@ def _extract_event_venue_info(instance, data) -> dict:
             home_name = instance.home_entity.name if instance.home_entity else ''
             if home_name:
                 auto_name, auto_city, auto_country = resolve_team_venue_fast(home_name)
-                if not auto_name:
+                if not auto_name and is_detail:
                     auto_name, auto_city, auto_country = resolve_team_venue(home_name)
                 if not v_name and auto_name:
                     v_name = auto_name
@@ -414,7 +415,7 @@ class EventDetailSerializer(serializers.ModelSerializer):
                     data['league'] = None
 
             # Auto-fill missing venue name/city/country from metadata / home team lookup
-            data = _extract_event_venue_info(instance, data)
+            data = _extract_event_venue_info(instance, data, is_detail=True)
 
             from apps.entity.serializers import find_entity_logo, make_logo_url_absolute
             req_ctx = self.context.get('request')

@@ -170,7 +170,30 @@ def normalize_event_stats(stats_dict: dict, sport: str = None, event = None) -> 
         return res
 
     # -------------------------------------------------------------------------
-    # 6. SOCCER / FOOTBALL
+    # 6. TENNIS
+    # -------------------------------------------------------------------------
+    if detected_sport == 'tennis' or any(k in stats_dict for k in ['period', 'aces', 'double_faults', 'set1', 'set2']):
+        side = stats_dict.get('side', 'home')
+        res = {'side': side, 'sport': 'tennis'}
+        for k in [
+            'period', 'match', 'set1', 'set2', 'set3', 'set4', 'set5',
+            'aces', 'double_faults', 'first_serve_pct', 'first_serve_points_won',
+            'second_serve_points_won', 'break_points_saved', 'first_return_points_won',
+            'second_return_points_won', 'break_points_converted', 'service_points_won',
+            'return_points_won', 'total_points_won', 'last_10_balls', 'match_points_saved',
+            'service_games_won', 'return_games_won', 'total_games_won', 'sets'
+        ]:
+            if k in stats_dict:
+                res[k] = stats_dict[k]
+        if 'is_fallback' in stats_dict:
+            res['is_fallback'] = stats_dict['is_fallback']
+        for k, v in stats_dict.items():
+            if k not in res:
+                res[k] = v
+        return res
+
+    # -------------------------------------------------------------------------
+    # 7. SOCCER / FOOTBALL
     # -------------------------------------------------------------------------
     # Ignore basic score & side metadata when checking for team performance stats
     SCORE_AND_SIDE_KEYS = {'side', 'et_away', 'et_home', 'ft_away', 'ft_home', 'ht_away', 'ht_home', 'score', 'runs'}

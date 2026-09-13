@@ -35,10 +35,18 @@ def find_entity_logo(entity):
     if logo and not is_invalid_logo:
         return logo
 
-    # 1. If team, search team logo by name
+    # 1. If team, search team logo by name (also handles individual athletes like tennis/golf modeled as teams)
     if entity.type == 'team':
         from apps.entity.utils.matcher import find_team_logo_by_name
-        return find_team_logo_by_name(entity.name)
+        team_logo = find_team_logo_by_name(entity.name)
+        if team_logo:
+            try:
+                entity.logo_url = team_logo
+                entity.save(update_fields=['logo_url'])
+            except Exception:
+                pass
+            return team_logo
+        return ""
 
     # 2. If athlete:
     if entity.type == 'athlete':
