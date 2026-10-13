@@ -206,30 +206,32 @@ def _get_standings_for_league(request, league_entity, season, highlight_team_id=
             'source':    'db',
         })
 
-    # Live API fallback — try TheSportsDB first, then StatPal/API-Sports
-    live_standings = _fetch_league_standings_thesportsdb(canonical, season)
-
     sport_clean = str(getattr(canonical, 'sport', '') or getattr(league_entity, 'sport', '') or '').lower()
+    live_standings = []
 
+    # Fast primary providers (StatPal, official)
+    if sport_clean == 'baseball':
+        live_standings = _fetch_statpal_hierarchical_standings('baseball', f'standings:baseball:mlb:{season}')
+    elif sport_clean in ('basketball', 'nba'):
+        live_standings = _fetch_statpal_hierarchical_standings('basketball', f'standings:nba:{season}')
+    elif sport_clean in ('hockey', 'ice_hockey', 'nhl'):
+        live_standings = _fetch_statpal_hierarchical_standings('hockey', f'standings:nhl:{season}')
+    elif sport_clean in ('american_football', 'football', 'nfl'):
+        live_standings = _fetch_statpal_hierarchical_standings('american_football', f'standings:nfl:{season}')
+    elif sport_clean == 'handball':
+        live_standings = _fetch_handball_standings(canonical.external_id, season)
+    elif sport_clean == 'volleyball':
+        live_standings = _fetch_volleyball_standings(canonical.external_id, season)
+    elif getattr(canonical, 'api_source', '') == 'statpal' or sport_clean == 'soccer':
+        try:
+            season_year = int(str(season).split('-', 1)[0].split('/', 1)[0])
+        except Exception:
+            season_year = 2026
+        live_standings = _fetch_soccer_standings(canonical.external_id, season_year)
+
+    # Fallback to TheSportsDB only if primary provider returned no data
     if not live_standings:
-        if sport_clean == 'baseball':
-            live_standings = _fetch_statpal_hierarchical_standings('baseball', f'standings:baseball:mlb:{season}')
-        elif sport_clean in ('basketball', 'nba'):
-            live_standings = _fetch_statpal_hierarchical_standings('basketball', f'standings:nba:{season}')
-        elif sport_clean in ('hockey', 'ice_hockey', 'nhl'):
-            live_standings = _fetch_statpal_hierarchical_standings('hockey', f'standings:nhl:{season}')
-        elif sport_clean in ('american_football', 'football', 'nfl'):
-            live_standings = _fetch_statpal_hierarchical_standings('american_football', f'standings:nfl:{season}')
-        elif sport_clean == 'handball':
-            live_standings = _fetch_handball_standings(canonical.external_id, season)
-        elif sport_clean == 'volleyball':
-            live_standings = _fetch_volleyball_standings(canonical.external_id, season)
-        elif getattr(canonical, 'api_source', '') == 'statpal' or sport_clean == 'soccer':
-            try:
-                season_year = int(str(season).split('-', 1)[0].split('/', 1)[0])
-            except Exception:
-                season_year = 2026
-            live_standings = _fetch_soccer_standings(canonical.external_id, season_year)
+        live_standings = _fetch_league_standings_thesportsdb(canonical, season)
 
     if live_standings:
         # Write each team's standing back to DB if matching Entity exists
@@ -319,6 +321,11 @@ def _fetch_league_standings_thesportsdb(league_entity, season) -> list:
     Returns:
         list: Standings rows with team records.
     """
+    cache_key = f'standings:thesportsdb:{getattr(league_entity, "external_id", "") or getattr(league_entity, "id", "")}:{season}'
+    cached = cache.get(cache_key)
+    if cached is not None:
+        return cached
+
     try:
         from apps.sports_apis.services.thesportsdb import TheSportsDBService
         tsdb = TheSportsDBService()
@@ -345,20 +352,19 @@ def _fetch_league_standings_thesportsdb(league_entity, season) -> list:
                 s_year = 2026
 
             table = []
-            for try_year in [s_year, s_year - 1, s_year - 2]:
-                for s_fmt in [f"{try_year}-{try_year+1}", str(try_year), f"{try_year-1}-{try_year}"]:
-                    candidate = tsdb.get_league_table(str(league_id), s_fmt)
-                    if len(candidate) > len(table):
-                        table = candidate
-                    if len(table) >= 10:
-                        break
+            for s_fmt in [f"{s_year}-{s_year+1}", str(s_year), f"{s_year-1}-{s_year}"]:
+                candidate = tsdb.get_league_table(str(league_id), s_fmt)
+                if len(candidate) > len(table):
+                    table = candidate
                 if len(table) >= 10:
                     break
 
+            cache.set(cache_key, table, timeout=3600)
             return table
     except Exception as e:
         logger.warning(f"Error fetching TSDB standings for {league_entity}: {e}")
 
+    cache.set(cache_key, [], timeout=600)
     return []
 
 

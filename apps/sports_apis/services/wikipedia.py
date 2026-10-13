@@ -15,7 +15,12 @@ POS_MAP = {
     'SG': 'Shooting Guard', 'SF': 'Small Forward', 'PF': 'Power Forward',
     'GOALKEEPER': 'Goalkeeper', 'DEFENDER': 'Defender', 'MIDFIELDER': 'Midfielder', 'FORWARD': 'Forward',
     'GUARD': 'Guard', 'CENTER': 'Center', 'BATSMAN': 'Batsman', 'BOWLER': 'Bowler', 'ALL-ROUNDER': 'All-Rounder',
-    'WICKET-KEEPER': 'Wicket-Keeper'
+    'WICKET-KEEPER': 'Wicket-Keeper',
+    # Handball positions
+    'CB': 'Centre Back', 'LB': 'Left Back', 'RB': 'Right Back',
+    'LW': 'Left Wing', 'RW': 'Right Wing', 'P': 'Pivot', 'LP': 'Line Player',
+    'PIVOT': 'Pivot', 'CENTRE BACK': 'Centre Back', 'LEFT BACK': 'Left Back', 'RIGHT BACK': 'Right Back',
+    'LEFT WING': 'Left Wing', 'RIGHT WING': 'Right Wing',
 }
 
 def clean_player_name(raw_name: str) -> str:
