@@ -234,8 +234,21 @@ def _get_standings_for_league(request, league_entity, season, highlight_team_id=
         live_standings = _fetch_league_standings_thesportsdb(canonical, season)
 
     if live_standings:
+        if isinstance(live_standings, dict):
+            live_standings = (
+                live_standings.get('table')
+                or live_standings.get('standings')
+                or live_standings.get('teams')
+                or live_standings.get('team')
+                or [v for v in live_standings.values() if isinstance(v, dict)]
+            )
+        if not isinstance(live_standings, list):
+            live_standings = []
+
         # Write each team's standing back to DB if matching Entity exists
         for row in live_standings:
+            if not isinstance(row, dict):
+                continue
             try:
                 team_entity = Entity.objects.filter(
                     name__iexact=row.get('team_name')
@@ -253,55 +266,64 @@ def _get_standings_for_league(request, league_entity, season, highlight_team_id=
             except Exception:
                 pass
 
+        def _to_int(val, default=0):
+            try:
+                return int(val)
+            except (ValueError, TypeError):
+                return default
+
         live_response = []
         for row in live_standings:
+            if not isinstance(row, dict):
+                continue
             try:
                 team_ent = Entity.objects.filter(name__iexact=row.get('team_name')).first()
             except Exception:
                 team_ent = None
             live_response.append({
-                'rank':      row.get('rank', 0),
+                'rank':      _to_int(row.get('rank', 0)),
                 'team_id':   team_ent.id if team_ent else None,
-                'team_name': row.get('team_name', ''),
-                'logo':      (team_ent.logo_url if team_ent and team_ent.logo_url else '') or row.get('team_logo', ''),
-                'points':    row.get('points', 0),
-                'played':    row.get('played', 0),
-                'wins':      row.get('wins') if row.get('wins') is not None else row.get('win', 0),
-                'draws':     row.get('draws') if row.get('draws') is not None else row.get('draw', 0),
-                'losses':    row.get('losses') if row.get('losses') is not None else row.get('lose', 0),
-                'goals_for': row.get('goals_for', 0),
-                'goals_against': row.get('goals_against', 0),
-                'goal_diff': row.get('goal_diff', 0),
-                'form':      row.get('form', ''),
-                'conference': row.get('conference', ''),
-                'division':  row.get('division', ''),
-                'win_pct':   row.get('win_pct', 0),
+                'team_name': str(row.get('team_name', '') or ''),
+                'logo':      (team_ent.logo_url if team_ent and team_ent.logo_url else '') or str(row.get('team_logo', '') or ''),
+                'points':    _to_int(row.get('points', 0)),
+                'played':    _to_int(row.get('played', 0)),
+                'wins':      _to_int(row.get('wins') if row.get('wins') is not None else row.get('win', 0)),
+                'draws':     _to_int(row.get('draws') if row.get('draws') is not None else row.get('draw', 0)),
+                'losses':    _to_int(row.get('losses') if row.get('losses') is not None else row.get('lose', 0)),
+                'goals_for': _to_int(row.get('goals_for', 0)),
+                'goals_against': _to_int(row.get('goals_against', 0)),
+                'goal_diff': _to_int(row.get('goal_diff', 0)),
+                'form':      str(row.get('form', '') or ''),
+                'conference': str(row.get('conference', '') or ''),
+                'division':  str(row.get('division', '') or ''),
+                'win_pct':   float(row.get('win_pct') or 0.0) if row.get('win_pct') is not None else 0.0,
                 'is_highlighted': (
                     str(row.get('team_external_id')) == str(highlight_team_id) or
                     (team_ent and str(team_ent.id) == str(highlight_team_id)) or
                     (bool(highlight_team_name) and (
-                        highlight_team_name.lower().replace(' fc', '').replace(' utd', ' united').strip() in row.get('team_name', '').lower().replace(' fc', '').replace(' utd', ' united').strip() or
-                        row.get('team_name', '').lower().replace(' fc', '').replace(' utd', ' united').strip() in highlight_team_name.lower().replace(' fc', '').replace(' utd', ' united').strip()
+                        highlight_team_name.lower().replace(' fc', '').replace(' utd', ' united').strip() in str(row.get('team_name', '')).lower().replace(' fc', '').replace(' utd', ' united').strip() or
+                        str(row.get('team_name', '')).lower().replace(' fc', '').replace(' utd', ' united').strip() in highlight_team_name.lower().replace(' fc', '').replace(' utd', ' united').strip()
                     ))
                 ),
             })
-        if sport_clean in ('baseball', 'basketball', 'nba', 'american_football', 'football', 'nfl'):
-            live_response.sort(key=lambda x: (x.get('rank') or 999, -x.get('wins', 0)))
-        else:
-            live_response.sort(key=lambda x: (
-                -x['points'],
-                -x['goal_diff'],
-                -x['goals_for'],
-                x['team_name'].lower(),
-            ))
-            for i, item in enumerate(live_response, 1):
-                item['rank'] = i
-        return Response({
-            'league':    _safe_league_data(league_entity, request),
-            'season':    season,
-            'standings': live_response,
-            'source':    'live_api',
-        })
+        if live_response:
+            if sport_clean in ('baseball', 'basketball', 'nba', 'american_football', 'football', 'nfl'):
+                live_response.sort(key=lambda x: (x.get('rank') or 999, -_to_int(x.get('wins', 0))))
+            else:
+                live_response.sort(key=lambda x: (
+                    -_to_int(x.get('points', 0)),
+                    -_to_int(x.get('goal_diff', 0)),
+                    -_to_int(x.get('goals_for', 0)),
+                    str(x.get('team_name', '')).lower(),
+                ))
+                for i, item in enumerate(live_response, 1):
+                    item['rank'] = i
+            return Response({
+                'league':    _safe_league_data(league_entity, request),
+                'season':    season,
+                'standings': live_response,
+                'source':    'live_api',
+            })
 
     return Response({
         'league':    _safe_league_data(league_entity, request),
