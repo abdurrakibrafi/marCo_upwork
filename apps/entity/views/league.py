@@ -220,6 +220,10 @@ def _get_standings_for_league(request, league_entity, season, highlight_team_id=
             live_standings = _fetch_statpal_hierarchical_standings('hockey', f'standings:nhl:{season}')
         elif sport_clean in ('american_football', 'football', 'nfl'):
             live_standings = _fetch_statpal_hierarchical_standings('american_football', f'standings:nfl:{season}')
+        elif sport_clean == 'handball':
+            live_standings = _fetch_handball_standings(canonical.external_id, season)
+        elif sport_clean == 'volleyball':
+            live_standings = _fetch_volleyball_standings(canonical.external_id, season)
         elif getattr(canonical, 'api_source', '') == 'statpal' or sport_clean == 'soccer':
             try:
                 season_year = int(str(season).split('-', 1)[0].split('/', 1)[0])
@@ -560,6 +564,100 @@ def _fetch_soccer_standings(external_id, season) -> list:
 
     except Exception:
         return []
+
+
+def _fetch_handball_standings(external_id, season) -> list:
+    """Fetch handball standings from StatPal API."""
+    if not external_id:
+        return []
+    cache_key = f'standings:handball:{external_id}:{season}'
+    cached = cache.get(cache_key)
+    if cached:
+        return cached
+
+    try:
+        from apps.sports_apis.services.statpal import statpal_service
+        sp_res = statpal_service.get_handball_standings(int(external_id))
+        if sp_res.get('success'):
+            data = sp_res.get('data', {})
+            standings_obj = data.get('standings', {})
+            cat = standings_obj.get('category') or standings_obj.get('tournament') or {}
+            teams = cat.get('team', [])
+            if isinstance(teams, dict):
+                teams = [teams]
+
+            result = []
+            for s in teams:
+                gf = int(s.get('points_for') or s.get('goals_for') or 0)
+                ga = int(s.get('points_against') or s.get('goals_against') or 0)
+                result.append({
+                    'rank':             int(s.get('pos') or s.get('position') or 0),
+                    'team_external_id': str(s.get('id', '')),
+                    'team_name':        s.get('name', ''),
+                    'team_logo':        '',
+                    'points':           int(s.get('pts') or s.get('points') or 0),
+                    'played':           int(s.get('gp') or s.get('played') or 0),
+                    'win':              int(s.get('w') or s.get('win') or 0),
+                    'draw':             int(s.get('d') or s.get('draw') or 0),
+                    'lose':             int(s.get('l') or s.get('lose') or 0),
+                    'goals_for':        gf,
+                    'goals_against':    ga,
+                    'goal_diff':        gf - ga,
+                    'form':             s.get('recent_form', ''),
+                })
+            if result:
+                cache.set(cache_key, result, timeout=1800)
+                return result
+    except Exception as exc:
+        logger.warning(f"StatPal handball standings error for league {external_id}: {exc}")
+
+    return []
+
+
+def _fetch_volleyball_standings(external_id, season) -> list:
+    """Fetch volleyball standings from StatPal API."""
+    if not external_id:
+        return []
+    cache_key = f'standings:volleyball:{external_id}:{season}'
+    cached = cache.get(cache_key)
+    if cached:
+        return cached
+
+    try:
+        from apps.sports_apis.services.statpal import statpal_service
+        sp_res = statpal_service.get_volleyball_standings(int(external_id))
+        if sp_res.get('success'):
+            data = sp_res.get('data', {})
+            standings_obj = data.get('standings', {})
+            cat = standings_obj.get('category') or standings_obj.get('tournament') or {}
+            teams = cat.get('team', [])
+            if isinstance(teams, dict):
+                teams = [teams]
+
+            result = []
+            for s in teams:
+                result.append({
+                    'rank':             int(s.get('pos') or s.get('position') or 0),
+                    'team_external_id': str(s.get('id', '')),
+                    'team_name':        s.get('name', ''),
+                    'team_logo':        '',
+                    'points':           int(s.get('pts') or s.get('points') or 0),
+                    'played':           int(s.get('gp') or s.get('played') or 0),
+                    'win':              int(s.get('w') or s.get('win') or 0),
+                    'draw':             int(s.get('d') or s.get('draw') or 0),
+                    'lose':             int(s.get('l') or s.get('lose') or 0),
+                    'goals_for':        int(s.get('points_for') or 0),
+                    'goals_against':    int(s.get('points_against') or 0),
+                    'goal_diff':        0,
+                    'form':             s.get('recent_form', ''),
+                })
+            if result:
+                cache.set(cache_key, result, timeout=1800)
+                return result
+    except Exception as exc:
+        logger.warning(f"StatPal volleyball standings error for league {external_id}: {exc}")
+
+    return []
 
 
 # ─────────────────────────────────────────────────────────────────────────────
