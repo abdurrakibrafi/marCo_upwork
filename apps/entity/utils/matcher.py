@@ -19,13 +19,35 @@ _ACCESS_KEY = getattr(settings, "STATPAL_ACCESS_KEY", "bc343795-df19-407b-8fb2-3
 _IMAGE_BASE = "https://statpal.io/api/v2/{sport}/images"
 _LOGO_SUPPORTED_SPORTS = {
     "soccer", "cricket", "nba", "nfl", "basketball", "football",
-    "baseball", "hockey", "handball", "volleyball", "tennis"
+    "baseball", "hockey", "handball", "volleyball", "tennis",
+    "ice_hockey", "nhl", "mlb", "american_football", "golf",
 }
-# StatPal sport name → Entity.sport choice
+# StatPal sport name → Entity.sport choice (canonical slug)
+# Must cover ALL slug variants so entity creation normalizes correctly
 _SPORT_MAP = {
-    "nba":     "basketball",   # Entity.sport = 'basketball' for NBA
-    "cricket": "cricket",
-    "soccer":  "soccer",
+    "nba":                "basketball",
+    "nhl":                "hockey",
+    "nfl":                "football",
+    "mlb":                "baseball",
+    "cricket":            "cricket",
+    "soccer":             "soccer",
+    "hockey":             "hockey",
+    "ice_hockey":         "hockey",
+    "football":           "football",
+    "american_football":  "football",
+    "baseball":           "baseball",
+    "basketball":         "basketball",
+    "tennis":             "tennis",
+    "golf":               "golf",
+    "handball":           "handball",
+    "volleyball":         "volleyball",
+    "rugby":              "rugby",
+    "f1":                 "f1",
+    "formula1":           "f1",
+    "motorsports":        "motorsports",
+    "combat_sports":      "combat_sports",
+    "mma":                "combat_sports",
+    "esports":            "esports",
 }
 
 

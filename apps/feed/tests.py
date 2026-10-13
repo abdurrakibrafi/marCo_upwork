@@ -3,7 +3,7 @@ from django.test import TestCase
 from django.contrib.auth import get_user_model
 from rest_framework.test import APIClient
 from apps.entity.models import Entity
-from apps.feed.models import FeedItem, Source, Like
+from apps.feed.models import FeedItem, Source, Like, Bookmark
 from apps.nest.models import UserNest
 
 User = get_user_model()
@@ -173,6 +173,77 @@ class FeedTestCase(TestCase):
         self.assertNotIn("fbclid", cleaned)
         self.assertIn("id=99", cleaned)
         self.assertTrue(cleaned.startswith("https://www.bbc.com/sport/football/123456"))
+    def test_bookmark_api_endpoints(self):
+        # 1. Toggle bookmark ON
+        res = self.client.post("/api/feed/bookmark/", {"feed_item_id": self.feed_item.id}, format="json")
+        self.assertEqual(res.status_code, 201)
+        self.assertEqual(res.data, {"bookmarked": True})
+        self.assertTrue(Bookmark.objects.filter(user=self.user, feed_item=self.feed_item).exists())
 
+        # 2. Get bookmarks list
+        res_list = self.client.get("/api/feed/bookmarks/")
+        self.assertEqual(res_list.status_code, 200)
+        self.assertEqual(res_list.data["count"], 1)
+        self.assertEqual(res_list.data["results"][0]["feed_item"]["id"], self.feed_item.id)
 
+        # 3. Toggle bookmark OFF
+        res_off = self.client.post("/api/feed/bookmark/", {"feed_item_id": self.feed_item.id}, format="json")
+        self.assertEqual(res_off.status_code, 200)
+        self.assertEqual(res_off.data, {"bookmarked": False})
+        self.assertFalse(Bookmark.objects.filter(user=self.user, feed_item=self.feed_item).exists())
+
+        # 4. Remove bookmark via DELETE
+        Bookmark.objects.create(user=self.user, feed_item=self.feed_item)
+        res_del = self.client.delete(f"/api/feed/bookmarks/{self.feed_item.id}/")
+        self.assertEqual(res_del.status_code, 200)
+        self.assertEqual(res_del.data, {"success": True})
+        self.assertFalse(Bookmark.objects.filter(user=self.user, feed_item=self.feed_item).exists())
+
+        # 5. Remove bookmark not found returns 404
+        res_del_404 = self.client.delete(f"/api/feed/bookmarks/{self.feed_item.id}/")
+        self.assertEqual(res_del_404.status_code, 404)
+
+    def test_like_and_like_count_api_endpoints(self):
+        # 1. Toggle like ON
+        res = self.client.post("/api/feed/like/", {"feed_item_id": self.feed_item.id}, format="json")
+        self.assertEqual(res.status_code, 201)
+        self.assertEqual(res.data["liked"], True)
+        self.assertEqual(res.data["like_count"], 1)
+        self.assertTrue(Like.objects.filter(user=self.user, feed_item=self.feed_item).exists())
+
+        # 2. Get likes list
+        res_likes = self.client.get("/api/feed/likes/")
+        self.assertEqual(res_likes.status_code, 200)
+        self.assertEqual(res_likes.data["count"], 1)
+        self.assertEqual(res_likes.data["results"][0]["feed_item"]["id"], self.feed_item.id)
+
+        # 3. Another user also likes the same item
+        user2 = User.objects.create_user(username="user2", email="user2@example.com", password="password")
+        Like.objects.create(user=user2, feed_item=self.feed_item)
+
+        # 4. Toggle like OFF for user 1
+        res_off = self.client.post("/api/feed/like/", {"feed_item_id": self.feed_item.id}, format="json")
+        self.assertEqual(res_off.status_code, 200)
+        self.assertEqual(res_off.data["liked"], False)
+        self.assertEqual(res_off.data["like_count"], 1)  # remaining like from user2
+
+        # 5. Check feed item reflection (is_liked, is_bookmarked, like_count)
+        Bookmark.objects.create(user=self.user, feed_item=self.feed_item)
+        feed_res = self.client.get("/api/feed/nest/")
+        self.assertEqual(feed_res.status_code, 200)
+        item_data = next(it for it in feed_res.data["results"] if it["id"] == self.feed_item.id)
+        self.assertEqual(item_data["is_liked"], False)
+        self.assertEqual(item_data["is_bookmarked"], True)
+        self.assertEqual(item_data["like_count"], 1)
+
+        # 6. Remove like via DELETE for user2
+        self.client.force_authenticate(user=user2)
+        res_del = self.client.delete(f"/api/feed/likes/{self.feed_item.id}/")
+        self.assertEqual(res_del.status_code, 200)
+        self.assertEqual(res_del.data, {"success": True})
+        self.assertEqual(Like.objects.filter(feed_item=self.feed_item).count(), 0)
+
+        # 7. Delete non-existent like returns 404
+        res_del_404 = self.client.delete(f"/api/feed/likes/{self.feed_item.id}/")
+        self.assertEqual(res_del_404.status_code, 404)
 

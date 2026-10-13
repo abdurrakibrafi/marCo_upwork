@@ -56,13 +56,28 @@ class TheSportsDBService:
     BASE_URL = "https://www.thesportsdb.com/api/v1/json"
 
     # Sport name mapping — our internal names → TheSportsDB sport names
+    # Must cover ALL slug variants used in Entity.sport across the system
     SPORT_MAP = {
-        'soccer':     'Soccer',
-        'basketball': 'Basketball',
-        'cricket':    'Cricket',
-        'football':   'American Football',
-        'baseball':   'Baseball',
-        'hockey':     'Ice Hockey',
+        'soccer':             'Soccer',
+        'basketball':         'Basketball',
+        'nba':                'Basketball',
+        'cricket':            'Cricket',
+        'football':           'American Football',
+        'american_football':  'American Football',
+        'nfl':                'American Football',
+        'baseball':           'Baseball',
+        'mlb':                'Baseball',
+        'hockey':             'Ice Hockey',
+        'ice_hockey':         'Ice Hockey',
+        'nhl':                'Ice Hockey',
+        'tennis':             'Tennis',
+        'golf':               'Golf',
+        'handball':           'Handball',
+        'volleyball':         'Volleyball',
+        'rugby':              'Rugby',
+        'motorsports':        'Motorsport',
+        'f1':                 'Motorsport',
+        'formula1':           'Motorsport',
     }
 
     def __init__(self):
