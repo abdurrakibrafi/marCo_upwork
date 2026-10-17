@@ -216,78 +216,11 @@ def _get_standings_for_league(request, league_entity, season, highlight_team_id=
     if sport_clean == 'cricket':
         return _handle_cricket_league_standings(request, league_entity, season, highlight_team_name)
 
-    try:
-        canonical = Entity.objects.filter(
-            type='league',
-            api_source=league_entity.api_source,
-            external_id=league_entity.external_id,
-        ).first() or league_entity
-        teams_in_league = list(Team.objects.filter(
-            league__api_source=canonical.api_source,
-            league__external_id=canonical.external_id,
-            entity__type='team',
-        ).select_related('entity'))
-    except Exception:
-        canonical = league_entity
-        teams_in_league = []
-
-    standings = []
-    valid_db_teams_count = 0
-    if teams_in_league:
-        team_entities = [team.entity for team in teams_in_league if team.entity]
-        stats_qs = EntityStats.objects.filter(
-            entity__in=team_entities, season=str(season), stat_type='season'
-        )
-        stats_map = {s.entity_id: s for s in stats_qs}
-    else:
-        stats_map = {}
-
-    for team in teams_in_league:
-        stats = stats_map.get(team.entity_id) if team.entity else None
-        if stats and stats.stats_data and stats.stats_data.get('rank'):
-            p_val = stats.stats_data.get('played') or stats.stats_data.get('points') or 0
-            if p_val > 0 and stats.updated_at and (timezone.now() - stats.updated_at).total_seconds() < 86400:
-                valid_db_teams_count += 1
-        logo_url = make_logo_url_absolute(team.entity.logo_url, request) if (team.entity and team.entity.logo_url) else ''
-        standings.append({
-            'rank':       stats.stats_data.get('rank', 0) if stats else 0,
-            'team_id':    team.entity.id,
-            'team_name':  team.entity.name,
-            'logo':       logo_url,
-            'country':    team.entity.country,
-            'points':     stats.stats_data.get('points', 0) if stats else 0,
-            'played':     stats.stats_data.get('played', 0) if stats else 0,
-            'wins':       stats.stats_data.get('wins') or stats.stats_data.get('win', team.total_wins) if stats else team.total_wins,
-            'draws':      stats.stats_data.get('draws') or stats.stats_data.get('draw', 0) if stats else 0,
-            'losses':     stats.stats_data.get('losses') or stats.stats_data.get('lose', team.total_losses) if stats else team.total_losses,
-            'goals_for':  stats.stats_data.get('goals_for', 0) if stats else 0,
-            'goals_against': stats.stats_data.get('goals_against', 0) if stats else 0,
-            'goal_diff':  stats.stats_data.get('goal_diff', 0) if stats else 0,
-            'form':       stats.stats_data.get('form', '') if stats else '',
-            'is_highlighted': str(team.entity.external_id) == str(highlight_team_id) or str(team.entity.id) == str(highlight_team_id),
-        })
-
-    # Only consider DB standings valid if AT LEAST 10 teams have real data, or if ALL teams in a small DB league have data
-    total_teams_in_league = len(teams_in_league)
-    if valid_db_teams_count >= 10 or (total_teams_in_league > 0 and valid_db_teams_count == total_teams_in_league):
-        standings.sort(key=lambda x: (
-            -x['points'],
-            -x['goal_diff'],
-            -x['goals_for'],
-            x['team_name'].lower(),
-        ))
-        for i, item in enumerate(standings, 1):
-            item['rank'] = i
-        return Response({
-            'league':      _safe_league_data(league_entity, request),
-            'season':      season,
-            'structure':   'table',
-            'columns':     _get_sport_standings_columns(sport_clean),
-            'conferences': {},
-            'divisions':   {},
-            'standings':   standings,
-            'source':      'db',
-        })
+    canonical = Entity.objects.filter(
+        type='league',
+        api_source=league_entity.api_source,
+        external_id=league_entity.external_id,
+    ).first() or league_entity
 
     sport_clean = str(getattr(canonical, 'sport', '') or getattr(league_entity, 'sport', '') or '').lower().strip()
     if not sport_clean or sport_clean in ('unknown', 'other'):
@@ -301,9 +234,12 @@ def _get_standings_for_league(request, league_entity, season, highlight_team_id=
         elif 'nfl' in lname:
             sport_clean = 'american_football'
 
+    if sport_clean == 'cricket':
+        return _handle_cricket_league_standings(request, league_entity, season, highlight_team_name)
+
     live_standings = []
 
-    # Fast primary providers (StatPal, official)
+    # 1. Primary fast providers (StatPal official hierarchical standings)
     if sport_clean == 'baseball':
         live_standings = _fetch_statpal_hierarchical_standings('baseball', f'standings:baseball:mlb:{season}')
     elif sport_clean in ('basketball', 'nba'):
@@ -319,7 +255,75 @@ def _get_standings_for_league(request, league_entity, season, highlight_team_id=
             season_year = 2026
         live_standings = _fetch_soccer_standings(canonical.external_id, season_year)
 
-    # Fallback to TheSportsDB only if primary provider returned no data
+    # 2. Database standings fallback (if live provider returned no data)
+    standings = []
+    if not live_standings:
+        try:
+            teams_in_league = list(Team.objects.filter(
+                league__api_source=canonical.api_source,
+                league__external_id=canonical.external_id,
+                entity__type='team',
+            ).select_related('entity'))
+        except Exception:
+            teams_in_league = []
+
+        valid_db_teams_count = 0
+        if teams_in_league:
+            team_entities = [team.entity for team in teams_in_league if team.entity]
+            stats_qs = EntityStats.objects.filter(
+                entity__in=team_entities, season=str(season), stat_type='season'
+            )
+            stats_map = {s.entity_id: s for s in stats_qs}
+        else:
+            stats_map = {}
+
+        for team in teams_in_league:
+            stats = stats_map.get(team.entity_id) if team.entity else None
+            if stats and stats.stats_data and stats.stats_data.get('rank'):
+                p_val = stats.stats_data.get('played') or stats.stats_data.get('points') or 0
+                if p_val > 0 and stats.updated_at and (timezone.now() - stats.updated_at).total_seconds() < 86400:
+                    valid_db_teams_count += 1
+            logo_url = make_logo_url_absolute(team.entity.logo_url, request) if (team.entity and team.entity.logo_url) else ''
+            standings.append({
+                'rank':       stats.stats_data.get('rank', 0) if stats else 0,
+                'team_id':    team.entity.id,
+                'team_name':  team.entity.name,
+                'logo':       logo_url,
+                'country':    team.entity.country,
+                'points':     stats.stats_data.get('points', 0) if stats else 0,
+                'played':     stats.stats_data.get('played', 0) if stats else 0,
+                'wins':       stats.stats_data.get('wins') or stats.stats_data.get('win', team.total_wins) if stats else team.total_wins,
+                'draws':      stats.stats_data.get('draws') or stats.stats_data.get('draw', 0) if stats else 0,
+                'losses':     stats.stats_data.get('losses') or stats.stats_data.get('lose', team.total_losses) if stats else team.total_losses,
+                'goals_for':  stats.stats_data.get('goals_for', 0) if stats else 0,
+                'goals_against': stats.stats_data.get('goals_against', 0) if stats else 0,
+                'goal_diff':  stats.stats_data.get('goal_diff', 0) if stats else 0,
+                'form':       stats.stats_data.get('form', '') if stats else '',
+                'is_highlighted': str(team.entity.external_id) == str(highlight_team_id) or str(team.entity.id) == str(highlight_team_id),
+            })
+
+        total_teams_in_league = len(teams_in_league)
+        if valid_db_teams_count >= 10 or (total_teams_in_league > 0 and valid_db_teams_count == total_teams_in_league):
+            standings.sort(key=lambda x: (
+                -x['points'],
+                -x['goal_diff'],
+                -x['goals_for'],
+                x['team_name'].lower(),
+            ))
+            for i, item in enumerate(standings, 1):
+                item['rank'] = i
+            return Response({
+                'league':      _safe_league_data(league_entity, request),
+                'season':      season,
+                'structure':   'table',
+                'columns':     _get_sport_standings_columns(sport_clean),
+                'conferences': {},
+                'divisions':   {},
+                'standings':   standings,
+                'source':      'db',
+            })
+
+    # 3. Fallback to TheSportsDB only if primary provider and DB returned no data
     if not live_standings:
         live_standings = _fetch_league_standings_thesportsdb(canonical, season)
 
