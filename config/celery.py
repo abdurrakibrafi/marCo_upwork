@@ -130,16 +130,6 @@ app.conf.beat_schedule = {
         'task': 'apps.sports_apis.tasks.backfill_golf_players_task',
         'schedule': crontab(hour=5, minute=0, day_of_week=1),
     },
-    # Handball — every Saturday at 5:00 AM
-    'backfill-handball-players-weekly': {
-        'task': 'apps.sports_apis.tasks.backfill_handball_players_task',
-        'schedule': crontab(hour=5, minute=0, day_of_week=6),
-    },
-    # Volleyball — every Sunday at 5:30 AM
-    'backfill-volleyball-players-weekly': {
-        'task': 'apps.sports_apis.tasks.backfill_volleyball_players_task',
-        'schedule': crontab(hour=5, minute=30, day_of_week=0),
-    },
     # Broken logo cleanup — run monthly on the 1st at 3am
     'cleanup-broken-logos-monthly': {
         'task': 'apps.sports_apis.tasks.cleanup_broken_logos_task',

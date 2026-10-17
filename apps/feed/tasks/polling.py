@@ -64,14 +64,18 @@ def update_trending_entities_feeds():
 
 @shared_task(name='apps.feed.tasks.poll_all_active_sources')
 def poll_all_active_sources():
-    """Poll all active RSS sources that are due based on their individual polling intervals.
+    """Poll active RSS sources prioritizing user-followed entities.
 
-    Staggers polling tasks to prevent CPU and network spikes.
+    Staggers polling tasks to prevent CPU and network spikes while ensuring
+    followed entities are updated every 15-30 minutes.
 
     Returns:
         str: Polling queue execution report.
     """
     now = timezone.now()
+    from apps.nest.models import UserNest
+    followed_entity_ids = set(UserNest.objects.values_list('entity_id', flat=True))
+
     due_sources = Source.objects.filter(
         is_active=True,
         rss_url__isnull=False,
@@ -79,27 +83,33 @@ def poll_all_active_sources():
         rss_url='',
     ).filter(
         Q(last_polled_at__isnull=True) |
-        Q(last_polled_at__lte=now - timedelta(minutes=1))
-    )
+        Q(last_polled_at__lte=now - timedelta(minutes=15))
+    ).order_by('last_polled_at')
 
-    to_poll = []
-    for source in due_sources:
-        if not source.last_polled_at:
-            to_poll.append(source.id)
-            continue
-        elapsed = (now - source.last_polled_at).total_seconds()
-        if elapsed >= source.poll_interval_minutes * 60:
-            to_poll.append(source.id)
+    followed_source_ids = []
+    other_source_ids = []
 
-    # Process maximum 20 sources per run, staggered 3s apart to avoid worker CPU spikes
-    batch = to_poll[:20]
+    for source in due_sources.iterator(chunk_size=500):
+        if source.last_polled_at:
+            elapsed = (now - source.last_polled_at).total_seconds()
+            if elapsed < source.poll_interval_minutes * 60:
+                continue
+
+        source_entity_ids = set(source.entities.values_list('id', flat=True))
+        if source_entity_ids.intersection(followed_entity_ids):
+            followed_source_ids.append(source.id)
+        else:
+            other_source_ids.append(source.id)
+
+    # Prioritize ALL followed sources (up to 60), plus up to 60 general sources per run
+    batch = followed_source_ids[:60] + other_source_ids[:60]
     for i, source_id in enumerate(batch):
         poll_single_source.apply_async(
             args=[source_id],
-            countdown=i * 3,
+            countdown=min(i * 1, 60),
         )
 
-    return f"Queued {len(batch)} of {len(to_poll)} due sources for polling (staggered over {len(batch) * 3}s)"
+    return f"Queued {len(batch)} sources ({len(followed_source_ids[:60])} followed, {len(other_source_ids[:60])} general) of {len(followed_source_ids) + len(other_source_ids)} due sources"
 
 
 @shared_task(name='apps.feed.tasks.poll_single_source', bind=True, max_retries=2)
@@ -154,14 +164,22 @@ def poll_single_source(self, source_id: int):
     if not result.get('success'):
         source.poll_failures += 1
         source.last_polled_at = timezone.now()
-        if source.poll_failures >= 3:
+        # Exponential backoff instead of aggressive permanent deactivation
+        if source.poll_failures >= 15:
             source.is_active = False
             source.save(update_fields=['poll_failures', 'is_active', 'last_polled_at'])
-            logger.warning(f"Source {source.id} ({source.name}) deactivated after 3 consecutive failures: {result.get('error')}")
+            logger.warning(f"Source {source.id} ({source.name}) deactivated after 15 consecutive failures: {result.get('error')}")
         else:
-            source.save(update_fields=['poll_failures', 'last_polled_at'])
-            logger.warning(f"Polling failed for source {source.id} (attempt {source.poll_failures}/3): {result.get('error')}")
+            source.poll_interval_minutes = min(1440, max(30, source.poll_interval_minutes * 2))
+            source.save(update_fields=['poll_failures', 'last_polled_at', 'poll_interval_minutes'])
+            logger.warning(f"Polling failed for source {source.id} (attempt {source.poll_failures}/15): {result.get('error')}")
         return f"Polling failed for source {source.id}: {result.get('error')}"
+
+    # Successful poll -> reset failures and default interval
+    source.poll_failures = 0
+    source.poll_interval_minutes = 30
+    source.last_polled_at = timezone.now()
+    source.save(update_fields=['last_polled_at', 'poll_failures', 'poll_interval_minutes'])
 
     candidate_entities = list(source.entities.all())
     is_global_source = not candidate_entities
@@ -171,7 +189,7 @@ def poll_single_source(self, source_id: int):
     from apps.feed.utils_url import resolve_real_article_url
 
     new_items = 0
-    entries = result.get('entries', [])[:30]
+    entries = result.get('entries', [])[:50]
 
     for entry in entries:
         raw_url = entry.get('url')
@@ -199,10 +217,17 @@ def poll_single_source(self, source_id: int):
         url = resolve_real_article_url(raw_url)
         url_hash = hashlib.md5(url.encode()).hexdigest()
 
+        # Expand matched entities to include their canonical and duplicate entities
+        all_linked_entities = set(matched_entities)
+        for me in matched_entities:
+            canonical = me.canonical_entity or me
+            all_linked_entities.add(canonical)
+            all_linked_entities.update(Entity.objects.filter(canonical_entity=canonical))
+
         existing_item = FeedItem.objects.filter(url_hash=url_hash).first()
         if existing_item:
-            if matched_entities:
-                existing_item.entities.add(*matched_entities)
+            if all_linked_entities:
+                existing_item.entities.add(*all_linked_entities)
             continue
 
         thumbnail_url = entry.get('thumbnail_url', '')
@@ -225,16 +250,12 @@ def poll_single_source(self, source_id: int):
             }
         )
         if created:
-            if matched_entities:
-                obj.entities.set(matched_entities)
+            if all_linked_entities:
+                obj.entities.set(all_linked_entities)
             new_items += 1
         else:
-            if matched_entities:
-                obj.entities.add(*matched_entities)
-
-    source.last_polled_at = timezone.now()
-    source.poll_failures = 0
-    source.save(update_fields=['last_polled_at', 'poll_failures'])
+            if all_linked_entities:
+                obj.entities.add(*all_linked_entities)
 
     logger.info(f"Polled source {source.id}: {new_items} new items")
     return f"Polled source {source.id}: {new_items} new items"

@@ -122,7 +122,7 @@ def update_statpal_fixtures_for_dates(dates: list[str] = None):
         ("football", statpal_service.get_nfl_fixtures, _nfl_rows),
         ("tennis", statpal_service.get_tennis_fixtures, _tennis_rows),
         ("baseball", statpal_service.get_mlb_fixtures, _mlb_rows),
-        ("handball", statpal_service.get_handball_fixtures, _handball_rows),
+        ("ice_hockey", statpal_service.get_hockey_fixtures, _hockey_rows),
     ]
 
     today = timezone.now().date()
@@ -132,7 +132,7 @@ def update_statpal_fixtures_for_dates(dates: list[str] = None):
         date_str = target_date.isoformat()
 
         for sport, fetch_fn, extract_fn in sports_configs:
-            if offset == 0 and sport in ["tennis", "baseball", "handball"]:
+            if offset == 0 and sport in ["tennis", "baseball", "ice_hockey"]:
                 continue
 
             try:

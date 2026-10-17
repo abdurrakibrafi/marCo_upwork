@@ -200,7 +200,7 @@ def fast_serialize_feed_items(items, request, selected_entity_types=None) -> lis
             'entities': ents_serialized,
             'title': item.title,
             'summary': item.summary,
-            'thumbnail_url': item.thumbnail_url,
+            'thumbnail_url': item.thumbnail_url or ent_logo,
             'url': item.url,
             'published_at': item.published_at.isoformat() if item.published_at else None,
             'is_breaking': item.is_breaking,
@@ -274,7 +274,15 @@ def get_nest_feed(request):
     if selected_entity_types:
         nest_qs = nest_qs.filter(entity__type__in=selected_entity_types)
 
-    nest_entity_ids = list(nest_qs.values_list('entity_id', flat=True))
+    raw_nest_ids = list(nest_qs.values_list('entity_id', flat=True))
+    expanded_nest_ids = set(raw_nest_ids)
+    for eid in raw_nest_ids:
+        ent = Entity.objects.filter(id=eid).first()
+        if ent:
+            canonical = ent.canonical_entity or ent
+            expanded_nest_ids.add(canonical.id)
+            expanded_nest_ids.update(Entity.objects.filter(canonical_entity=canonical).values_list('id', flat=True))
+    nest_entity_ids = list(expanded_nest_ids)
     
     # Get user's manually added custom sources
     from apps.source.models import UserCustomSource
@@ -423,6 +431,12 @@ def get_entity_feed(request, entity_id):
         Response: Paginated news articles.
     """
     entity = get_object_or_404(Entity, id=entity_id)
+    canonical = entity.canonical_entity if entity.canonical_entity else entity
+    target_entity_ids = list(
+        Entity.objects.filter(Q(id=canonical.id) | Q(canonical_entity=canonical)).values_list('id', flat=True)
+    )
+    if not target_entity_ids:
+        target_entity_ids = [entity.id]
     
     # Get hidden sources and publishers if user is authenticated
     hidden_source_ids = []
@@ -433,7 +447,7 @@ def get_entity_feed(request, entity_id):
         hidden_publishers = hidden_sources_qs.exclude(publisher_name='').values_list('publisher_name', flat=True)
     
     feed = FeedItem.objects.filter(
-        entities=entity
+        entities__id__in=target_entity_ids
     ).exclude(
         source_id__in=hidden_source_ids
     ).exclude(
@@ -518,14 +532,18 @@ def get_entity_feed(request, entity_id):
 
     feed = feed.order_by('-published_at')
 
-    # If entity has no feed items yet, auto-trigger targeted RSS source discovery
+    # If entity has no feed items yet, auto-trigger targeted RSS source discovery & polling
     if not feed.exists():
-        lock_key = f"feed_auto_init:{entity.id}"
+        lock_key = f"feed_auto_init:{canonical.id}"
         try:
             if cache.add(lock_key, True, timeout=60):
-                from .tasks import ensure_entity_has_rss_source
+                from .tasks import ensure_entity_has_rss_source, poll_single_source
+                entity_sources = Source.objects.filter(entities__id__in=target_entity_ids, is_active=True)
+                if entity_sources.exists():
+                    for src in entity_sources[:3]:
+                        poll_single_source.delay(src.id)
                 try:
-                    ensure_entity_has_rss_source.delay(entity.id)
+                    ensure_entity_has_rss_source.delay(canonical.id)
                 except Exception:
                     pass
         except Exception:
@@ -733,14 +751,19 @@ def trigger_feed_update(request, entity_id):
         Response: Dispatch status confirmation.
     """
     entity = get_object_or_404(Entity, id=entity_id)
+    canonical = entity.canonical_entity if entity.canonical_entity else entity
     
-    from .tasks import update_all_entity_feeds, ensure_entity_has_rss_source
-    ensure_entity_has_rss_source.delay(entity_id)
-    update_all_entity_feeds.delay(entity_id)
+    from .tasks import update_all_entity_feeds, ensure_entity_has_rss_source, poll_single_source
+    target_ids = list(Entity.objects.filter(Q(id=canonical.id) | Q(canonical_entity=canonical)).values_list('id', flat=True))
+    sources = Source.objects.filter(entities__id__in=target_ids, is_active=True)
+    for src in sources[:5]:
+        poll_single_source.delay(src.id)
+    ensure_entity_has_rss_source.delay(canonical.id)
+    update_all_entity_feeds.delay(canonical.id)
     
     return Response({
         'success': True,
-        'message': f'Feed update triggered for {entity.name}'
+        'message': f'Feed update triggered for {canonical.name}'
     })
 
 

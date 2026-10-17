@@ -186,7 +186,7 @@ class RSSPollingService:
         return {'success': True, 'entries': entries}
 
     def _extract_thumbnail(self, entry) -> str:
-        """Extract article preview image URL from media tags in the RSS feed entry.
+        """Extract article preview image URL from media tags, enclosures, or HTML in the RSS entry.
 
         Args:
             entry (dict): Feedparser entry record.
@@ -194,20 +194,60 @@ class RSSPollingService:
         Returns:
             str: Thumbnail URL.
         """
-        # Try common RSS media fields
+        # 1. Check enclosures
+        enclosures = entry.get('enclosures') or []
+        for enc in enclosures:
+            href = enc.get('href') or enc.get('url')
+            enc_type = (enc.get('type') or '').lower()
+            if href and ('image' in enc_type or any(href.lower().split('?')[0].endswith(ext) for ext in ('.jpg', '.jpeg', '.png', '.webp', '.gif'))):
+                return href
+
+        # 2. Check media_thumbnail
         if entry.get('media_thumbnail'):
             thumbs = entry.get('media_thumbnail')
             if isinstance(thumbs, list) and thumbs:
-                return thumbs[0].get('url', '')
-            if isinstance(thumbs, dict):
-                return thumbs.get('url', '')
+                url = thumbs[0].get('url', '')
+                if url:
+                    return url
+            if isinstance(thumbs, dict) and thumbs.get('url'):
+                return thumbs['url']
 
+        # 3. Check media_content
         if entry.get('media_content'):
             media = entry.get('media_content')
             if isinstance(media, list) and media:
-                return media[0].get('url', '')
-            if isinstance(media, dict):
-                return media.get('url', '')
+                for m in media:
+                    m_url = m.get('url', '')
+                    m_type = (m.get('type') or '').lower()
+                    m_medium = (m.get('medium') or '').lower()
+                    if m_url and ('image' in m_type or m_medium == 'image' or any(m_url.lower().split('?')[0].endswith(ext) for ext in ('.jpg', '.jpeg', '.png', '.webp'))):
+                        return m_url
+            if isinstance(media, dict) and media.get('url'):
+                return media['url']
+
+        # 4. Check links with rel="enclosure"
+        for link in entry.get('links', []):
+            if link.get('rel') == 'enclosure' and 'image' in (link.get('type') or '').lower():
+                return link.get('href', '')
+
+        # 5. Extract <img> from HTML summary/description or content
+        html_content = ''
+        if entry.get('content'):
+            for c in entry.get('content', []):
+                if isinstance(c, dict) and c.get('value'):
+                    html_content += ' ' + c['value']
+        html_content += ' ' + (entry.get('summary', '') or entry.get('description', ''))
+        
+        if '<img' in html_content:
+            try:
+                soup = BeautifulSoup(html_content, 'html.parser')
+                img = soup.find('img')
+                if img and img.get('src'):
+                    src = img['src'].strip()
+                    if src and not any(tracker in src.lower() for tracker in ('1x1', 'spacer', 'beacon', 'pixel', 'stat?')):
+                        return src
+            except Exception:
+                pass
 
         return ''
 

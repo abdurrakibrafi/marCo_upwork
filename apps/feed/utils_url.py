@@ -77,7 +77,7 @@ def resolve_real_article_url(url: str) -> str:
             return clean_tracking_parameters(cached_url)
         try:
             from googlenewsdecoder import new_decoderv1
-            decoded = new_decoderv1(url_str, interval=1)
+            decoded = new_decoderv1(url_str, interval=None)
             if isinstance(decoded, dict) and decoded.get("status") and decoded.get("decoded_url"):
                 res = clean_tracking_parameters(decoded["decoded_url"])
                 cache.set(cache_key, res, timeout=604800)  # Cache for 7 days

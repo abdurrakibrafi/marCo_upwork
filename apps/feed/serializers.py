@@ -80,6 +80,7 @@ class FeedItemSerializer(serializers.ModelSerializer):
     entity_names = serializers.SerializerMethodField()
     entities = EntitySerializer(many=True, read_only=True)
     url = serializers.SerializerMethodField()
+    thumbnail_url = serializers.SerializerMethodField()
 
     class Meta:
         model = FeedItem
@@ -88,6 +89,17 @@ class FeedItemSerializer(serializers.ModelSerializer):
             'published_at', 'entity_names', 'entities', 'is_trending', 'is_breaking',
             'views', 'source', 'content', 'ai_summary', 'content_fetched',
         ]
+
+    def get_thumbnail_url(self, obj):
+        if obj.thumbnail_url:
+            return obj.thumbnail_url
+        entities = list(obj.entities.all())
+        if entities:
+            from apps.entity.serializers import find_entity_logo, make_logo_url_absolute
+            logo = find_entity_logo(entities[0])
+            if logo:
+                return make_logo_url_absolute(logo, self.context.get('request'))
+        return ''
 
     def get_entity_names(self, obj):
         """Extract a list of entity names associated with the article."""
@@ -112,6 +124,7 @@ class FeedItemCompactSerializer(serializers.ModelSerializer):
     entity_names = serializers.SerializerMethodField()
     entities = serializers.SerializerMethodField()
     url = serializers.SerializerMethodField()
+    thumbnail_url = serializers.SerializerMethodField()
     is_bookmarked = serializers.SerializerMethodField()
     is_liked = serializers.SerializerMethodField()
     like_count = serializers.SerializerMethodField()
@@ -228,6 +241,18 @@ class FeedItemCompactSerializer(serializers.ModelSerializer):
             clean = domain.replace('https://', '').replace('http://', '').rstrip('/')
             return f'https://www.google.com/s2/favicons?domain={clean}&sz=64'
 
+        return ''
+
+    def get_thumbnail_url(self, obj):
+        """Return article thumbnail or fallback to entity logo."""
+        if obj.thumbnail_url:
+            return obj.thumbnail_url
+        entity = self._get_primary_entity(obj)
+        if entity:
+            from apps.entity.serializers import find_entity_logo, make_logo_url_absolute
+            logo = find_entity_logo(entity)
+            if logo:
+                return make_logo_url_absolute(logo, self.context.get('request'))
         return ''
 
     def get_is_bookmarked(self, obj):

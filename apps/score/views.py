@@ -106,8 +106,8 @@ def live_scores_by_sport(request, sport: str):
         sport_lower = sport.lower()
         supported_sports = {
             'nba', 'nfl', 'mlb', 'nhl', 'soccer', 'cricket', 'tennis',
-            'baseball', 'handball', 'volleyball', 'golf', 'horse_racing',
-            'basketball', 'football', 'hockey', 'formula1', 'mma'
+            'baseball', 'golf', 'horse_racing',
+            'basketball', 'football', 'american_football', 'hockey', 'ice_hockey', 'formula1', 'mma'
         }
         if sport_lower not in supported_sports:
             return mixin.error_response(

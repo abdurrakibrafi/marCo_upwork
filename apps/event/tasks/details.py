@@ -600,15 +600,22 @@ def check_completed_events():
 
 @shared_task(name='apps.event.tasks.cleanup_stale_live_events')
 def cleanup_stale_live_events():
-    """Auto-transition events that have been in 'live' status for over 5 hours into 'completed'."""
+    """Auto-transition events that have been in 'live' status for over 5 hours or past 'upcoming' into 'completed'."""
     cutoff = timezone.now() - timedelta(hours=5)
-    stale = Event.objects.filter(
+    stale_live = Event.objects.filter(
         status='live',
         start_time__lte=cutoff,
     )
-    count = stale.update(status='completed')
-    logger.info(f"Cleaned up {count} stale live events")
-    return f"Cleaned {count} stale live events"
+    count_live = stale_live.update(status='completed')
+
+    # Also transition past events older than 5 hours that are still marked 'upcoming'
+    stale_upcoming = Event.objects.filter(
+        status='upcoming',
+        start_time__lte=cutoff,
+    )
+    count_upcoming = stale_upcoming.update(status='completed')
+    logger.info(f"Cleaned up {count_live} stale live events and {count_upcoming} past upcoming events")
+    return f"Cleaned {count_live} live, {count_upcoming} upcoming"
 
 
 def reprocess_all_events_stats() -> str:

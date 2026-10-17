@@ -277,8 +277,8 @@ def get_nest_calendar(request):
         end_date_str = request.query_params.get("end_date")
 
         try:
-            start_date = datetime.fromisoformat(start_date_str).date() if start_date_str else now_local.date() - timedelta(days=7)
-            end_date = datetime.fromisoformat(end_date_str).date() if end_date_str else start_date + timedelta(days=97)
+            start_date = datetime.fromisoformat(start_date_str).date() if start_date_str else now_local.date() - timedelta(days=30)
+            end_date = datetime.fromisoformat(end_date_str).date() if end_date_str else start_date + timedelta(days=120)
         except ValueError:
             return mixin.error_response(
                 message="Invalid date format. Use YYYY-MM-DD",
@@ -648,22 +648,19 @@ def get_matches_of_day(request):
         nest_entity_ids = set(nest_entities)
 
         canonical_ids = {ent.canonical_entity_id for ent in resolved_entities if ent.canonical_entity_id}
-        ent_ids = {ent.id for ent in resolved_entities}
-
-        dup_q = Q()
-        for ent in resolved_entities:
-            dup_q |= Q(name__iexact=ent.name, sport=ent.sport, type=ent.type)
-
-        batch_filter = dup_q
-        if canonical_ids:
-            batch_filter |= Q(canonical_entity_id__in=canonical_ids)
-        if ent_ids:
-            batch_filter |= Q(canonical_entity_id__in=ent_ids)
-
-        if batch_filter:
-            all_dups = Entity.objects.filter(batch_filter).values_list("id", flat=True)
-            nest_entity_ids.update(all_dups)
         nest_entity_ids.update(canonical_ids)
+
+        for ent in resolved_entities:
+            canonical = ent.canonical_entity or ent
+            nest_entity_ids.add(canonical.id)
+            # Add all duplicates pointing to this entity
+            nest_entity_ids.update(
+                Entity.objects.filter(Q(canonical_entity=canonical) | Q(canonical_entity=ent)).values_list("id", flat=True)
+            )
+            # Exact name match (ignoring slight sport naming discrepancies)
+            nest_entity_ids.update(
+                Entity.objects.filter(name__iexact=ent.name, type=ent.type).values_list("id", flat=True)
+            )
 
         resolved_entities = Entity.objects.filter(id__in=nest_entity_ids)
         team_ids = set()
@@ -734,7 +731,7 @@ def get_entity_calendar(request, entity_id):
         entity_id (int): Primary key ID of the Entity (team or league).
 
     Returns:
-        Response: Structured payload separating upcoming, live, and recent events.
+        Response: Structured payload separating upcoming, live, and recent/completed events.
     """
     mixin = BaseResponseMixin()
     try:
@@ -744,8 +741,8 @@ def get_entity_calendar(request, entity_id):
         end_date_str = request.GET.get('end_date')
 
         try:
-            start_date = datetime.fromisoformat(start_date_str).date() if start_date_str else now_local.date()
-            end_date = datetime.fromisoformat(end_date_str).date() if end_date_str else start_date + timedelta(days=30)
+            start_date = datetime.fromisoformat(start_date_str).date() if start_date_str else (now_local.date() - timedelta(days=180))
+            end_date = datetime.fromisoformat(end_date_str).date() if end_date_str else (now_local.date() + timedelta(days=240))
         except ValueError:
             return mixin.error_response(
                 message='Invalid date format. Use YYYY-MM-DD',
@@ -759,24 +756,19 @@ def get_entity_calendar(request, entity_id):
         from apps.entity.models import Entity
         try:
             ent = Entity.objects.get(id=entity_id)
-            related_ids = set([entity_id])
+            canonical = ent.canonical_entity or ent
+            related_ids = set([entity_id, canonical.id])
             
-            # Exact name/sport/type match
+            # Exact name/type match
             duplicates = Entity.objects.filter(
-                name__iexact=ent.name,
-                sport=ent.sport,
-                type=ent.type
+                name__iexact=canonical.name,
+                type=canonical.type
             ).values_list("id", flat=True)
             related_ids.update(duplicates)
             
             # Canonical entity matching
-            if ent.canonical_entity_id:
-                related_ids.add(ent.canonical_entity_id)
-                related_ids.update(
-                    Entity.objects.filter(canonical_entity_id=ent.canonical_entity_id).values_list("id", flat=True)
-                )
             related_ids.update(
-                Entity.objects.filter(canonical_entity_id=ent.id).values_list("id", flat=True)
+                Entity.objects.filter(Q(canonical_entity=canonical) | Q(canonical_entity=ent)).values_list("id", flat=True)
             )
             related_ids = list(related_ids)
         except Entity.DoesNotExist:
@@ -795,7 +787,12 @@ def get_entity_calendar(request, entity_id):
         now = timezone.now()
         upcoming = [e for e in events_list if e.status == 'upcoming' and e.start_time >= now]
         live = [e for e in events_list if e.status == 'live']
-        recent = sorted([e for e in events_list if e.start_time < now], key=lambda x: x.start_time, reverse=True)[:10]
+        completed = sorted(
+            [e for e in events_list if e.status == 'completed' or e.start_time < now],
+            key=lambda x: x.start_time,
+            reverse=True
+        )
+        recent = completed[:20]
 
         serializer_context = {'request': request, 'timezone': user_tz}
         data = {
@@ -803,6 +800,8 @@ def get_entity_calendar(request, entity_id):
             'upcoming': EventSerializer(upcoming, many=True, context=serializer_context).data,
             'live': EventSerializer(live, many=True, context=serializer_context).data,
             'recent': EventSerializer(recent, many=True, context=serializer_context).data,
+            'completed': EventSerializer(completed, many=True, context=serializer_context).data,
+            'fixtures': EventSerializer(events_list, many=True, context=serializer_context).data,
         }
         return mixin.success_response(data=data)
     except Exception as exc:

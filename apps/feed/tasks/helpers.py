@@ -94,6 +94,15 @@ def _resolve_thumbnail_for_article(title: str, entities: list) -> str:
         except Exception as e:
             logger.warning(f"Brave Search thumbnail search failed: {e}")
 
+    # Fallback: Use official entity logo so cards always have visual branding
+    if entities:
+        from apps.entity.serializers import find_entity_logo
+        for ent in entities:
+            if ent:
+                logo = find_entity_logo(ent)
+                if logo:
+                    return logo
+
     return ''
 
 

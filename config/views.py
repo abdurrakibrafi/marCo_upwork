@@ -72,8 +72,8 @@ def api_status(request):
             'content': {
                 'feed_items_total': FeedItem.objects.count(),
                 'feed_items_24h': FeedItem.objects.filter(created_at__gte=last_24h).count(),
-                'articles': FeedItem.objects.filter(content_type='article').count(),
-                'videos': FeedItem.objects.filter(content_type='video').count(),
+                'breaking': FeedItem.objects.filter(is_breaking=True).count(),
+                'trending': FeedItem.objects.filter(is_trending=True).count(),
             },
             'events': {
                 'total': Event.objects.count(),

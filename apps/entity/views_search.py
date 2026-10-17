@@ -62,8 +62,6 @@ def search_entities(request):
             'cricket': 'cricket',
             'basketball': 'basketball',
             'baseball': 'baseball',
-            'volleyball': 'volleyball',
-            'handball': 'handball',
             'tennis': 'tennis',
             'golf': 'golf',
         }
@@ -71,6 +69,22 @@ def search_entities(request):
             if kw in q_lower:
                 sport = sp
                 break
+
+    SPORT_QUERY_MAP = {
+        'hockey': 'ice_hockey',
+        'ice hockey': 'ice_hockey',
+        'ice_hockey': 'ice_hockey',
+        'nhl': 'ice_hockey',
+        'football': 'american_football',
+        'american football': 'american_football',
+        'american_football': 'american_football',
+        'nfl': 'american_football',
+        'formula 1': 'f1',
+        'formula1': 'f1',
+        'f1': 'f1',
+    }
+    if sport:
+        sport = SPORT_QUERY_MAP.get(sport.lower().strip(), sport.lower().strip())
 
     # Normalize query
     normalized_query = normalize_entity_name(query)
@@ -85,23 +99,23 @@ def search_entities(request):
     except Exception:
         pass
     
-    # Build filter — Global search for active queries (agent_task.md Section 13)
-    filters = Q(is_active=True)
+    # Build filter — Global search for active non-duplicate canonical entities
+    filters = Q(is_active=True) & Q(canonical_entity__isnull=True)
     if sport:
         filters &= Q(sport=sport)
     
-    # Exact match first (on normalized name, global across types)
+    # Exact match first (on normalized name, global across types, prioritize logos)
     exact = Entity.objects.filter(
         filters,
         normalized_name=normalized_query
-    )[:1]
+    ).order_by('-logo_url', '-follower_count')[:1]
     
     # If no exact match and type was specified, try exact with type
     if not exact.exists() and entity_type:
         exact = Entity.objects.filter(
             filters & Q(type=entity_type),
             normalized_name=normalized_query
-        )[:1]
+        ).order_by('-logo_url', '-follower_count')[:1]
     
     if exact.exists():
         result = {
@@ -191,9 +205,27 @@ def search_entities(request):
                     score += 0.3
                 matches.append((entity, score))
     
-    # Sort by score
+    # Sort by score and deduplicate to canonical records
     matches.sort(key=lambda x: x[1], reverse=True)
-    matched_entities = [m[0] for m in matches[:limit]]
+    seen_ids = set()
+    seen_keys = set()
+    deduped_entities = []
+    for m in matches:
+        ent = m[0]
+        canonical = ent.canonical_entity or ent
+        if not canonical.is_active and canonical.canonical_entity:
+            canonical = canonical.canonical_entity
+        if canonical.id in seen_ids:
+            continue
+        c_key = (canonical.normalized_name or normalize_entity_name(canonical.name), canonical.sport, canonical.type)
+        if c_key in seen_keys:
+            continue
+        seen_ids.add(canonical.id)
+        seen_keys.add(c_key)
+        deduped_entities.append(canonical)
+        if len(deduped_entities) >= limit:
+            break
+    matched_entities = deduped_entities
     
     if not matched_entities and len(query) >= 3:
         try:

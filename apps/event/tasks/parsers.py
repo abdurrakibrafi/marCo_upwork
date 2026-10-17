@@ -293,17 +293,17 @@ def _generic_sport_rows(data: dict, sport_name: str) -> list:
 
 def _nba_rows(data: dict) -> list:
     """Extract NBA basketball match fixture rows from StatPal response."""
-    return _generic_sport_rows(data, "nba")
+    return _generic_sport_rows(data, "basketball")
 
 
 def _nfl_rows(data: dict) -> list:
     """Extract American football (NFL) match fixture rows from StatPal response."""
-    return _generic_sport_rows(data, "football")
+    return _generic_sport_rows(data, "american_football")
 
 
 def _hockey_rows(data: dict) -> list:
     """Extract ice hockey match fixture rows from StatPal response."""
-    return _generic_sport_rows(data, "hockey")
+    return _generic_sport_rows(data, "ice_hockey")
 
 
 def _tennis_rows(data: dict) -> list:

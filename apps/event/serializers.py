@@ -241,11 +241,29 @@ class EventSerializer(serializers.ModelSerializer):
         """
         data = super().to_representation(instance)
         from django.utils import timezone
+        meta = instance.metadata if isinstance(instance.metadata, dict) else {}
+
         if instance.status == 'upcoming' and instance.start_time and instance.start_time < timezone.now():
             data['status'] = 'completed'
             status_det = str(data.get('status_detail') or '')
             if status_det in ('Not Started', '') or ':' in status_det:
                 data['status_detail'] = 'FT'
+
+        # Fallback to metadata scores if model fields are null
+        if data.get('home_score') is None and meta:
+            h_score = meta.get('intHomeScore') or meta.get('home_score') or (meta.get('home', {}).get('totalscore') if isinstance(meta.get('home'), dict) else None)
+            if h_score is not None:
+                try:
+                    data['home_score'] = int(str(h_score).split('/')[0])
+                except (ValueError, TypeError):
+                    pass
+        if data.get('away_score') is None and meta:
+            a_score = meta.get('intAwayScore') or meta.get('away_score') or (meta.get('away', {}).get('totalscore') if isinstance(meta.get('away'), dict) else None)
+            if a_score is not None:
+                try:
+                    data['away_score'] = int(str(a_score).split('/')[0])
+                except (ValueError, TypeError):
+                    pass
 
         # Timezone conversion for local_date, local_time, and status_detail
         user_tz = self.context.get('timezone')
@@ -271,6 +289,9 @@ class EventSerializer(serializers.ModelSerializer):
             raw_data=meta,
             game=instance
         )
+
+        if data.get('status') == 'completed' and (not data.get('status_detail') or data.get('status_detail') in ('NS', 'Not Started', '')):
+            data['status_detail'] = 'FT'
 
         # Highlight followed Nest entity logo and ID for calendar entries (agent_task.md Section 14)
         from apps.entity.serializers import find_entity_logo, make_logo_url_absolute
