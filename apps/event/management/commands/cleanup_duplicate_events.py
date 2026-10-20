@@ -124,30 +124,33 @@ class Command(BaseCommand):
                 else:
                     primary, secondary = e1, e2
 
+                primary_id = primary.id
                 secondary_id = secondary.id
+                was_e1_deleted = (secondary.id == e1.id)
+
                 if not dry_run:
                     with transaction.atomic():
                         # Re-point child entities to primary before deleting secondary
-                        EventTimeline.objects.filter(event=secondary).update(event=primary)
-                        EventHighlight.objects.filter(event=secondary).update(event=primary)
+                        EventTimeline.objects.filter(event_id=secondary_id).update(event_id=primary_id)
+                        EventHighlight.objects.filter(event_id=secondary_id).update(event_id=primary_id)
 
-                        for lineup in EventLineup.objects.filter(event=secondary):
-                            if not EventLineup.objects.filter(event=primary, player=lineup.player).exists():
-                                lineup.event = primary
+                        for lineup in EventLineup.objects.filter(event_id=secondary_id):
+                            if not EventLineup.objects.filter(event_id=primary_id, player_id=lineup.player_id).exists():
+                                lineup.event_id = primary_id
                                 lineup.save(update_fields=['event'])
                             else:
                                 lineup.delete()
 
-                        for stat in EventStatistics.objects.filter(event=secondary):
-                            if not EventStatistics.objects.filter(event=primary, team=stat.team).exists():
-                                stat.event = primary
+                        for stat in EventStatistics.objects.filter(event_id=secondary_id):
+                            if not EventStatistics.objects.filter(event_id=primary_id, team_id=stat.team_id).exists():
+                                stat.event_id = primary_id
                                 stat.save(update_fields=['event'])
                             else:
                                 stat.delete()
 
-                        for ps in EventPlayerStats.objects.filter(event=secondary):
-                            if not EventPlayerStats.objects.filter(event=primary, player=ps.player).exists():
-                                ps.event = primary
+                        for ps in EventPlayerStats.objects.filter(event_id=secondary_id):
+                            if not EventPlayerStats.objects.filter(event_id=primary_id, player_id=ps.player_id).exists():
+                                ps.event_id = primary_id
                                 ps.save(update_fields=['event'])
                             else:
                                 ps.delete()
@@ -164,15 +167,18 @@ class Command(BaseCommand):
                         if updates:
                             primary.save(update_fields=updates)
 
-                        secondary.delete()
+                        Event.objects.filter(id=secondary_id).delete()
 
                 deleted_ids.add(secondary_id)
                 duplicates_merged += 1
                 self.stdout.write(
                     f"Merged duplicate: removed Event #{secondary_id} ({secondary.api_source}) "
-                    f"into primary Event #{primary.id} ({primary.api_source}) - "
+                    f"into primary Event #{primary_id} ({primary.api_source}) - "
                     f"{primary.home_entity.name} vs {primary.away_entity.name} ({primary.start_time})"
                 )
+
+                if was_e1_deleted:
+                    break
 
         status_msg = "DRY-RUN COMPLETE" if dry_run else "SUCCESS"
         self.stdout.write(self.style.SUCCESS(
