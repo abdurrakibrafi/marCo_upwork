@@ -247,3 +247,94 @@ class FeedTestCase(TestCase):
         res_del_404 = self.client.delete(f"/api/feed/likes/{self.feed_item.id}/")
         self.assertEqual(res_del_404.status_code, 404)
 
+
+from unittest.mock import patch
+
+class PollingEntityLinkingTestCase(TestCase):
+    def setUp(self):
+        self.canonical_team = Entity.objects.create(name="Arsenal", sport="soccer", type="team")
+        self.duplicate_team = Entity.objects.create(
+            name="Arsenal FC", sport="soccer", type="team", canonical_entity=self.canonical_team
+        )
+        self.unrelated_team = Entity.objects.create(name="Los Angeles Lakers", sport="basketball", type="team")
+        self.mufc_team = Entity.objects.create(name="Manchester United", sport="soccer", type="team")
+        self.tottenham = Entity.objects.create(name="Tottenham Hotspur", sport="soccer", type="team")
+
+        self.source = Source.objects.create(
+            name="Multi Sports Source", domain="multisports.com", rss_url="https://multisports.com/rss"
+        )
+        self.source.entities.add(self.canonical_team, self.unrelated_team, self.mufc_team, self.tottenham)
+
+    @patch("apps.feed.tasks.polling.rss_polling_service.poll_feed")
+    def test_unmatched_article_not_linked(self, mock_poll):
+        mock_poll.return_value = {
+            "success": True,
+            "entries": [{
+                "url": "https://multisports.com/golf-tourney-123",
+                "title": "Golf Tournament Update in Miami",
+                "summary": "Fading light forces suspension of golf championship.",
+                "published_at": timezone.now(),
+            }]
+        }
+        from apps.feed.tasks.polling import poll_single_source
+        poll_single_source(self.source.id)
+
+        # Unmatched article is skipped and NOT linked to candidate entities
+        self.assertFalse(FeedItem.objects.filter(url="https://multisports.com/golf-tourney-123").exists())
+
+    @patch("apps.feed.tasks.polling.rss_polling_service.poll_feed")
+    def test_matched_article_links_only_matched_and_canonical_duplicates(self, mock_poll):
+        mock_poll.return_value = {
+            "success": True,
+            "entries": [{
+                "url": "https://multisports.com/arsenal-match-456",
+                "title": "Arsenal secures dramatic victory in London derby",
+                "summary": "Mikel Arteta praises the team performance.",
+                "published_at": timezone.now(),
+            }]
+        }
+        from apps.feed.tasks.polling import poll_single_source
+        poll_single_source(self.source.id)
+
+        item = FeedItem.objects.filter(url="https://multisports.com/arsenal-match-456").first()
+        self.assertIsNotNone(item)
+        linked_ids = set(item.entities.values_list("id", flat=True))
+
+        # Must link matched team and its canonical duplicate
+        self.assertIn(self.canonical_team.id, linked_ids)
+        self.assertIn(self.duplicate_team.id, linked_ids)
+
+        # Must NOT link unrelated candidates from the source bundle
+        self.assertNotIn(self.unrelated_team.id, linked_ids)
+        self.assertNotIn(self.mufc_team.id, linked_ids)
+
+    @patch("apps.feed.tasks.polling.rss_polling_service.poll_feed")
+    def test_nickname_handling_in_polling(self, mock_poll):
+        # 1. Nickname in aliases_map ('Man Utd' for 'Manchester United') -> MATCHED
+        mock_poll.return_value = {
+            "success": True,
+            "entries": [{
+                "url": "https://multisports.com/mufc-789",
+                "title": "Man Utd appoints new assistant coach",
+                "summary": "Premier League football update.",
+                "published_at": timezone.now(),
+            }, {
+                "url": "https://multisports.com/spurs-101",
+                "title": "Spurs secure top four spot",
+                "summary": "Premier League football update.",
+                "published_at": timezone.now(),
+            }]
+        }
+        from apps.feed.tasks.polling import poll_single_source
+        poll_single_source(self.source.id)
+
+        # Man Utd matched via alias map
+        mufc_item = FeedItem.objects.filter(url="https://multisports.com/mufc-789").first()
+        self.assertIsNotNone(mufc_item)
+        self.assertIn(self.mufc_team.id, set(mufc_item.entities.values_list("id", flat=True)))
+
+        # Spurs is unmapped nickname (not in aliases_map), so it is safely skipped without wrong candidate dump
+        spurs_item = FeedItem.objects.filter(url="https://multisports.com/spurs-101").first()
+        self.assertIsNone(spurs_item)
+
+

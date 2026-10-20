@@ -160,9 +160,12 @@ def get_league_fixtures(request, league_id):
         league__external_id=canonical.external_id,
     ).select_related('home_entity', 'away_entity').order_by('-start_time')[:50]
 
+    from apps.event.views import _deduplicate_events
+    events_list = _deduplicate_events(list(events))
+
     return Response({
         'league':   EntitySerializer(league_entity, context={'request': request}).data,
-        'fixtures': EvSerializer(events, many=True).data,
+        'fixtures': EvSerializer(events_list, many=True).data,
     })
 
 

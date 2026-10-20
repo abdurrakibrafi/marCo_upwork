@@ -939,8 +939,11 @@ def get_team_fixtures(request, team_id):
         'home_entity', 'away_entity', 'league'
     ).order_by('-start_time')[:50]
 
+    from apps.event.views import _deduplicate_events
+    events_list = _deduplicate_events(list(events))
+
     return Response({
         'team': EntitySerializer(team_entity, context={'request': request}).data,
-        'fixtures_count': events.count(),
-        'fixtures': EvSerializer(events, many=True).data,
+        'fixtures_count': len(events_list),
+        'fixtures': EvSerializer(events_list, many=True).data,
     })

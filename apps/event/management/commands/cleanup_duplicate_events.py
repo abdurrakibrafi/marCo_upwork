@@ -1,91 +1,180 @@
+import logging
+from datetime import timedelta
 from django.core.management.base import BaseCommand
-from django.db.models import Count
+from django.db import transaction
+from django.db.models import Q
 from apps.event.models import (
-    Event, EventTimeline, EventLineup,
-    EventStatistics, EventPlayerStats, EventHighlight,
+    Event, EventTimeline, EventLineup, EventStatistics, EventPlayerStats, EventHighlight
 )
+from apps.event.views import _teams_name_match
+
+logger = logging.getLogger(__name__)
 
 
 class Command(BaseCommand):
-    help = "Safely merge and delete duplicate Event records in database."
+    help = "Find and merge duplicate sporting events in the database (e.g. from StatPal vs TheSportsDB)."
 
     def add_arguments(self, parser):
         parser.add_argument(
+            '--sport',
+            type=str,
+            default='all',
+            help="Filter by sport (e.g. 'basketball', 'nba', 'soccer', 'all'). Default is 'all'."
+        )
+        parser.add_argument(
             '--dry-run',
             action='store_true',
-            help='Simulate cleanup without deleting records.',
+            help="Perform a dry run without actually deleting duplicate records."
         )
 
     def handle(self, *args, **options):
+        sport_filter = options.get('sport', 'all').lower()
         dry_run = options.get('dry_run', False)
-        self.stdout.write(self.style.NOTICE(f"Starting duplicate event cleanup (dry_run={dry_run})..."))
 
-        # Find duplicate event groups based on home_entity, away_entity and date
-        dup_groups = (
-            Event.objects.filter(home_entity__isnull=False, away_entity__isnull=False)
-            .values('home_entity_id', 'away_entity_id', 'start_time__date')
-            .annotate(count=Count('id'))
-            .filter(count__gt=1)
-        )
+        qs = Event.objects.exclude(home_entity__isnull=True).exclude(away_entity__isnull=True).select_related(
+            'home_entity', 'away_entity', 'league'
+        ).order_by('start_time')
 
-        total_groups = dup_groups.count()
-        self.stdout.write(f"Found {total_groups} duplicate match groups.")
+        if sport_filter != 'all':
+            if sport_filter in ('basketball', 'nba'):
+                qs = qs.filter(sport__in=['basketball', 'nba'])
+            elif sport_filter in ('american_football', 'football', 'nfl'):
+                qs = qs.filter(sport__in=['american_football', 'football', 'nfl'])
+            elif sport_filter in ('ice_hockey', 'hockey', 'nhl'):
+                qs = qs.filter(sport__in=['ice_hockey', 'hockey', 'nhl'])
+            elif sport_filter in ('baseball', 'mlb'):
+                qs = qs.filter(sport__in=['baseball', 'mlb'])
+            else:
+                qs = qs.filter(sport=sport_filter)
 
-        deleted_count = 0
-        merged_count = 0
+        self.stdout.write(f"Scanning events for duplicate removal (sport={sport_filter}, dry_run={dry_run})...")
 
-        for group in dup_groups:
-            h_id = group['home_entity_id']
-            a_id = group['away_entity_id']
-            d = group['start_time__date']
+        events = list(qs)
+        self.stdout.write(f"Loaded {len(events)} events to inspect.")
 
-            events = list(
-                Event.objects.filter(
-                    home_entity_id=h_id,
-                    away_entity_id=a_id,
-                    start_time__date=d,
-                ).order_by('-updated_at')
-            )
+        deleted_ids = set()
+        duplicates_merged = 0
 
-            if len(events) <= 1:
+        for i in range(len(events)):
+            e1 = events[i]
+            if e1.id in deleted_ids:
                 continue
 
-            # Pick the best keeper event
-            keeper = None
-            for ev in events:
-                has_score = ev.home_score is not None or ev.away_score is not None
-                is_active = ev.status in ('live', 'completed')
-                is_statpal = ev.api_source == 'statpal'
-
-                if keeper is None:
-                    keeper = ev
+            for j in range(i + 1, min(i + 60, len(events))):
+                e2 = events[j]
+                if e2.id in deleted_ids:
                     continue
 
-                keeper_score = keeper.home_score is not None or keeper.away_score is not None
-                keeper_active = keeper.status in ('live', 'completed')
+                if not e1.start_time or not e2.start_time:
+                    continue
 
-                if (not keeper_score and has_score) or \
-                   (not keeper_active and is_active) or \
-                   (keeper.api_source != 'statpal' and is_statpal and not keeper_score):
-                    keeper = ev
+                time_diff = (e2.start_time - e1.start_time).total_seconds()
+                if time_diff > 18 * 3600:
+                    break
 
-            duplicates_to_delete = [ev for ev in events if ev.id != keeper.id]
+                # Sport check
+                sport_matched = (
+                    e1.sport == e2.sport
+                    or {e1.sport, e2.sport}.issubset({'basketball', 'nba'})
+                    or {e1.sport, e2.sport}.issubset({'american_football', 'football', 'nfl'})
+                    or {e1.sport, e2.sport}.issubset({'ice_hockey', 'hockey', 'nhl'})
+                    or {e1.sport, e2.sport}.issubset({'baseball', 'mlb'})
+                )
+                if not sport_matched:
+                    continue
 
-            if not dry_run:
-                for dup in duplicates_to_delete:
-                    try:
-                        dup.delete()
-                        deleted_count += 1
-                    except Exception as e:
-                        self.stderr.write(f"Error deleting event {dup.id}: {e}")
-                merged_count += 1
-            else:
-                deleted_count += len(duplicates_to_delete)
-                merged_count += 1
+                # Team check
+                h1_id = e1.home_entity.canonical_entity_id or e1.home_entity_id
+                a1_id = e1.away_entity.canonical_entity_id or e1.away_entity_id
+                h2_id = e2.home_entity.canonical_entity_id or e2.home_entity_id
+                a2_id = e2.away_entity.canonical_entity_id or e2.away_entity_id
 
-        action_word = "Would delete" if dry_run else "Successfully deleted"
-        self.stdout.write(
-            self.style.SUCCESS(
-                f"Completed! {action_word} {deleted_count} duplicate events across {merged_count} match groups."
-            )
-        )
+                sig1 = tuple(sorted([str(h1_id), str(a1_id)]))
+                sig2 = tuple(sorted([str(h2_id), str(a2_id)]))
+
+                teams_matched = False
+                if sig1 == sig2:
+                    teams_matched = True
+                else:
+                    h1_name = e1.home_entity.name
+                    a1_name = e1.away_entity.name
+                    h2_name = e2.home_entity.name
+                    a2_name = e2.away_entity.name
+                    if (_teams_name_match(h1_name, h2_name) and _teams_name_match(a1_name, a2_name)) or \
+                       (_teams_name_match(h1_name, a2_name) and _teams_name_match(a1_name, h2_name)):
+                        teams_matched = True
+
+                if not teams_matched:
+                    continue
+
+                # Decide primary and secondary
+                # Prefer statpal over thesportsdb
+                # Prefer completed/live or score-rich record
+                e1_score = e1.home_score is not None or e1.away_score is not None
+                e2_score = e2.home_score is not None or e2.away_score is not None
+
+                if e2.api_source == 'statpal' and e1.api_source != 'statpal':
+                    primary, secondary = e2, e1
+                elif e1.api_source == 'statpal' and e2.api_source != 'statpal':
+                    primary, secondary = e1, e2
+                elif not e1_score and e2_score:
+                    primary, secondary = e2, e1
+                elif e1.status == 'upcoming' and e2.status in ('live', 'completed'):
+                    primary, secondary = e2, e1
+                else:
+                    primary, secondary = e1, e2
+
+                secondary_id = secondary.id
+                if not dry_run:
+                    with transaction.atomic():
+                        # Re-point child entities to primary before deleting secondary
+                        EventTimeline.objects.filter(event=secondary).update(event=primary)
+                        EventHighlight.objects.filter(event=secondary).update(event=primary)
+
+                        for lineup in EventLineup.objects.filter(event=secondary):
+                            if not EventLineup.objects.filter(event=primary, player=lineup.player).exists():
+                                lineup.event = primary
+                                lineup.save(update_fields=['event'])
+                            else:
+                                lineup.delete()
+
+                        for stat in EventStatistics.objects.filter(event=secondary):
+                            if not EventStatistics.objects.filter(event=primary, team=stat.team).exists():
+                                stat.event = primary
+                                stat.save(update_fields=['event'])
+                            else:
+                                stat.delete()
+
+                        for ps in EventPlayerStats.objects.filter(event=secondary):
+                            if not EventPlayerStats.objects.filter(event=primary, player=ps.player).exists():
+                                ps.event = primary
+                                ps.save(update_fields=['event'])
+                            else:
+                                ps.delete()
+
+                        # Copy score or venue if primary was missing it
+                        updates = []
+                        if primary.home_score is None and secondary.home_score is not None:
+                            primary.home_score = secondary.home_score
+                            primary.away_score = secondary.away_score
+                            updates.extend(['home_score', 'away_score'])
+                        if not primary.venue_name and secondary.venue_name:
+                            primary.venue_name = secondary.venue_name
+                            updates.append('venue_name')
+                        if updates:
+                            primary.save(update_fields=updates)
+
+                        secondary.delete()
+
+                deleted_ids.add(secondary_id)
+                duplicates_merged += 1
+                self.stdout.write(
+                    f"Merged duplicate: removed Event #{secondary_id} ({secondary.api_source}) "
+                    f"into primary Event #{primary.id} ({primary.api_source}) - "
+                    f"{primary.home_entity.name} vs {primary.away_entity.name} ({primary.start_time})"
+                )
+
+        status_msg = "DRY-RUN COMPLETE" if dry_run else "SUCCESS"
+        self.stdout.write(self.style.SUCCESS(
+            f"\n{status_msg}: Merged and cleaned up {duplicates_merged} duplicate events."
+        ))

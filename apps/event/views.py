@@ -150,25 +150,34 @@ def _deduplicate_events(events_list: list) -> list:
             elif (h_name and eh_name and _teams_name_match(h_name, eh_name)) and (not a_name and not ea_name):
                 teams_matched = True
 
-            if teams_matched and event.sport == existing.sport:
-                # Deduplicate ONLY when start time is exactly the same or external IDs match
+            sport_matched = (
+                event.sport == existing.sport
+                or {event.sport, existing.sport}.issubset({'basketball', 'nba'})
+                or {event.sport, existing.sport}.issubset({'american_football', 'football', 'nfl'})
+                or {event.sport, existing.sport}.issubset({'ice_hockey', 'hockey', 'nhl'})
+                or {event.sport, existing.sport}.issubset({'baseball', 'mlb'})
+            )
+
+            if teams_matched and sport_matched:
                 if st and existing.start_time:
-                    if st == existing.start_time or (event.external_id and event.external_id == existing.external_id):
+                    time_diff = abs((st - existing.start_time).total_seconds())
+                    # Deduplicate when external IDs match or match is within 18 hours (accounts for timezone/TBD time)
+                    if time_diff <= 18 * 3600 or (event.external_id and event.external_id == existing.external_id):
                         duplicate_idx = idx
                         break
-                elif not st and not existing.start_time:
+                elif not st or not existing.start_time:
                     duplicate_idx = idx
                     break
 
         if duplicate_idx is not None:
             existing = unique_events[duplicate_idx]
-            # Replace if new event has richer information (scores, live status, or preferred provider)
+            # Replace if new event has richer information (scores, live status, or preferred provider 'statpal')
             score_existing = (existing.home_score is not None or existing.away_score is not None)
             score_new = (event.home_score is not None or event.away_score is not None)
 
             if (not score_existing and score_new) or \
                (existing.status == 'upcoming' and event.status in ('live', 'completed')) or \
-               (event.api_source == 'statpal' and existing.api_source != 'statpal' and not score_existing):
+               (event.api_source == 'statpal' and existing.api_source != 'statpal'):
                 unique_events[duplicate_idx] = event
         else:
             unique_events.append(event)
@@ -774,11 +783,18 @@ def get_entity_calendar(request, entity_id):
         except Entity.DoesNotExist:
             related_ids = [entity_id]
 
+        entity_filter = Q(home_entity_id__in=related_ids) | Q(away_entity_id__in=related_ids)
+        try:
+            if ent.type == 'league':
+                entity_filter |= Q(league_id__in=related_ids)
+        except Exception:
+            pass
+
         events_qs = Event.objects.filter(
             start_time__gte=start_dt,
             start_time__lte=end_dt,
         ).filter(
-            Q(home_entity_id__in=related_ids) | Q(away_entity_id__in=related_ids)
+            entity_filter
         ).select_related(
             'home_entity', 'away_entity', 'league'
         ).order_by('start_time')

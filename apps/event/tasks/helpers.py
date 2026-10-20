@@ -1,4 +1,6 @@
 import logging
+from datetime import timedelta
+from django.db.models import Q
 from django.core.cache import cache
 from apps.entity.models import Entity, Team, League
 from apps.entity.utils.matcher import get_or_create_precise_entity, normalize_statpal_logo_url, find_team_logo_by_name
@@ -187,25 +189,84 @@ def _save_event(row: dict, api_source: str = "statpal") -> Event | None:
                     elif i_name in ('country', 'nation') and not venue_country_val:
                         venue_country_val = i_val
 
-    event, _ = Event.objects.update_or_create(
-        api_source=api_source,
-        external_id=row["external_id"],
-        defaults={
-            "sport":         sport,
-            "home_entity":   home,
-            "away_entity":   away,
-            "league":        league,
-            "status":        status,
-            "status_detail": row["status_raw"],
-            "home_score":    home_score_val,
-            "away_score":    away_score_val,
-            "venue_name":    venue_val,
-            "venue_city":    venue_city_val,
-            "venue_country": venue_country_val,
-            "start_time":    start_time,
-            "metadata":      metadata_val,
-        },
-    )
+    # Cross-provider matching: find if match already exists under another provider (e.g. TheSportsDB vs StatPal)
+    if not existing_event and start_time and home:
+        home_ids = {home.id}
+        if home.canonical_entity_id:
+            home_ids.add(home.canonical_entity_id)
+        away_ids = set()
+        if away:
+            away_ids.add(away.id)
+            if away.canonical_entity_id:
+                away_ids.add(away.canonical_entity_id)
+
+        sports_filter = [sport]
+        if sport in ('basketball', 'nba'):
+            sports_filter = ['basketball', 'nba']
+        elif sport in ('american_football', 'football', 'nfl'):
+            sports_filter = ['american_football', 'football', 'nfl']
+        elif sport in ('ice_hockey', 'hockey', 'nhl'):
+            sports_filter = ['ice_hockey', 'hockey', 'nhl']
+        elif sport in ('baseball', 'mlb'):
+            sports_filter = ['baseball', 'mlb']
+
+        time_window_start = start_time - timedelta(hours=18)
+        time_window_end = start_time + timedelta(hours=18)
+
+        candidate_qs = Event.objects.filter(
+            start_time__range=(time_window_start, time_window_end),
+            sport__in=sports_filter,
+        )
+
+        if away_ids:
+            candidate = candidate_qs.filter(
+                (Q(home_entity_id__in=home_ids) & Q(away_entity_id__in=away_ids)) |
+                (Q(home_entity_id__in=away_ids) & Q(away_entity_id__in=home_ids))
+            ).first()
+        else:
+            candidate = candidate_qs.filter(home_entity_id__in=home_ids).first()
+
+        if candidate:
+            existing_event = candidate
+
+    defaults_dict = {
+        "sport":         sport,
+        "home_entity":   home,
+        "away_entity":   away,
+        "league":        league,
+        "status":        status,
+        "status_detail": row["status_raw"],
+        "home_score":    home_score_val,
+        "away_score":    away_score_val,
+        "venue_name":    venue_val,
+        "venue_city":    venue_city_val,
+        "venue_country": venue_country_val,
+        "start_time":    start_time,
+        "metadata":      metadata_val,
+    }
+
+    if existing_event:
+        # If updating with StatPal, upgrade the existing record
+        if api_source == 'statpal' or existing_event.api_source == api_source:
+            if existing_event.api_source != api_source or existing_event.external_id != row["external_id"]:
+                # Remove any accidental conflict with target external_id
+                Event.objects.filter(api_source=api_source, external_id=row["external_id"]).exclude(id=existing_event.id).delete()
+                existing_event.api_source = api_source
+                existing_event.external_id = row["external_id"]
+            for field, val in defaults_dict.items():
+                if val is not None or field in ("home_score", "away_score"):
+                    setattr(existing_event, field, val)
+            existing_event.save()
+            event = existing_event
+        else:
+            # Secondary provider (e.g. TSDB) should not overwrite authoritative StatPal data
+            event = existing_event
+    else:
+        event, _ = Event.objects.update_or_create(
+            api_source=api_source,
+            external_id=row["external_id"],
+            defaults=defaults_dict,
+        )
     if status == "completed":
         try:
             _populate_statpal_event_details(event)

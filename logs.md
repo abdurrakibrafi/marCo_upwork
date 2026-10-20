@@ -1,41 +1,110 @@
-Total Basketball/NBA teams: 1208
-Teams still with broken cdn.nba.com: 25
-  ✓ Indiana Pacers -> https://r2.thesportsdb.com/images/media/team/badge/y3lutb1778226511.png
-  ✓ Indianapolis Jets -> https://r2.thesportsdb.com/images/media/team/badge/zw4gu81612194315.png
-  ✓ Indianapolis Olympians -> https://r2.thesportsdb.com/images/media/team/badge/yyc3au1574971439.png
-  ✓ LA Clippers -> https://r2.thesportsdb.com/images/media/team/badge/z7pr741720793504.png
-  ✓ Memphis Grizzlies -> https://r2.thesportsdb.com/images/media/team/badge/v44qp21778197640.png
-  ✓ Miami Heat -> https://r2.thesportsdb.com/images/media/team/badge/b9tye31778226616.png
-  ✓ Milwaukee Bucks -> https://r2.thesportsdb.com/images/media/team/badge/olhug01621594702.png
-  ✓ Minnesota Timberwolves -> https://r2.thesportsdb.com/images/media/team/badge/epenxg1781034811.png
-  ✓ New Orleans Pelicans -> https://r2.thesportsdb.com/images/media/team/badge/xoxjsr1778226698.png
-  ✓ Oklahoma City Thunder -> https://r2.thesportsdb.com/images/media/team/badge/bkhj5p1778199006.png
-  ✓ Orlando Magic -> https://r2.thesportsdb.com/images/media/team/badge/j0mpu81778198371.png
-  ✓ Philadelphia 76ers -> https://r2.thesportsdb.com/images/media/team/badge/j6rlbi1778226857.png
-  ✓ Phoenix Suns -> https://r2.thesportsdb.com/images/media/team/badge/xfyknc1778198971.png
-  ✓ Pittsburgh Ironmen -> https://r2.thesportsdb.com/images/media/team/badge/udeg361573382273.png
-  ✓ Portland Trail Blazers -> https://r2.thesportsdb.com/images/media/team/badge/umehtv1778226952.png
-  ✓ Providence Steamrollers -> https://r2.thesportsdb.com/images/media/team/badge/8xpwk71574971505.png
-  ✓ Sacramento Kings -> https://r2.thesportsdb.com/images/media/team/badge/k2buwo1778227426.png
-  ✓ San Antonio Spurs -> https://r2.thesportsdb.com/images/media/team/badge/yc5qfx1781459158.png
-  ✗ Not found: Sheboygan Redskins
-  ✓ St. Louis Bombers -> https://r2.thesportsdb.com/images/media/team/badge/b3bbed1574971609.png
-  ✓ Toronto Huskies -> https://r2.thesportsdb.com/images/media/team/badge/fxoafk1574887613.png
-  ✓ Utah Jazz -> https://r2.thesportsdb.com/images/media/team/badge/trct8w1778198868.png
-  ✓ Washington Capitols -> https://r2.thesportsdb.com/images/media/team/badge/iedmul1557002713.png
-  ✓ Washington Wizards -> https://r2.thesportsdb.com/images/media/team/badge/dxac7a1778227278.png
-  ✓ Waterloo Hawks -> https://r2.thesportsdb.com/images/media/team/badge/7d4q2d1574887510.png
-Done! Updated: 24
+root@mysportsnest-backend:/var/www/mysportsnest# git pull origin main
+From github.com:abdurrakibrafi/marCo_upwork
+ * branch            main       -> FETCH_HEAD
+Already up to date.
+root@mysportsnest-backend:/var/www/mysportsnest# docker restart mysportsnest_backend
+mysportsnest_backend
+root@mysportsnest-backend:/var/www/mysportsnest# docker exec -it mysportsnest_backend python -c "
+import requests
+r = requests.get('http://127.0.0.1:8000/api/entities/league/131837/standings/')
+print('HTTP Status:', r.status_code)
+data = r.json()
+print('Source:', data.get('source'))
+print('Structure:', data.get('structure'))
+print('Conferences:', list(data.get('conferences', {}).keys()))
+if data.get('standings'):
+    s0 = data['standings'][0]
+    print('Sample Team:', s0.get('team_name'), '| Conference:', s0.get('conference'), '| PCT:', s0.get('win_pct'))
+"
+/usr/local/lib/python3.13/site-packages/requests/__init__.py:113: RequestsDependencyWarning: urllib3 (2.6.3) or chardet (7.6.0)/charset_normalizer (3.4.4) doesn't match a supported version!
+  warnings.warn(
+Traceback (most recent call last):
+  File "/usr/local/lib/python3.13/site-packages/urllib3/connection.py", line 204, in _new_conn
+    sock = connection.create_connection(
+        (self._dns_host, self.port),
+    ...<2 lines>...
+        socket_options=self.socket_options,
+    )
+  File "/usr/local/lib/python3.13/site-packages/urllib3/util/connection.py", line 85, in create_connection
+    raise err
+  File "/usr/local/lib/python3.13/site-packages/urllib3/util/connection.py", line 73, in create_connection
+    sock.connect(sa)
+    ~~~~~~~~~~~~^^^^
+ConnectionRefusedError: [Errno 111] Connection refused
 
-=== Sample 10 NBA Teams Logos ===
-New York Knicks           | https://r2.thesportsdb.com/images/media/team/badge/4k8obt1778226764.png
-Toronto Raptors           | https://r2.thesportsdb.com/images/media/team/badge/lct96a1778227205.png
-Argentina Basketball      | https://r2.thesportsdb.com/images/media/team/badge/nyx3eb1558777334.png
-Los Angeles Lakers        | https://r2.thesportsdb.com/images/media/team/badge/d8uoxw1714254511.png
-Toronto Tempo             | https://r2.thesportsdb.com/images/media/team/badge/hoqyza1778258347.png
-United States Basketball  | https://r2.thesportsdb.com/images/media/team/badge/28hwpj1785078834.png
-AB Castelló               | https://r2.thesportsdb.com/images/media/team/badge/z8b97f1765738703.png
-Abejas de León            | https://r2.thesportsdb.com/images/media/team/badge/tv3kll1782889557.png
-Abilene Christian         | https://r2.thesportsdb.com/images/media/team/badge/sp2y721564356285.png
-Academic Plovdiv          | https://r2.thesportsdb.com/images/media/team/badge/gtz5d91759324503.png
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/usr/local/lib/python3.13/site-packages/urllib3/connectionpool.py", line 787, in urlopen
+    response = self._make_request(
+        conn,
+    ...<10 lines>...
+        **response_kw,
+    )
+  File "/usr/local/lib/python3.13/site-packages/urllib3/connectionpool.py", line 493, in _make_request
+    conn.request(
+    ~~~~~~~~~~~~^
+        method,
+        ^^^^^^^
+    ...<6 lines>...
+        enforce_content_length=enforce_content_length,
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "/usr/local/lib/python3.13/site-packages/urllib3/connection.py", line 500, in request
+    self.endheaders()
+    ~~~~~~~~~~~~~~~^^
+  File "/usr/local/lib/python3.13/http/client.py", line 1353, in endheaders
+    self._send_output(message_body, encode_chunked=encode_chunked)
+    ~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.13/http/client.py", line 1113, in _send_output
+    self.send(msg)
+    ~~~~~~~~~^^^^^
+  File "/usr/local/lib/python3.13/http/client.py", line 1057, in send
+    self.connect()
+    ~~~~~~~~~~~~^^
+  File "/usr/local/lib/python3.13/site-packages/urllib3/connection.py", line 331, in connect
+    self.sock = self._new_conn()
+                ~~~~~~~~~~~~~~^^
+  File "/usr/local/lib/python3.13/site-packages/urllib3/connection.py", line 219, in _new_conn
+    raise NewConnectionError(
+        self, f"Failed to establish a new connection: {e}"
+    ) from e
+urllib3.exceptions.NewConnectionError: HTTPConnection(host='127.0.0.1', port=8000): Failed to establish a new connection: [Errno 111] Connection refused
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/usr/local/lib/python3.13/site-packages/requests/adapters.py", line 644, in send
+    resp = conn.urlopen(
+        method=request.method,
+    ...<9 lines>...
+        chunked=chunked,
+    )
+  File "/usr/local/lib/python3.13/site-packages/urllib3/connectionpool.py", line 841, in urlopen
+    retries = retries.increment(
+        method, url, error=new_e, _pool=self, _stacktrace=sys.exc_info()[2]
+    )
+  File "/usr/local/lib/python3.13/site-packages/urllib3/util/retry.py", line 535, in increment
+    raise MaxRetryError(_pool, url, reason) from reason  # type: ignore[arg-type]
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+urllib3.exceptions.MaxRetryError: HTTPConnectionPool(host='127.0.0.1', port=8000): Max retries exceeded with url: /api/entities/league/131837/standings/ (Caused by NewConnectionError("HTTPConnection(host='127.0.0.1', port=8000): Failed to establish a new connection: [Errno 111] Connection refused"))
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "<string>", line 3, in <module>
+    r = requests.get('http://127.0.0.1:8000/api/entities/league/131837/standings/')
+  File "/usr/local/lib/python3.13/site-packages/requests/api.py", line 73, in get
+    return request("get", url, params=params, **kwargs)
+  File "/usr/local/lib/python3.13/site-packages/requests/api.py", line 59, in request
+    return session.request(method=method, url=url, **kwargs)
+           ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.13/site-packages/requests/sessions.py", line 589, in request
+    resp = self.send(prep, **send_kwargs)
+  File "/usr/local/lib/python3.13/site-packages/requests/sessions.py", line 703, in send
+    r = adapter.send(request, **kwargs)
+  File "/usr/local/lib/python3.13/site-packages/requests/adapters.py", line 677, in send
+    raise ConnectionError(e, request=request)
+requests.exceptions.ConnectionError: HTTPConnectionPool(host='127.0.0.1', port=8000): Max retries exceeded with url: /api/entities/league/131837/standings/ (Caused by NewConnectionError("HTTPConnection(host='127.0.0.1', port=8000): Failed to establish a new connection: [Errno 111] Connection refused"))
 root@mysportsnest-backend:/var/www/mysportsnest#

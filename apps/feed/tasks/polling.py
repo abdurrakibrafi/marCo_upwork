@@ -201,18 +201,7 @@ def poll_single_source(self, source_id: int):
         matched_entities = [e for e in candidate_entities if _entity_matches_text(e, text)]
 
         if not matched_entities:
-            if not is_global_source and candidate_entities:
-                from apps.entity.utils.matcher import is_national_team
-                valid_candidates = [
-                    e for e in candidate_entities
-                    if not is_national_team(e.name)
-                ]
-                if valid_candidates:
-                    matched_entities = valid_candidates
-                else:
-                    continue
-            else:
-                continue
+            continue
 
         url = resolve_real_article_url(raw_url)
         url_hash = hashlib.md5(url.encode()).hexdigest()

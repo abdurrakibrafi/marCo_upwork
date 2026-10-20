@@ -322,7 +322,9 @@ def get_entity_fixtures(request, entity_id):
                 'source':          'live_api',
             })
 
-    serialized_fixtures = EvSerializer(events, many=True).data
+    from apps.event.views import _deduplicate_events
+    events_list = _deduplicate_events(list(events))
+    serialized_fixtures = EvSerializer(events_list, many=True).data
     from apps.entity.utils.matcher import find_team_logo_by_name
 
     for f in serialized_fixtures:
