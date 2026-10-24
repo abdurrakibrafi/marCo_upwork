@@ -104,18 +104,36 @@ def search_entities(request):
     if sport:
         filters &= Q(sport=sport)
     
-    # Exact match first (on normalized name, global across types, prioritize logos)
+    # Exact match first (on normalized name, prioritize non-empty logos, then teams, then follower count)
+    from django.db.models import Case, When, Value, IntegerField
+    has_logo_weight = Case(
+        When(Q(logo_url__isnull=False) & ~Q(logo_url=''), then=Value(1)),
+        default=Value(0),
+        output_field=IntegerField()
+    )
+    is_team_weight = Case(
+        When(type='team', then=Value(1)),
+        default=Value(0),
+        output_field=IntegerField()
+    )
+
     exact = Entity.objects.filter(
         filters,
         normalized_name=normalized_query
-    ).order_by('-logo_url', '-follower_count')[:1]
+    ).annotate(
+        has_logo_w=has_logo_weight,
+        is_team_w=is_team_weight
+    ).order_by('-has_logo_w', '-is_team_w', '-follower_count')[:1]
     
     # If no exact match and type was specified, try exact with type
     if not exact.exists() and entity_type:
         exact = Entity.objects.filter(
             filters & Q(type=entity_type),
             normalized_name=normalized_query
-        ).order_by('-logo_url', '-follower_count')[:1]
+        ).annotate(
+            has_logo_w=has_logo_weight,
+            is_team_w=is_team_weight
+        ).order_by('-has_logo_w', '-is_team_w', '-follower_count')[:1]
     
     if exact.exists():
         result = {
