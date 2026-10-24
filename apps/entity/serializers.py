@@ -53,11 +53,15 @@ def find_entity_logo(entity):
         from apps.entity.models import Entity
         # 2a. Check if another entity instance with same name has logo_url
         alt_logo = Entity.objects.filter(
-            name__iexact=entity.name,
-            type='athlete'
+            name__iexact=entity.name
         ).exclude(logo_url="").values_list("logo_url", flat=True).first()
         if alt_logo and "statpal.io" not in alt_logo:
             return alt_logo
+
+        from apps.entity.utils.matcher import find_team_logo_by_name
+        t_logo_direct = find_team_logo_by_name(entity.name)
+        if t_logo_direct:
+            return t_logo_direct
 
         # 2b. Check cover_image_url
         if entity.cover_image_url and "statpal.io" not in entity.cover_image_url:

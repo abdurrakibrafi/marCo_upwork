@@ -24,6 +24,10 @@ class Command(BaseCommand):
         all_search_pass = True
         from django.core.cache import cache
         from apps.entity.utils.normalizers import normalize_entity_name
+        try:
+            cache.clear()
+        except Exception:
+            pass
         for q in search_queries:
             norm_q = normalize_entity_name(q)
             cache.delete(f'entity_search:{norm_q}::')
