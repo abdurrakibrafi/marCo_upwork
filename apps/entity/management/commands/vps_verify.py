@@ -22,7 +22,12 @@ class Command(BaseCommand):
         self.stdout.write(self.style.NOTICE("============================================================"))
         search_queries = ['toronto maple leafs', 'montreal canadiens', 'edmonton oilers', 'nhl', 'blue jays', 'arsenal']
         all_search_pass = True
+        from django.core.cache import cache
+        from apps.entity.utils.normalizers import normalize_entity_name
         for q in search_queries:
+            norm_q = normalize_entity_name(q)
+            cache.delete(f'entity_search:{norm_q}::')
+            cache.delete(f'entity_search:{q}::')
             req = rf.get(f'/api/entities/search/?q={q}', HTTP_HOST='localhost')
             res = search_entities(req)
             results = res.data.get('results', [])

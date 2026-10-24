@@ -136,10 +136,20 @@ def search_entities(request):
         ).order_by('-has_logo_w', '-is_team_w', '-follower_count')[:1]
     
     if exact.exists():
+        exact_ent = exact.first()
+        from apps.entity.serializers import find_entity_logo
+        if not exact_ent.logo_url:
+            resolved_logo = find_entity_logo(exact_ent)
+            if resolved_logo:
+                exact_ent.logo_url = resolved_logo
+                try:
+                    exact_ent.save(update_fields=['logo_url'])
+                except Exception:
+                    pass
         result = {
             'query': query,
             'match_type': 'exact',
-            'results': EntitySerializer(exact, many=True, context={'request': request, 'user_nest_entity_ids': _get_user_nest_ids(request)}).data,
+            'results': EntitySerializer([exact_ent], many=True, context={'request': request, 'user_nest_entity_ids': _get_user_nest_ids(request)}).data,
             'suggestions': []
         }
         try:
