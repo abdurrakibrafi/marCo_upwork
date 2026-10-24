@@ -338,7 +338,22 @@ class EventSerializer(serializers.ModelSerializer):
             if ev_sport != lg_sport and not (ev_sport in ('baseball', 'mlb') and lg_sport in ('baseball', 'mlb')) and not (ev_sport in ('basketball', 'nba') and lg_sport in ('basketball', 'nba')):
                 data['league'] = None
 
-        data['primary_logo_url'] = data.get('nest_entity_logo') or make_logo_url_absolute(find_entity_logo(instance.home_entity), req_ctx) or (make_logo_url_absolute(find_entity_logo(instance.league), req_ctx) if data.get('league') else '') or ''
+        # Ensure explicit top-level fields for fixture cards across all client platforms
+        h_name = instance.home_entity.name if instance.home_entity else ''
+        a_name = instance.away_entity.name if instance.away_entity else ''
+        h_logo = make_logo_url_absolute(find_entity_logo(instance.home_entity), req_ctx)
+        a_logo = make_logo_url_absolute(find_entity_logo(instance.away_entity), req_ctx)
+
+        data['home_team'] = h_name
+        data['away_team'] = a_name
+        data['home_team_name'] = h_name
+        data['away_team_name'] = a_name
+        data['home_logo'] = h_logo
+        data['away_logo'] = a_logo
+        data['home_team_logo'] = h_logo
+        data['away_team_logo'] = a_logo
+
+        data['primary_logo_url'] = data.get('nest_entity_logo') or h_logo or (make_logo_url_absolute(find_entity_logo(instance.league), req_ctx) if data.get('league') else '') or ''
 
         # Auto-fill missing venue name/city/country from metadata / home team lookup
         data = _extract_event_venue_info(instance, data)
@@ -440,7 +455,22 @@ class EventDetailSerializer(serializers.ModelSerializer):
 
             from apps.entity.serializers import find_entity_logo, make_logo_url_absolute
             req_ctx = self.context.get('request')
-            data['primary_logo_url'] = make_logo_url_absolute(find_entity_logo(instance.home_entity), req_ctx) or (make_logo_url_absolute(find_entity_logo(instance.league), req_ctx) if data.get('league') else '') or ''
+
+            h_name = instance.home_entity.name if instance.home_entity else ''
+            a_name = instance.away_entity.name if instance.away_entity else ''
+            h_logo = make_logo_url_absolute(find_entity_logo(instance.home_entity), req_ctx)
+            a_logo = make_logo_url_absolute(find_entity_logo(instance.away_entity), req_ctx)
+
+            data['home_team'] = h_name
+            data['away_team'] = a_name
+            data['home_team_name'] = h_name
+            data['away_team_name'] = a_name
+            data['home_logo'] = h_logo
+            data['away_logo'] = a_logo
+            data['home_team_logo'] = h_logo
+            data['away_team_logo'] = a_logo
+
+            data['primary_logo_url'] = h_logo or (make_logo_url_absolute(find_entity_logo(instance.league), req_ctx) if data.get('league') else '') or ''
 
             # Exclude empty stats objects (e.g. when API has no stats for a minor league match)
             if data.get('statistics'):

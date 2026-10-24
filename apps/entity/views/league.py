@@ -1,5 +1,6 @@
 import logging
 from django.shortcuts import get_object_or_404
+from django.utils import timezone
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
@@ -155,17 +156,40 @@ def get_league_fixtures(request, league_id):
         external_id=league_entity.external_id,
     ).first() or league_entity
 
-    events = Event.objects.filter(
+    now = timezone.now()
+    base_qs = Event.objects.filter(
         league__api_source=canonical.api_source,
         league__external_id=canonical.external_id,
-    ).select_related('home_entity', 'away_entity').order_by('-start_time')[:50]
+    ).select_related('home_entity', 'away_entity')
+
+    # 1. Past/completed events (most recent first, up to 30, reversed to chronological)
+    past_events = list(base_qs.filter(start_time__lt=now).order_by('-start_time')[:30])
+    past_events.reverse()
+
+    # 2. Upcoming events (from now onwards, ascending in chronological order, up to 70)
+    upcoming_events = list(base_qs.filter(start_time__gte=now).order_by('start_time')[:70])
+
+    if len(upcoming_events) < 5 and len(past_events) == 30:
+        past_events = list(base_qs.filter(start_time__lt=now).order_by('-start_time')[:70])
+        past_events.reverse()
 
     from apps.event.views import _deduplicate_events
-    events_list = _deduplicate_events(list(events))
+    events_list = _deduplicate_events(past_events + upcoming_events)
+    serialized_fixtures = EvSerializer(events_list, many=True, context={'request': request}).data
+
+    current_fixture_index = 0
+    now_iso = now.isoformat()
+    for idx, f in enumerate(serialized_fixtures):
+        st = f.get('start_time')
+        if st and st >= now_iso:
+            current_fixture_index = idx
+            break
 
     return Response({
-        'league':   EntitySerializer(league_entity, context={'request': request}).data,
-        'fixtures': EvSerializer(events_list, many=True).data,
+        'league':                EntitySerializer(league_entity, context={'request': request}).data,
+        'fixtures_count':        len(serialized_fixtures),
+        'current_fixture_index': current_fixture_index,
+        'fixtures':              serialized_fixtures,
     })
 
 

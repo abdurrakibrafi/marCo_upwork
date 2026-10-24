@@ -394,6 +394,9 @@ def _get_standings_for_league(request, league_entity, season, highlight_team_id=
                 logo = find_entity_logo(team_ent)
             if not logo:
                 logo = raw_logo
+            if not logo:
+                from apps.entity.utils.matcher import find_team_logo_by_name
+                logo = find_team_logo_by_name(t_name)
             if logo:
                 logo = make_logo_url_absolute(logo, request)
 
@@ -437,6 +440,8 @@ def _get_standings_for_league(request, league_entity, season, highlight_team_id=
                 'team_id':        resolved_team_id,
                 'team_name':      t_name,
                 'logo':           logo,
+                'team_logo':      logo,
+                'logo_url':       logo,
                 'conference':     str(row.get('conference', '') or '').strip(),
                 'division':       str(row.get('division', '') or '').strip(),
                 'played':         played,

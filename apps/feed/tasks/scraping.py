@@ -321,10 +321,25 @@ def fetch_article_content(feed_item_id: int):
 
     ai_summary = _clean_fallback_summary(content, item.title)
 
+    # Try to extract genuine article featured image if item has none or has a badge
+    update_fields = ["content", "ai_summary", "content_fetched"]
+    if fetched_html and (not item.thumbnail_url or any(b in item.thumbnail_url for b in ('/badge/', '/cutout/', 'api-sports.io'))):
+        try:
+            from bs4 import BeautifulSoup
+            soup = BeautifulSoup(fetched_html, 'html.parser')
+            meta_img = soup.find('meta', property='og:image') or soup.find('meta', attrs={'name': 'twitter:image'})
+            if meta_img and meta_img.get('content'):
+                img_candidate = meta_img['content'].strip()
+                if img_candidate.startswith('http') and not any(junk in img_candidate.lower() for junk in ('spacer', '1x1', 'pixel', 'beacon')):
+                    item.thumbnail_url = img_candidate
+                    update_fields.append("thumbnail_url")
+        except Exception:
+            pass
+
     item.content = content
     item.ai_summary = ai_summary
     item.content_fetched = True
-    item.save(update_fields=["content", "ai_summary", "content_fetched"])
+    item.save(update_fields=update_fields)
 
     logger.info(f"[Article] Fetched content + summary for FeedItem {feed_item_id}")
     return f"Done: item {feed_item_id}, content={len(content)} chars"

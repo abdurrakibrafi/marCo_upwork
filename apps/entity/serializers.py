@@ -92,8 +92,18 @@ def find_entity_logo(entity):
         except Exception:
             pass
 
-    # 3. If league, check other league entities or cover_image_url
+    # 3. If league, check find_league_logo_by_name, other league entities or cover_image_url
     if entity.type == 'league':
+        from apps.entity.utils.matcher import find_league_logo_by_name
+        league_logo = find_league_logo_by_name(entity.name)
+        if league_logo:
+            try:
+                entity.logo_url = league_logo
+                entity.save(update_fields=['logo_url'])
+            except Exception:
+                pass
+            return league_logo
+
         from apps.entity.models import Entity
         alt_logo = Entity.objects.filter(
             name__iexact=entity.name,

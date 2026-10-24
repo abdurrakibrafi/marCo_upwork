@@ -1,6 +1,7 @@
 import logging
 from django.shortcuts import get_object_or_404
 from django.db.models import Q
+from django.utils import timezone
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
@@ -280,6 +281,8 @@ def get_entity_fixtures(request, entity_id):
     entity = get_object_or_404(Entity, id=entity_id)
     entity = entity.canonical_entity or entity
 
+    now = timezone.now()
+
     if entity.type == 'team':
         team_ids = set(
             Entity.objects.filter(
@@ -288,11 +291,25 @@ def get_entity_fixtures(request, entity_id):
                 Q(name__iexact=entity.name)
             ).values_list('id', flat=True)
         )
-        events = Event.objects.filter(
+        base_qs = Event.objects.filter(
             Q(home_entity_id__in=team_ids) | Q(away_entity_id__in=team_ids)
         ).select_related(
             'home_entity', 'away_entity', 'league'
-        ).order_by('-start_time')[:50]
+        )
+
+        # 1. Past/completed events (most recent first, up to 30, reversed to chronological)
+        past_events = list(base_qs.filter(start_time__lt=now).order_by('-start_time')[:30])
+        past_events.reverse()
+
+        # 2. Upcoming events (from now onwards, ascending in chronological order, up to 70)
+        upcoming_events = list(base_qs.filter(start_time__gte=now).order_by('start_time')[:70])
+
+        # If upcoming is sparse (e.g. offseason), fetch more past matches
+        if len(upcoming_events) < 5 and len(past_events) == 30:
+            past_events = list(base_qs.filter(start_time__lt=now).order_by('-start_time')[:70])
+            past_events.reverse()
+
+        events_list_raw = past_events + upcoming_events
 
     elif entity.type == 'league':
         league_ids = set(
@@ -302,17 +319,22 @@ def get_entity_fixtures(request, entity_id):
                 Q(name__iexact=entity.name)
             ).values_list('id', flat=True)
         )
-        events = Event.objects.filter(
+        base_qs = Event.objects.filter(
             Q(league_id__in=league_ids) |
             (Q(league__api_source=entity.api_source) & Q(league__external_id=entity.external_id))
         ).select_related(
             'home_entity', 'away_entity', 'league'
-        ).order_by('-start_time')[:50]
+        )
+
+        past_events = list(base_qs.filter(start_time__lt=now).order_by('-start_time')[:30])
+        past_events.reverse()
+        upcoming_events = list(base_qs.filter(start_time__gte=now).order_by('start_time')[:70])
+        events_list_raw = past_events + upcoming_events
 
     else:
-        events = Event.objects.none()
+        events_list_raw = []
 
-    if not events.exists() and entity.type == 'team':
+    if not events_list_raw and entity.type == 'team':
         live_fixtures = _fetch_team_fixtures_live(entity)
         if live_fixtures:
             return Response({
@@ -323,8 +345,8 @@ def get_entity_fixtures(request, entity_id):
             })
 
     from apps.event.views import _deduplicate_events
-    events_list = _deduplicate_events(list(events))
-    serialized_fixtures = EvSerializer(events_list, many=True).data
+    events_list = _deduplicate_events(events_list_raw)
+    serialized_fixtures = EvSerializer(events_list, many=True, context={'request': request, 'nest_entity_ids': {entity.id}}).data
     from apps.entity.utils.matcher import find_team_logo_by_name
 
     for f in serialized_fixtures:
@@ -334,11 +356,14 @@ def get_entity_fixtures(request, entity_id):
             if l_url:
                 f['home_entity']['logo_url'] = l_url
                 f['home_logo'] = l_url
+                f['home_team_logo'] = l_url
                 if f.get('is_nest_entity_home'):
                     f['nest_entity_logo'] = l_url
                     f['primary_logo_url'] = l_url
                 else:
                     f['opponent_entity_logo'] = l_url
+        if not f.get('home_team_logo') and f.get('home_logo'):
+            f['home_team_logo'] = f['home_logo']
 
         if f.get('away_entity') and not f['away_entity'].get('logo_url'):
             a_name = f['away_entity'].get('name', '')
@@ -346,11 +371,14 @@ def get_entity_fixtures(request, entity_id):
             if l_url:
                 f['away_entity']['logo_url'] = l_url
                 f['away_logo'] = l_url
+                f['away_team_logo'] = l_url
                 if not f.get('is_nest_entity_home'):
                     f['nest_entity_logo'] = l_url
                     f['primary_logo_url'] = l_url
                 else:
                     f['opponent_entity_logo'] = l_url
+        if not f.get('away_team_logo') and f.get('away_logo'):
+            f['away_team_logo'] = f['away_logo']
 
         # Auto-fill missing venue name, city, and country
         if not f.get('venue_name') or not f.get('venue_city') or not f.get('venue_country'):
@@ -363,11 +391,20 @@ def get_entity_fixtures(request, entity_id):
             if not f.get('venue_country') and v_country:
                 f['venue_country'] = v_country
 
+    current_fixture_index = 0
+    now_iso = now.isoformat()
+    for idx, f in enumerate(serialized_fixtures):
+        st = f.get('start_time')
+        if st and st >= now_iso:
+            current_fixture_index = idx
+            break
+
     return Response({
-        'entity':          EntitySerializer(entity, context={'request': request}).data,
-        'fixtures_count':  len(serialized_fixtures),
-        'fixtures':        serialized_fixtures,
-        'source':          'db',
+        'entity':                EntitySerializer(entity, context={'request': request}).data,
+        'fixtures_count':        len(serialized_fixtures),
+        'current_fixture_index': current_fixture_index,
+        'fixtures':              serialized_fixtures,
+        'source':                'db',
     })
 
 

@@ -206,7 +206,8 @@ def search_entities(request):
                 matches.append((entity, score))
     
     # Sort by score and deduplicate to canonical records
-    matches.sort(key=lambda x: x[1], reverse=True)
+    from apps.entity.serializers import find_entity_logo
+    matches.sort(key=lambda x: (x[1], bool(x[0].logo_url)), reverse=True)
     seen_ids = set()
     seen_keys = set()
     deduped_entities = []
@@ -217,9 +218,15 @@ def search_entities(request):
             canonical = canonical.canonical_entity
         if canonical.id in seen_ids:
             continue
-        c_key = (canonical.normalized_name or normalize_entity_name(canonical.name), canonical.sport, canonical.type)
+        c_sport = SPORT_QUERY_MAP.get(str(canonical.sport or '').lower().strip(), str(canonical.sport or '').lower().strip())
+        c_key = (canonical.normalized_name or normalize_entity_name(canonical.name), c_sport, canonical.type)
         if c_key in seen_keys:
             continue
+        # Ensure logo is resolved if missing
+        if not canonical.logo_url:
+            canonical_logo = find_entity_logo(canonical)
+            if canonical_logo:
+                canonical.logo_url = canonical_logo
         seen_ids.add(canonical.id)
         seen_keys.add(c_key)
         deduped_entities.append(canonical)

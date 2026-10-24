@@ -8,7 +8,7 @@ from bs4 import BeautifulSoup
 logger = logging.getLogger(__name__)
 
 
-def _safe_parse(url: str, timeout: int = 6) -> feedparser.FeedParserDict:
+def _safe_parse(url: str, timeout: int = 10) -> feedparser.FeedParserDict:
     """Fetch and parse XML payload from an RSS or Atom feed URL with fallback error handling.
 
     Args:

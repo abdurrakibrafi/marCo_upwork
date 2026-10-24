@@ -242,9 +242,28 @@ def get_nest_calendar(request):
         canonical_ids = {ent.canonical_entity_id for ent in nest_entities if ent.canonical_entity_id}
         ent_ids = {ent.id for ent in nest_entities}
 
+        SPORT_SYNONYMS = {
+            'hockey': {'hockey', 'ice_hockey', 'nhl'},
+            'ice_hockey': {'hockey', 'ice_hockey', 'nhl'},
+            'nhl': {'hockey', 'ice_hockey', 'nhl'},
+            'football': {'football', 'american_football', 'nfl'},
+            'american_football': {'football', 'american_football', 'nfl'},
+            'nfl': {'football', 'american_football', 'nfl'},
+            'basketball': {'basketball', 'nba'},
+            'nba': {'basketball', 'nba'},
+            'baseball': {'baseball', 'mlb'},
+            'mlb': {'baseball', 'mlb'},
+            'f1': {'f1', 'formula 1', 'formula1'},
+            'formula 1': {'f1', 'formula 1', 'formula1'},
+            'formula1': {'f1', 'formula 1', 'formula1'},
+            'combat_sports': {'combat_sports', 'mma'},
+            'mma': {'combat_sports', 'mma'},
+        }
+
         dup_q = Q()
         for ent in nest_entities:
-            dup_q |= Q(name__iexact=ent.name, sport=ent.sport, type=ent.type)
+            sports = SPORT_SYNONYMS.get(ent.sport, {ent.sport})
+            dup_q |= Q(name__iexact=ent.name, sport__in=sports, type=ent.type)
 
         batch_filter = dup_q
         if canonical_ids:

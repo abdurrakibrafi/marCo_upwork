@@ -55,13 +55,16 @@ def clean_tracking_parameters(url: str) -> str:
 
 
 @lru_cache(maxsize=4096)
-def resolve_real_article_url(url: str) -> str:
+def resolve_real_article_url(url: str, sync_network: bool = True) -> str:
     """Decode Google News RSS redirect URLs to the actual publisher source URL.
 
     Strips tracking parameters and caches decoded URLs for fast subsequent lookup.
 
     Args:
         url (str): Raw Google News or publisher URL.
+        sync_network (bool): Whether to perform synchronous network requests if not in cache.
+            Default True. When False (e.g. inside serializers), returns the original URL immediately
+            if not cached, preventing API requests from hanging.
 
     Returns:
         str: Resolved publisher article URL.
@@ -75,6 +78,8 @@ def resolve_real_article_url(url: str) -> str:
         cached_url = cache.get(cache_key)
         if cached_url:
             return clean_tracking_parameters(cached_url)
+        if not sync_network:
+            return clean_tracking_parameters(url_str)
         try:
             from googlenewsdecoder import new_decoderv1
             decoded = new_decoderv1(url_str, interval=None)
@@ -91,7 +96,7 @@ def resolve_real_article_url(url: str) -> str:
             headers = {
                 "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
             }
-            resp = requests.head(url_str, headers=headers, allow_redirects=True, timeout=5)
+            resp = requests.head(url_str, headers=headers, allow_redirects=True, timeout=2)
             if resp.url and "news.google.com" not in resp.url:
                 res = clean_tracking_parameters(resp.url)
                 cache.set(cache_key, res, timeout=604800)

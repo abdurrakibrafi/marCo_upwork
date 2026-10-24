@@ -101,15 +101,15 @@ def poll_all_active_sources():
         else:
             other_source_ids.append(source.id)
 
-    # Prioritize ALL followed sources (up to 60), plus up to 60 general sources per run
-    batch = followed_source_ids[:60] + other_source_ids[:60]
+    # Prioritize ALL followed sources (up to 120), plus up to 120 general sources per run
+    batch = followed_source_ids[:120] + other_source_ids[:120]
     for i, source_id in enumerate(batch):
         poll_single_source.apply_async(
             args=[source_id],
-            countdown=min(i * 1, 60),
+            countdown=min(i * 1, 90),
         )
 
-    return f"Queued {len(batch)} sources ({len(followed_source_ids[:60])} followed, {len(other_source_ids[:60])} general) of {len(followed_source_ids) + len(other_source_ids)} due sources"
+    return f"Queued {len(batch)} sources ({len(followed_source_ids[:120])} followed, {len(other_source_ids[:120])} general) of {len(followed_source_ids) + len(other_source_ids)} due sources"
 
 
 @shared_task(name='apps.feed.tasks.poll_single_source', bind=True, max_retries=2)
@@ -164,15 +164,21 @@ def poll_single_source(self, source_id: int):
     if not result.get('success'):
         source.poll_failures += 1
         source.last_polled_at = timezone.now()
-        # Exponential backoff instead of aggressive permanent deactivation
-        if source.poll_failures >= 15:
+        # Protect Google News and entity sources from permanent deactivation
+        is_protected = (
+            source.domain == 'news.google.com' or
+            'google.com' in (source.rss_url or '') or
+            source.discovery_source == 'known' or
+            source.entities.exists()
+        )
+        if source.poll_failures >= 15 and not is_protected:
             source.is_active = False
             source.save(update_fields=['poll_failures', 'is_active', 'last_polled_at'])
             logger.warning(f"Source {source.id} ({source.name}) deactivated after 15 consecutive failures: {result.get('error')}")
         else:
-            source.poll_interval_minutes = min(1440, max(30, source.poll_interval_minutes * 2))
+            source.poll_interval_minutes = min(120, max(30, source.poll_interval_minutes * 2))
             source.save(update_fields=['poll_failures', 'last_polled_at', 'poll_interval_minutes'])
-            logger.warning(f"Polling failed for source {source.id} (attempt {source.poll_failures}/15): {result.get('error')}")
+            logger.warning(f"Polling failed for source {source.id} (attempt {source.poll_failures}): {result.get('error')}")
         return f"Polling failed for source {source.id}: {result.get('error')}"
 
     # Successful poll -> reset failures and default interval
@@ -223,7 +229,8 @@ def poll_single_source(self, source_id: int):
         if not thumbnail_url:
             thumbnail_url = _resolve_thumbnail_for_article(
                 title=entry.get('title', ''),
-                entities=matched_entities
+                entities=matched_entities,
+                url=url
             )
 
         obj, created = FeedItem.objects.get_or_create(

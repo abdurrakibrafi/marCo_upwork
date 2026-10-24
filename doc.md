@@ -1,1340 +1,227 @@
-http://localhost:8007/api/calendar/events/147692/
-
-{
-    "success": true,
-    "message": "Success",
-    "timestamp": "2026-09-13T06:43:06.605024+00:00",
-    "status_code": 200,
-    "data": {
-        "id": 147692,
-        "sport": "baseball",
-        "status": "completed",
-        "status_detail": "5-9 (FT)",
-        "home_entity": {
-            "id": 15242,
-            "name": "Baltimore Orioles",
-            "logo_url": "https://r2.thesportsdb.com/images/media/team/badge/ytywvu1431257088.png",
-            "type": "team",
-            "sport": "baseball"
-        },
-        "away_entity": {
-            "id": 15243,
-            "name": "Cleveland Guardians",
-            "logo_url": "https://r2.thesportsdb.com/images/media/team/badge/3zvzao1640964590.png",
-            "type": "team",
-            "sport": "baseball"
-        },
-        "league": {
-            "id": 15232,
-            "name": "USA: MLB",
-            "logo_url": "",
-            "type": "league",
-            "sport": "baseball"
-        },
-        "home_score": 5,
-        "away_score": 9,
-        "start_time": "2026-09-08T18:35:00Z",
-        "end_time": null,
-        "venue_name": "Oriole Park at Camden Yards, Baltimore, Maryland",
-        "venue_city": "Maryland",
-        "venue_country": "",
-        "broadcaster": "",
-        "stream_url": "",
-        "timeline": [
-            {
-                "id": 41151055,
-                "event_type": "",
-                "minute": 0,
-                "extra_minute": 0,
-                "team": null,
-                "player": null,
-                "description": ""
-            },
-            {
-                "id": 41151056,
-                "event_type": "",
-                "minute": 0,
-                "extra_minute": 0,
-                "team": null,
-                "player": null,
-                "description": ""
-            },
-            {
-                "id": 41151057,
-                "event_type": "",
-                "minute": 0,
-                "extra_minute": 0,
-                "team": null,
-                "player": null,
-                "description": ""
-            },
-            {
-                "id": 41151058,
-                "event_type": "",
-                "minute": 0,
-                "extra_minute": 0,
-                "team": null,
-                "player": null,
-                "description": ""
-            },
-            {
-                "id": 41151059,
-                "event_type": "",
-                "minute": 0,
-                "extra_minute": 0,
-                "team": null,
-                "player": null,
-                "description": ""
-            },
-            {
-                "id": 41151060,
-                "event_type": "",
-                "minute": 0,
-                "extra_minute": 0,
-                "team": null,
-                "player": null,
-                "description": ""
-            },
-            {
-                "id": 41151061,
-                "event_type": "",
-                "minute": 0,
-                "extra_minute": 0,
-                "team": null,
-                "player": null,
-                "description": ""
-            },
-            {
-                "id": 41151062,
-                "event_type": "",
-                "minute": 0,
-                "extra_minute": 0,
-                "team": null,
-                "player": null,
-                "description": ""
-            },
-            {
-                "id": 41151063,
-                "event_type": "",
-                "minute": 0,
-                "extra_minute": 0,
-                "team": null,
-                "player": null,
-                "description": ""
-            },
-            {
-                "id": 41151064,
-                "event_type": "",
-                "minute": 0,
-                "extra_minute": 0,
-                "team": null,
-                "player": null,
-                "description": ""
-            }
-        ],
-        "lineups": [],
-        "statistics": [
-            {
-                "team": {
-                    "id": 15242,
-                    "name": "Baltimore Orioles",
-                    "logo_url": "https://r2.thesportsdb.com/images/media/team/badge/ytywvu1431257088.png",
-                    "type": "team",
-                    "sport": "baseball"
-                },
-                "stats": {
-                    "side": "home",
-                    "sport": "baseball",
-                    "runs": 5,
-                    "hits": 6,
-                    "errors": 1,
-                    "innings": {
-                        "1": 0,
-                        "2": 0,
-                        "3": 0,
-                        "4": 1,
-                        "5": 4,
-                        "6": 0,
-                        "7": 0,
-                        "8": 0,
-                        "9": 0
-                    },
-                    "is_fallback": false
-                }
-            },
-            {
-                "team": {
-                    "id": 15243,
-                    "name": "Cleveland Guardians",
-                    "logo_url": "https://r2.thesportsdb.com/images/media/team/badge/3zvzao1640964590.png",
-                    "type": "team",
-                    "sport": "baseball"
-                },
-                "stats": {
-                    "side": "away",
-                    "sport": "baseball",
-                    "runs": 9,
-                    "hits": 12,
-                    "errors": 0,
-                    "innings": {
-                        "1": 1,
-                        "2": 4,
-                        "3": 1,
-                        "4": 0,
-                        "5": 0,
-                        "6": 0,
-                        "7": 3,
-                        "8": 0,
-                        "9": 0
-                    },
-                    "is_fallback": false
-                }
-            }
-        ],
-        "player_stats": [],
-        "highlights": [
-            {
-                "id": 2239,
-                "title": "Baltimore Orioles vs Cleveland Guardians",
-                "video_url": "https://www.youtube.com/watch?v=0_maNGPRsRQ",
-                "thumbnail_url": "https://r2.thesportsdb.com/images/media/event/thumb/f1x93g1785919071.jpg",
-                "duration_seconds": null,
-                "views": 0
-            }
-        ],
-        "has_stats": true,
-        "has_lineups": false,
-        "key_players": [],
-        "metadata": {
-            "id": "1329192637",
-            "away": {
-                "r": "9",
-                "id": "2511",
-                "in1": "1",
-                "in2": "4",
-                "in3": "1",
-                "in4": "0",
-                "in5": "0",
-                "in6": "0",
-                "in7": "3",
-                "in8": "0",
-                "in9": "0",
-                "hits": "12",
-                "name": "Cleveland Guardians",
-                "errors": "0",
-                "innings": {
-                    "inning": [
-                        {
-                            "number": "1",
-                            "score": "1",
-                            "runs": "1",
-                            "hits": "2",
-                            "errors": "0",
-                            "doubles": "0",
-                            "triples": "0",
-                            "home_runs": "0",
-                            "runs_batted_in": "1",
-                            "base_on_balls": "0",
-                            "strikeouts": "0",
-                            "stolen_bases": "0",
-                            "at_bats": "5",
-                            "batting_average": 0.4
-                        },
-                        {
-                            "number": "2",
-                            "score": "4",
-                            "runs": "4",
-                            "hits": "4",
-                            "errors": "0",
-                            "doubles": "0",
-                            "triples": "0",
-                            "home_runs": "1",
-                            "runs_batted_in": "4",
-                            "base_on_balls": "0",
-                            "strikeouts": "0",
-                            "stolen_bases": "0",
-                            "at_bats": "7",
-                            "batting_average": 0.571
-                        },
-                        {
-                            "number": "3",
-                            "score": "1",
-                            "runs": "1",
-                            "hits": "2",
-                            "errors": "0",
-                            "doubles": "0",
-                            "triples": "0",
-                            "home_runs": "0",
-                            "runs_batted_in": "1",
-                            "base_on_balls": "0",
-                            "strikeouts": "0",
-                            "stolen_bases": "0",
-                            "at_bats": "5",
-                            "batting_average": 0.4
-                        },
-                        {
-                            "number": "4",
-                            "score": "0",
-                            "runs": "0",
-                            "hits": "0",
-                            "errors": "0",
-                            "doubles": "0",
-                            "triples": "0",
-                            "home_runs": "0",
-                            "runs_batted_in": "0",
-                            "base_on_balls": "0",
-                            "strikeouts": "0",
-                            "stolen_bases": "0",
-                            "at_bats": "3",
-                            "batting_average": 0.0
-                        },
-                        {
-                            "number": "5",
-                            "score": "0",
-                            "runs": "0",
-                            "hits": "0",
-                            "errors": "0",
-                            "doubles": "0",
-                            "triples": "0",
-                            "home_runs": "0",
-                            "runs_batted_in": "0",
-                            "base_on_balls": "0",
-                            "strikeouts": "0",
-                            "stolen_bases": "0",
-                            "at_bats": "3",
-                            "batting_average": 0.0
-                        },
-                        {
-                            "number": "6",
-                            "score": "0",
-                            "runs": "0",
-                            "hits": "1",
-                            "errors": "0",
-                            "doubles": "0",
-                            "triples": "0",
-                            "home_runs": "0",
-                            "runs_batted_in": "0",
-                            "base_on_balls": "0",
-                            "strikeouts": "0",
-                            "stolen_bases": "0",
-                            "at_bats": "4",
-                            "batting_average": 0.25
-                        },
-                        {
-                            "number": "7",
-                            "score": "3",
-                            "runs": "3",
-                            "hits": "2",
-                            "errors": "0",
-                            "doubles": "0",
-                            "triples": "0",
-                            "home_runs": "0",
-                            "runs_batted_in": "3",
-                            "base_on_balls": "0",
-                            "strikeouts": "0",
-                            "stolen_bases": "0",
-                            "at_bats": "5",
-                            "batting_average": 0.4
-                        },
-                        {
-                            "number": "8",
-                            "score": "0",
-                            "runs": "0",
-                            "hits": "0",
-                            "errors": "0",
-                            "doubles": "0",
-                            "triples": "0",
-                            "home_runs": "0",
-                            "runs_batted_in": "0",
-                            "base_on_balls": "0",
-                            "strikeouts": "0",
-                            "stolen_bases": "0",
-                            "at_bats": "3",
-                            "batting_average": 0.0
-                        },
-                        {
-                            "number": "9",
-                            "score": "0",
-                            "runs": "0",
-                            "hits": "1",
-                            "errors": "0",
-                            "doubles": "0",
-                            "triples": "0",
-                            "home_runs": "0",
-                            "runs_batted_in": "0",
-                            "base_on_balls": "0",
-                            "strikeouts": "0",
-                            "stolen_bases": "0",
-                            "at_bats": "4",
-                            "batting_average": 0.25
-                        }
-                    ]
-                },
-                "totalscore": "9",
-                "h": "12",
-                "e": "0"
-            },
-            "date": "8.09.2026",
-            "home": {
-                "r": "5",
-                "id": "2500",
-                "in1": "0",
-                "in2": "0",
-                "in3": "0",
-                "in4": "1",
-                "in5": "4",
-                "in6": "0",
-                "in7": "0",
-                "in8": "0",
-                "in9": "0",
-                "hits": "6",
-                "name": "Baltimore Orioles",
-                "errors": "1",
-                "innings": {
-                    "inning": [
-                        {
-                            "number": "1",
-                            "score": "0",
-                            "runs": "0",
-                            "hits": "0",
-                            "errors": "0",
-                            "doubles": "0",
-                            "triples": "0",
-                            "home_runs": "0",
-                            "runs_batted_in": "0",
-                            "base_on_balls": "0",
-                            "strikeouts": "0",
-                            "stolen_bases": "0",
-                            "at_bats": "3",
-                            "batting_average": 0.0
-                        },
-                        {
-                            "number": "2",
-                            "score": "0",
-                            "runs": "0",
-                            "hits": "0",
-                            "errors": "0",
-                            "doubles": "0",
-                            "triples": "0",
-                            "home_runs": "0",
-                            "runs_batted_in": "0",
-                            "base_on_balls": "0",
-                            "strikeouts": "0",
-                            "stolen_bases": "0",
-                            "at_bats": "3",
-                            "batting_average": 0.0
-                        },
-                        {
-                            "number": "3",
-                            "score": "0",
-                            "runs": "0",
-                            "hits": "0",
-                            "errors": "0",
-                            "doubles": "0",
-                            "triples": "0",
-                            "home_runs": "0",
-                            "runs_batted_in": "0",
-                            "base_on_balls": "0",
-                            "strikeouts": "0",
-                            "stolen_bases": "0",
-                            "at_bats": "3",
-                            "batting_average": 0.0
-                        },
-                        {
-                            "number": "4",
-                            "score": "1",
-                            "runs": "1",
-                            "hits": "2",
-                            "errors": "0",
-                            "doubles": "0",
-                            "triples": "0",
-                            "home_runs": "0",
-                            "runs_batted_in": "1",
-                            "base_on_balls": "0",
-                            "strikeouts": "0",
-                            "stolen_bases": "0",
-                            "at_bats": "5",
-                            "batting_average": 0.4
-                        },
-                        {
-                            "number": "5",
-                            "score": "4",
-                            "runs": "4",
-                            "hits": "4",
-                            "errors": "0",
-                            "doubles": "1",
-                            "triples": "0",
-                            "home_runs": "1",
-                            "runs_batted_in": "4",
-                            "base_on_balls": "0",
-                            "strikeouts": "0",
-                            "stolen_bases": "0",
-                            "at_bats": "7",
-                            "batting_average": 0.571
-                        },
-                        {
-                            "number": "6",
-                            "score": "0",
-                            "runs": "0",
-                            "hits": "0",
-                            "errors": "0",
-                            "doubles": "0",
-                            "triples": "0",
-                            "home_runs": "0",
-                            "runs_batted_in": "0",
-                            "base_on_balls": "0",
-                            "strikeouts": "0",
-                            "stolen_bases": "0",
-                            "at_bats": "3",
-                            "batting_average": 0.0
-                        },
-                        {
-                            "number": "7",
-                            "score": "0",
-                            "runs": "0",
-                            "hits": "0",
-                            "errors": "1",
-                            "doubles": "0",
-                            "triples": "0",
-                            "home_runs": "0",
-                            "runs_batted_in": "0",
-                            "base_on_balls": "0",
-                            "strikeouts": "0",
-                            "stolen_bases": "0",
-                            "at_bats": "3",
-                            "batting_average": 0.0
-                        },
-                        {
-                            "number": "8",
-                            "score": "0",
-                            "runs": "0",
-                            "hits": "0",
-                            "errors": "0",
-                            "doubles": "0",
-                            "triples": "0",
-                            "home_runs": "0",
-                            "runs_batted_in": "0",
-                            "base_on_balls": "0",
-                            "strikeouts": "0",
-                            "stolen_bases": "0",
-                            "at_bats": "3",
-                            "batting_average": 0.0
-                        },
-                        {
-                            "number": "9",
-                            "score": "0",
-                            "runs": "0",
-                            "hits": "0",
-                            "errors": "0",
-                            "doubles": "0",
-                            "triples": "0",
-                            "home_runs": "0",
-                            "runs_batted_in": "0",
-                            "base_on_balls": "0",
-                            "strikeouts": "0",
-                            "stolen_bases": "0",
-                            "at_bats": "3",
-                            "batting_average": 0.0
-                        }
-                    ]
-                },
-                "totalscore": "5",
-                "h": "6",
-                "e": "1"
-            },
-            "outs": "",
-            "time": "18:35",
-            "stats": {
-                "hitters": {
-                    "away": {
-                        "player": [
-                            {
-                                "cs": "0",
-                                "id": "43495",
-                                "pos": "LF",
-                                "hits": "1",
-                                "name": "S. Kwan",
-                                "runs": "2",
-                                "walks": "0",
-                                "at_bats": "5",
-                                "average": ".273",
-                                "doubles": "1",
-                                "sac_fly": "0",
-                                "triples": "0",
-                                "home_runs": "0",
-                                "strikeouts": "0",
-                                "hit_by_pitch": "0",
-                                "stolen_bases": "0",
-                                "runs_batted_in": "0",
-                                "on_base_percentage": ".371",
-                                "slugging_percentage": ".335"
-                            },
-                            {
-                                "cs": "0",
-                                "id": "5009206",
-                                "pos": "2B",
-                                "hits": "1",
-                                "name": "T. Bazzana",
-                                "runs": "1",
-                                "walks": "1",
-                                "at_bats": "4",
-                                "average": ".244",
-                                "doubles": "0",
-                                "sac_fly": "0",
-                                "triples": "0",
-                                "home_runs": "1",
-                                "strikeouts": "1",
-                                "hit_by_pitch": "0",
-                                "stolen_bases": "0",
-                                "runs_batted_in": "3",
-                                "on_base_percentage": ".335",
-                                "slugging_percentage": ".387"
-                            },
-                            {
-                                "cs": "0",
-                                "id": "5205850",
-                                "pos": "2B",
-                                "hits": "0",
-                                "name": "A. Genao",
-                                "runs": "0",
-                                "walks": "0",
-                                "at_bats": "0",
-                                "average": ".235",
-                                "doubles": "0",
-                                "sac_fly": "0",
-                                "triples": "0",
-                                "home_runs": "0",
-                                "strikeouts": "0",
-                                "hit_by_pitch": "0",
-                                "stolen_bases": "0",
-                                "runs_batted_in": "0",
-                                "on_base_percentage": ".291",
-                                "slugging_percentage": ".333"
-                            },
-                            {
-                                "cs": "0",
-                                "id": "34300",
-                                "pos": "3B",
-                                "hits": "1",
-                                "name": "J. Ramirez",
-                                "runs": "1",
-                                "walks": "0",
-                                "at_bats": "5",
-                                "average": ".237",
-                                "doubles": "0",
-                                "sac_fly": "0",
-                                "triples": "0",
-                                "home_runs": "0",
-                                "strikeouts": "0",
-                                "hit_by_pitch": "0",
-                                "stolen_bases": "0",
-                                "runs_batted_in": "0",
-                                "on_base_percentage": ".328",
-                                "slugging_percentage": ".374"
-                            },
-                            {
-                                "cs": "0",
-                                "id": "42353",
-                                "pos": "DH",
-                                "hits": "1",
-                                "name": "J. Adell",
-                                "runs": "1",
-                                "walks": "1",
-                                "at_bats": "3",
-                                "average": ".239",
-                                "doubles": "0",
-                                "sac_fly": "0",
-                                "triples": "0",
-                                "home_runs": "0",
-                                "strikeouts": "0",
-                                "hit_by_pitch": "1",
-                                "stolen_bases": "0",
-                                "runs_batted_in": "1",
-                                "on_base_percentage": ".297",
-                                "slugging_percentage": ".399"
-                            },
-                            {
-                                "cs": "0",
-                                "id": "42037",
-                                "pos": "1B",
-                                "hits": "0",
-                                "name": "N. Lowe",
-                                "runs": "1",
-                                "walks": "2",
-                                "at_bats": "3",
-                                "average": ".254",
-                                "doubles": "0",
-                                "sac_fly": "0",
-                                "triples": "0",
-                                "home_runs": "0",
-                                "strikeouts": "2",
-                                "hit_by_pitch": "0",
-                                "stolen_bases": "0",
-                                "runs_batted_in": "0",
-                                "on_base_percentage": ".324",
-                                "slugging_percentage": ".455"
-                            },
-                            {
-                                "cs": "0",
-                                "id": "43996",
-                                "pos": "RF",
-                                "hits": "2",
-                                "name": "A. Martinez",
-                                "runs": "2",
-                                "walks": "0",
-                                "at_bats": "5",
-                                "average": ".245",
-                                "doubles": "0",
-                                "sac_fly": "0",
-                                "triples": "1",
-                                "home_runs": "0",
-                                "strikeouts": "2",
-                                "hit_by_pitch": "0",
-                                "stolen_bases": "0",
-                                "runs_batted_in": "0",
-                                "on_base_percentage": ".284",
-                                "slugging_percentage": ".431"
-                            },
-                            {
-                                "cs": "0",
-                                "id": "4347342",
-                                "pos": "C",
-                                "hits": "2",
-                                "name": "P. Bailey",
-                                "runs": "0",
-                                "walks": "0",
-                                "at_bats": "4",
-                                "average": ".207",
-                                "doubles": "0",
-                                "sac_fly": "0",
-                                "triples": "0",
-                                "home_runs": "0",
-                                "strikeouts": "1",
-                                "hit_by_pitch": "0",
-                                "stolen_bases": "0",
-                                "runs_batted_in": "1",
-                                "on_base_percentage": ".273",
-                                "slugging_percentage": ".327"
-                            },
-                            {
-                                "cs": "0",
-                                "id": "4724461",
-                                "pos": "CF",
-                                "hits": "2",
-                                "name": "P. Halpin",
-                                "runs": "1",
-                                "walks": "1",
-                                "at_bats": "4",
-                                "average": ".215",
-                                "doubles": "0",
-                                "sac_fly": "0",
-                                "triples": "0",
-                                "home_runs": "0",
-                                "strikeouts": "0",
-                                "hit_by_pitch": "0",
-                                "stolen_bases": "1",
-                                "runs_batted_in": "1",
-                                "on_base_percentage": ".256",
-                                "slugging_percentage": ".310"
-                            },
-                            {
-                                "cs": "0",
-                                "id": "42716",
-                                "pos": "SS",
-                                "hits": "2",
-                                "name": "B. Rocchio",
-                                "runs": "0",
-                                "walks": "0",
-                                "at_bats": "4",
-                                "average": ".249",
-                                "doubles": "0",
-                                "sac_fly": "0",
-                                "triples": "0",
-                                "home_runs": "0",
-                                "strikeouts": "0",
-                                "hit_by_pitch": "0",
-                                "stolen_bases": "0",
-                                "runs_batted_in": "2",
-                                "on_base_percentage": ".308",
-                                "slugging_percentage": ".379"
-                            }
-                        ]
-                    },
-                    "home": {
-                        "player": [
-                            {
-                                "cs": "0",
-                                "id": "5082132",
-                                "pos": "SS",
-                                "hits": "2",
-                                "name": "J. Holliday",
-                                "runs": "2",
-                                "walks": "0",
-                                "at_bats": "5",
-                                "average": ".235",
-                                "doubles": "1",
-                                "sac_fly": "0",
-                                "triples": "0",
-                                "home_runs": "0",
-                                "strikeouts": "2",
-                                "hit_by_pitch": "0",
-                                "stolen_bases": "0",
-                                "runs_batted_in": "1",
-                                "on_base_percentage": ".310",
-                                "slugging_percentage": ".354"
-                            },
-                            {
-                                "cs": "0",
-                                "id": "38997",
-                                "pos": "1B",
-                                "hits": "2",
-                                "name": "P. Alonso",
-                                "runs": "1",
-                                "walks": "0",
-                                "at_bats": "4",
-                                "average": ".268",
-                                "doubles": "0",
-                                "sac_fly": "0",
-                                "triples": "0",
-                                "home_runs": "1",
-                                "strikeouts": "0",
-                                "hit_by_pitch": "0",
-                                "stolen_bases": "0",
-                                "runs_batted_in": "2",
-                                "on_base_percentage": ".361",
-                                "slugging_percentage": ".499"
-                            },
-                            {
-                                "cs": "0",
-                                "id": "44006",
-                                "pos": "SS",
-                                "hits": "0",
-                                "name": "G. Henderson",
-                                "runs": "0",
-                                "walks": "1",
-                                "at_bats": "3",
-                                "average": ".219",
-                                "doubles": "0",
-                                "sac_fly": "0",
-                                "triples": "0",
-                                "home_runs": "0",
-                                "strikeouts": "0",
-                                "hit_by_pitch": "0",
-                                "stolen_bases": "0",
-                                "runs_batted_in": "0",
-                                "on_base_percentage": ".303",
-                                "slugging_percentage": ".395"
-                            },
-                            {
-                                "cs": "0",
-                                "id": "5013619",
-                                "pos": "2B",
-                                "hits": "0",
-                                "name": "C. Narvaez",
-                                "runs": "0",
-                                "walks": "0",
-                                "at_bats": "0",
-                                "average": ".160",
-                                "doubles": "0",
-                                "sac_fly": "0",
-                                "triples": "0",
-                                "home_runs": "0",
-                                "strikeouts": "0",
-                                "hit_by_pitch": "0",
-                                "stolen_bases": "0",
-                                "runs_batted_in": "0",
-                                "on_base_percentage": ".242",
-                                "slugging_percentage": ".229"
-                            },
-                            {
-                                "cs": "0",
-                                "id": "4684870",
-                                "pos": "DH",
-                                "hits": "0",
-                                "name": "C. Mayo",
-                                "runs": "0",
-                                "walks": "1",
-                                "at_bats": "3",
-                                "average": ".223",
-                                "doubles": "0",
-                                "sac_fly": "0",
-                                "triples": "0",
-                                "home_runs": "0",
-                                "strikeouts": "0",
-                                "hit_by_pitch": "0",
-                                "stolen_bases": "0",
-                                "runs_batted_in": "0",
-                                "on_base_percentage": ".288",
-                                "slugging_percentage": ".456"
-                            },
-                            {
-                                "cs": "0",
-                                "id": "4919145",
-                                "pos": "C",
-                                "hits": "0",
-                                "name": "S. Basallo",
-                                "runs": "0",
-                                "walks": "0",
-                                "at_bats": "4",
-                                "average": ".227",
-                                "doubles": "0",
-                                "sac_fly": "0",
-                                "triples": "0",
-                                "home_runs": "0",
-                                "strikeouts": "2",
-                                "hit_by_pitch": "0",
-                                "stolen_bases": "0",
-                                "runs_batted_in": "1",
-                                "on_base_percentage": ".296",
-                                "slugging_percentage": ".415"
-                            },
-                            {
-                                "cs": "0",
-                                "id": "4960536",
-                                "pos": "LF",
-                                "hits": "0",
-                                "name": "D. Beavers",
-                                "runs": "0",
-                                "walks": "0",
-                                "at_bats": "4",
-                                "average": ".241",
-                                "doubles": "0",
-                                "sac_fly": "0",
-                                "triples": "0",
-                                "home_runs": "0",
-                                "strikeouts": "1",
-                                "hit_by_pitch": "0",
-                                "stolen_bases": "0",
-                                "runs_batted_in": "0",
-                                "on_base_percentage": ".319",
-                                "slugging_percentage": ".376"
-                            },
-                            {
-                                "cs": "0",
-                                "id": "42844",
-                                "pos": "3B",
-                                "hits": "1",
-                                "name": "B. Alexander",
-                                "runs": "1",
-                                "walks": "0",
-                                "at_bats": "3",
-                                "average": ".303",
-                                "doubles": "1",
-                                "sac_fly": "0",
-                                "triples": "0",
-                                "home_runs": "0",
-                                "strikeouts": "0",
-                                "hit_by_pitch": "0",
-                                "stolen_bases": "0",
-                                "runs_batted_in": "0",
-                                "on_base_percentage": ".358",
-                                "slugging_percentage": ".414"
-                            },
-                            {
-                                "cs": "0",
-                                "id": "5013605",
-                                "pos": "3B",
-                                "hits": "0",
-                                "name": "C. Encarnacion-Strand",
-                                "runs": "0",
-                                "walks": "0",
-                                "at_bats": "0",
-                                "average": ".260",
-                                "doubles": "0",
-                                "sac_fly": "0",
-                                "triples": "0",
-                                "home_runs": "0",
-                                "strikeouts": "0",
-                                "hit_by_pitch": "1",
-                                "stolen_bases": "0",
-                                "runs_batted_in": "0",
-                                "on_base_percentage": ".310",
-                                "slugging_percentage": ".486"
-                            },
-                            {
-                                "cs": "0",
-                                "id": "4418489",
-                                "pos": "CF",
-                                "hits": "0",
-                                "name": "C. Cowser",
-                                "runs": "0",
-                                "walks": "1",
-                                "at_bats": "3",
-                                "average": ".213",
-                                "doubles": "0",
-                                "sac_fly": "0",
-                                "triples": "0",
-                                "home_runs": "0",
-                                "strikeouts": "2",
-                                "hit_by_pitch": "0",
-                                "stolen_bases": "0",
-                                "runs_batted_in": "0",
-                                "on_base_percentage": ".306",
-                                "slugging_percentage": ".364"
-                            },
-                            {
-                                "cs": "0",
-                                "id": "36450",
-                                "pos": "RF",
-                                "hits": "1",
-                                "name": "L. Taveras",
-                                "runs": "1",
-                                "walks": "0",
-                                "at_bats": "4",
-                                "average": ".217",
-                                "doubles": "1",
-                                "sac_fly": "0",
-                                "triples": "0",
-                                "home_runs": "0",
-                                "strikeouts": "1",
-                                "hit_by_pitch": "0",
-                                "stolen_bases": "0",
-                                "runs_batted_in": "1",
-                                "on_base_percentage": ".289",
-                                "slugging_percentage": ".348"
-                            }
-                        ]
-                    }
-                },
-                "pitchers": {
-                    "away": {
-                        "player": [
-                            {
-                                "id": "4346777",
-                                "hbp": "0",
-                                "win": "",
-                                "hits": "6",
-                                "loss": "",
-                                "name": "T. Bibee",
-                                "runs": "5",
-                                "holds": "",
-                                "pc-st": "62-42",
-                                "saves": "",
-                                "walks": "1",
-                                "home_runs": "1",
-                                "strikeouts": "1",
-                                "earned_runs": "5",
-                                "innings_pitched": "4.1",
-                                "earned_runs_average": "4.22"
-                            },
-                            {
-                                "id": "4230078",
-                                "hbp": "0",
-                                "win": "W, 3-4",
-                                "hits": "0",
-                                "loss": "",
-                                "name": "T. Herrin",
-                                "runs": "0",
-                                "holds": "",
-                                "pc-st": "17-13",
-                                "saves": "",
-                                "walks": "0",
-                                "home_runs": "0",
-                                "strikeouts": "2",
-                                "earned_runs": "0",
-                                "innings_pitched": "1.1",
-                                "earned_runs_average": "3.00"
-                            },
-                            {
-                                "id": "4418964",
-                                "hbp": "0",
-                                "win": "",
-                                "hits": "0",
-                                "loss": "",
-                                "name": "C. Yoho",
-                                "runs": "0",
-                                "holds": "",
-                                "pc-st": "17-13",
-                                "saves": "",
-                                "walks": "0",
-                                "home_runs": "0",
-                                "strikeouts": "2",
-                                "earned_runs": "0",
-                                "innings_pitched": "1.1",
-                                "earned_runs_average": "4.00"
-                            },
-                            {
-                                "id": "4189160",
-                                "hbp": "0",
-                                "win": "",
-                                "hits": "0",
-                                "loss": "",
-                                "name": "H. Gaddis",
-                                "runs": "0",
-                                "holds": "",
-                                "pc-st": "21-13",
-                                "saves": "",
-                                "walks": "1",
-                                "home_runs": "0",
-                                "strikeouts": "1",
-                                "earned_runs": "0",
-                                "innings_pitched": "1.0",
-                                "earned_runs_average": "2.79"
-                            },
-                            {
-                                "id": "4989423",
-                                "hbp": "1",
-                                "win": "",
-                                "hits": "0",
-                                "loss": "",
-                                "name": "C. Smith",
-                                "runs": "0",
-                                "holds": "",
-                                "pc-st": "19-11",
-                                "saves": "",
-                                "walks": "1",
-                                "home_runs": "0",
-                                "strikeouts": "2",
-                                "earned_runs": "0",
-                                "innings_pitched": "1.0",
-                                "earned_runs_average": "2.22"
-                            }
-                        ]
-                    },
-                    "home": {
-                        "player": [
-                            {
-                                "id": "4415838",
-                                "hbp": "1",
-                                "win": "",
-                                "hits": "8",
-                                "loss": "L, 9-4",
-                                "name": "B. Young",
-                                "runs": "6",
-                                "holds": "",
-                                "pc-st": "86-53",
-                                "saves": "",
-                                "walks": "2",
-                                "home_runs": "1",
-                                "strikeouts": "2",
-                                "earned_runs": "6",
-                                "innings_pitched": "3.2",
-                                "earned_runs_average": "3.71"
-                            },
-                            {
-                                "id": "3962565",
-                                "hbp": "0",
-                                "win": "",
-                                "hits": "0",
-                                "loss": "",
-                                "name": "G. Wolfram",
-                                "runs": "0",
-                                "holds": "",
-                                "pc-st": "23-16",
-                                "saves": "",
-                                "walks": "0",
-                                "home_runs": "0",
-                                "strikeouts": "1",
-                                "earned_runs": "0",
-                                "innings_pitched": "1.1",
-                                "earned_runs_average": "4.86"
-                            },
-                            {
-                                "id": "5275319",
-                                "hbp": "0",
-                                "win": "",
-                                "hits": "1",
-                                "loss": "",
-                                "name": "L. De Leon",
-                                "runs": "0",
-                                "holds": "",
-                                "pc-st": "13-8",
-                                "saves": "",
-                                "walks": "0",
-                                "home_runs": "0",
-                                "strikeouts": "0",
-                                "earned_runs": "0",
-                                "innings_pitched": "1.0",
-                                "earned_runs_average": "4.91"
-                            },
-                            {
-                                "id": "4302040",
-                                "hbp": "0",
-                                "win": "",
-                                "hits": "2",
-                                "loss": "",
-                                "name": "A. Hoppe",
-                                "runs": "3",
-                                "holds": "",
-                                "pc-st": "25-14",
-                                "saves": "",
-                                "walks": "2",
-                                "home_runs": "0",
-                                "strikeouts": "1",
-                                "earned_runs": "0",
-                                "innings_pitched": "0.2",
-                                "earned_runs_average": "4.15"
-                            },
-                            {
-                                "id": "5276695",
-                                "hbp": "0",
-                                "win": "",
-                                "hits": "0",
-                                "loss": "",
-                                "name": "A. Nunez",
-                                "runs": "0",
-                                "holds": "",
-                                "pc-st": "13-11",
-                                "saves": "",
-                                "walks": "0",
-                                "home_runs": "0",
-                                "strikeouts": "1",
-                                "earned_runs": "0",
-                                "innings_pitched": "1.1",
-                                "earned_runs_average": "4.02"
-                            },
-                            {
-                                "id": "5127704",
-                                "hbp": "0",
-                                "win": "",
-                                "hits": "1",
-                                "loss": "",
-                                "name": "C. Sanders",
-                                "runs": "0",
-                                "holds": "",
-                                "pc-st": "14-8",
-                                "saves": "",
-                                "walks": "1",
-                                "home_runs": "0",
-                                "strikeouts": "1",
-                                "earned_runs": "0",
-                                "innings_pitched": "1.0",
-                                "earned_runs_average": "4.78"
-                            }
-                        ]
-                    }
-                }
-            },
-            "events": {
-                "event": [
-                    {
-                        "chw": "0",
-                        "cle": "1",
-                        "inn": "1",
-                        "desc": "Adell singled to left, Kwan scored.",
-                        "team": "awayteam"
-                    },
-                    {
-                        "chw": "0",
-                        "cle": "2",
-                        "inn": "2",
-                        "desc": "Bailey singled to right, Mart\u00ednez scored.",
-                        "team": "awayteam"
-                    },
-                    {
-                        "chw": "0",
-                        "cle": "5",
-                        "inn": "2",
-                        "desc": "Bazzana homered to right center (378 feet), Halpin scored and Kwan scored.",
-                        "team": "awayteam"
-                    },
-                    {
-                        "chw": "0",
-                        "cle": "6",
-                        "inn": "3",
-                        "desc": "Halpin singled to right, Lowe scored, Mart\u00ednez to third.",
-                        "team": "awayteam"
-                    },
-                    {
-                        "chw": "1",
-                        "cle": "6",
-                        "inn": "4",
-                        "desc": "Basallo grounded out to first, Holliday scored, Mayo to second, Henderson to third.",
-                        "team": "hometeam"
-                    },
-                    {
-                        "chw": "2",
-                        "cle": "6",
-                        "inn": "5",
-                        "desc": "Taveras doubled to center, Alexander scored.",
-                        "team": "hometeam"
-                    },
-                    {
-                        "chw": "3",
-                        "cle": "6",
-                        "inn": "5",
-                        "desc": "Holliday singled to right, Taveras scored.",
-                        "team": "hometeam"
-                    },
-                    {
-                        "chw": "5",
-                        "cle": "6",
-                        "inn": "5",
-                        "desc": "Alonso homered to left (420 feet), Holliday scored.",
-                        "team": "hometeam"
-                    },
-                    {
-                        "chw": "5",
-                        "cle": "7",
-                        "inn": "7",
-                        "desc": "Mart\u00ednez grounded into fielderandapos;s choice to first, Ram\u00edrez scored on error, Adell safe at second on throwing error by first baseman Alonso, Adell safe at third on error.",
-                        "team": "awayteam"
-                    },
-                    {
-                        "chw": "5",
-                        "cle": "9",
-                        "inn": "7",
-                        "desc": "Rocchio singled to center, Adell scored and Mart\u00ednez scored, Halpin to third.",
-                        "team": "awayteam"
-                    }
-                ]
-            },
-            "oddsid": "364889",
-            "status": "Final",
-            "umpires": {
-                "umpire": [
-                    {
-                        "name": "Charlie  Ramos",
-                        "position": "Home Plate Umpire"
-                    },
-                    {
-                        "name": "David Rackley",
-                        "position": "First Base Umpire"
-                    },
-                    {
-                        "name": "Nestor  Ceja",
-                        "position": "Second Base Umpire"
-                    },
-                    {
-                        "name": "James  Jean",
-                        "position": "Third Base Umpire"
-                    }
-                ]
-            },
-            "gamecast": null,
-            "headline": null,
-            "timezone": "ET",
-            "venue_id": "1290",
-            "broadcast": "GDTV | MASN",
-            "attendance": "13279",
-            "venue_name": "Oriole Park at Camden Yards, Baltimore, Maryland",
-            "datetime_utc": "08.09.2026 22:35",
-            "highlight_url": "https://www.youtube.com/watch?v=0_maNGPRsRQ",
-            "formatted_date": "8.09.2026",
-            "details_fetched": true,
-            "highlight_thumb": "https://r2.thesportsdb.com/images/media/event/thumb/f1x93g1785919071.jpg",
-            "starting_pitchers": {
-                "away": {
-                    "player": {
-                        "id": "4346777",
-                        "name": "Bibee"
-                    }
-                },
-                "home": {
-                    "player": {
-                        "id": "4415838",
-                        "name": "Young"
-                    }
-                }
-            },
-            "highlight_search_exhausted": true,
-            "pitchers": {
-                "loss": "B. Young (L, 9-4)",
-                "win": "T. Herrin (W, 3-4)"
-            }
-        },
-        "local_date": "2026-09-08",
-        "local_time": "18:35",
-        "primary_logo_url": "https://r2.thesportsdb.com/images/media/team/badge/ytywvu1431257088.png"
-    }
-}
+Hi Farvez
+Thanks for explaining the limitations of TheSportsDB. I understand that certain sports and
+lower-tier leagues have limited coverage, and I'm comfortable adjusting our supported sports
+where necessary.
+For example, I'm completely fine with removing sports such as Handball and Volleyball if reliable
+data isn't available. I'd rather focus on delivering a high-quality experience for our core
+supported sports.
+However, my understanding is that StatPal should provide us with up-to-date fixtures, results,
+standings, player rosters and player statistics for our supported leagues. I'd like StatPal to
+remain our primary sports data provider, with TheSportsDB serving as both a secondary data
+provider and a supplementary media source.
+I've also been testing the latest version of MySportsNest and wanted to consolidate my
+outstanding feedback into one message. There are still several issues, particularly with news
+retrieval, fixtures, standings and the overall Nest functionality.
+I've included specific examples below to help identify the problems and clarify the expected
+behaviour.
+1. Nest Feed – Not Updating Across All Followed Entities
+The Nest Feed is still not functioning as intended.
+I currently have 10+ teams in my Nest, many of which are actively playing and should have
+numerous relevant news stories published daily. However, only one or two teams appear to be
+receiving regular article updates.
+In fact, as of this evening (October 14), I have not seen a single new story populate my Nest
+Feed throughout the entire day.
+Expected functionality:
+● The backend should automatically poll ALL stored news websites and sources every
+15–30 minutes.
+● Retrieve newly published articles relevant to our supported teams, leagues and athletes.
+● Match articles to their corresponding entities.
+● Automatically populate users' Nest Feeds with new stories from ALL their followed
+entities.
+● Display the newest stories first.
+● Prevent duplicate articles from appearing.
+● Run this process automatically in the backend, regardless of whether users have the app
+open.
+● Respect source-specific rate limits where applicable.
+The intention is for the Nest Feed to feel like a constantly active, personalized sports news feed,
+rather than showing occasional updates from only one or two teams.
+2. Individual Entity Feeds – News Not Refreshing
+This issue also extends to individual entity pages, including entities that are already followed
+and those that are not.
+Two examples from my testing:
+Toronto Blue Jays (Already in My Nest)
+● When I search for the Toronto Blue Jays and open their individual entity page, the most
+recent article displayed is dated September 15.
+● There have obviously been numerous stories published since then, but none are
+appearing.
+Manchester United (Not in My Nest)
+● When I search for Manchester United and open their entity page, the most recent article
+displayed is dated September 23.
+● Again, the feed is significantly outdated.
+The backend should refresh news for all supported entities approximately every 15–30 minutes,
+regardless of whether someone has added that entity to their Nest.
+Please investigate whether this is related to news ingestion, source polling, entity mapping,
+caching, or articles not being correctly saved and delivered to the feeds.
+Both individual entity feeds and the main Nest Feed should use the same updated article data.
+3. Nest Feed – Missing Article Thumbnails
+Currently, the Nest Feed displays article headlines and summaries, which is great, but no article
+images or thumbnails are appearing.
+I'd like the feed to incorporate the original article's thumbnail or featured image whenever
+available.
+The goal is to make the Nest Feed visually engaging, with a combination of headlines,
+summaries and relevant images.
+If an article doesn't have an available image, it can simply display without one.
+4. Duplicate Teams and Missing Logos
+I've noticed that when searching for NHL teams individually, logos are now appearing, which is
+an improvement.
+However, there seem to be duplicate team records appearing in search results.
+For example:
+● One version of a team displays its logo.
+● Another version of the same team appears without a logo.
+Additionally, logos are still missing when viewing fixtures and standings.
+Please investigate the duplicate entity records and ensure the correct team profiles and logos
+are consistently used throughout the application.
+Given your explanation regarding TheSportsDB's strict name matching, I also want to ensure we
+have proper entity mapping between StatPal and TheSportsDB, preferably using stable provider
+IDs rather than relying solely on team names.
+The same team should not appear as two separate entities simply because the providers use
+slightly different naming conventions.
+5. Fixtures – Previous Matches and Results Missing
+Previous fixtures are not consistently displayed across different teams and sports.
+Some entities show previous matches and their final scores, while others only show upcoming
+games.
+Every team's fixtures section should consistently display:
+● Previous matches.
+● Final scores and results.
+● Upcoming scheduled matches.
+● The ability to click a completed match to view its available statistics and match details.
+This should work consistently across all retained supported sports, wherever the underlying
+data is available.
+StatPal should be the primary source for this information, with TheSportsDB used as a fallback
+where necessary.
+6. Fixtures – Chronological Ordering
+The fixture ordering also needs to be adjusted.
+When opening a team's fixtures section, it should automatically position the user at the current
+date or closest upcoming fixture.
+For example, if today is Thursday:
+● Thursday's fixture (if applicable) should be immediately visible.
+● Scrolling downward should display upcoming games in chronological order (Saturday,
+Tuesday, etc.).
+● Scrolling upward should display previous games, including their final scores and results.
+The user shouldn't have to scroll through numerous dates to locate the next relevant game.
+7. Fixtures – Full-Season Schedules
+Currently, many teams, particularly in soccer and football, only display approximately one week
+of upcoming fixtures.
+I would like the application to display the entire available season schedule, rather than only the
+next seven days.
+StatPal should be our primary source for retrieving these schedules, with TheSportsDB serving
+as a backup where StatPal information is missing or incomplete.
+Ideally, the backend should retrieve and store the complete available season schedule for each
+supported team.
+If a league has not yet released its entire schedule, the application should display all currently
+confirmed fixtures and retrieve additional fixtures as they become available.
+8. Automatic Daily Fixture Refresh
+Once the full-season schedule has been retrieved, it should not remain static.
+Match dates and kickoff times can change because of tournaments, postponements,
+broadcasting adjustments and other scheduling changes.
+Please implement an automatic backend refresh at least once daily to check for any fixture
+changes.
+Any updated dates or times should automatically be reflected throughout the application,
+including individual entity pages and the Nest Calendar.
+This process should run automatically without requiring users to refresh their app or remove and
+re-add teams to their Nest.
+9. Nest Homepage – Entity Navigation Still Not Working
+The Nest function on the homepage is still not working correctly.
+When I select the Nest, my followed entities appear arranged around it, which is correct.
+However, clicking an individual entity does not navigate to its corresponding entity page.
+Each team, league or athlete displayed around the Nest should be clickable and take the user
+directly to that entity's page.
+This remains an outstanding issue from my previous feedback.
+10. Nest Calendar – Missing Fixtures for Followed Teams
+The Nest Calendar is also not consistently displaying upcoming games for entities I've added to
+my Nest.
+For example, I have the Toronto Maple Leafs added to my Nest using the correct team profile
+(the one displaying the logo).
+However, their upcoming games are not appearing in my Nest Calendar.
+The calendar should automatically populate with upcoming fixtures for all followed entities,
+where applicable.
+Please investigate whether this is related to duplicate team records, incorrect entity IDs, fixture
+retrieval, or synchronization between followed entities and the Nest Calendar.
+If a team's fixtures are available through StatPal or TheSportsDB, those fixtures should also be
+available to the Nest Calendar when that team is followed.
+11. League Standings – Previous Screen Recording Feedback
+The standings still do not reflect the layouts and formatting I demonstrated in my previous
+screen recording.
+In that recording, I provided examples of how the standings should look for each respective
+league.
+Please revisit the recording and implement the appropriate league-specific standings layouts,
+including:
+● Correct columns and statistics.
+● Appropriate league structures.
+● Divisions and conferences where applicable.
+● Correct rankings and formatting.
+● Team logos alongside team names.
+The goal is for each league's standings to reflect its actual structure, rather than using a generic
+layout across every sport.
+StatPal should be our primary source for standings data, with TheSportsDB used as a fallback
+where necessary.
+12. Consistency Across the Application
+One recurring issue I'm noticing is that functionality differs depending on which entity or sport
+I'm viewing.
+For example, one team may have its logo, previous results or updated articles displaying
+correctly, while another team does not.
+Please ensure that the fixes above are tested across multiple entities and sports, rather than
+verifying that they work for only one or two examples.
+This includes checking both newly added entities and entities that have been stored in a user's
+Nest for some time.
+I want to ensure that existing users and their previously saved entities continue receiving
+updated information without having to delete and re-add them.
+13. Data Provider Structure – StatPal and TheSportsDB
+Following your explanation regarding TheSportsDB, I want to clarify how I'd like us to structure
+our sports data going forward.
+As mentioned earlier, I'm comfortable removing sports such as Handball and Volleyball if reliable
+coverage isn't available.
+For the sports we retain, I'd like us to establish the following provider hierarchy, subject to the
+endpoints and coverage available through our subscriptions.
+StatPal – Primary Data Provider
+● Fixtures and full-season schedules.
+● Live scores and completed match results.
+● League standings.
+● Team rosters.
+● Player statistics.
+● Team and player information.
+TheSportsDB – Secondary Data Provider
+● Backup source for fixtures, schedules, results, standings and rosters whenever StatPal
+information is missing or unavailable.
+● Team badges and player headshots.
+● Highlights and supplementary media.
+Where StatPal has accurate information available, it should always take priority.
+TheSportsDB should automatically supplement missing information rather than overwrite
+accurate StatPal data with potentially outdated records.
+I also want to ensure we are correctly matching entities between the two providers so that the
+same team, league or athlete is consistently recognized throughout the application.
+This should help prevent duplicate profiles and ensure fixtures, standings, logos, news articles
+and calendar entries are all associated with the correct entity.
+I would also prefer that we avoid relying on Wikipedia scraping for rosters if the required
+information is already available through StatPal.
+Please confirm whether this is how our current backend operates and, if not, what changes are
+required to implement this structure.
+Final Note – Priorities Going Forward
+The biggest priority for me right now is getting the core functionality working consistently,
+particularly:
+1. News retrieval and automatic backend polling every 15–30 minutes across all configured
+news sources.
+2. Ensuring both the Nest Feed and individual entity feeds display fresh, relevant stories.
+3. Correct fixture retrieval, full-season schedules, previous results and chronological
+ordering.
+4. Proper synchronization between followed entities and the Nest Calendar.
+5. Resolving the outstanding navigation, duplicate entity, logo and standings issues.
+6. Establishing StatPal as our primary sports data provider, with TheSportsDB serving as
+the secondary provider and media enrichment source.
+The overall goal is for MySportsNest to feel like an active, reliable and continuously updated
+sports platform.
+I understand that third-party data providers have limitations, and I'm comfortable adjusting our
+supported sports where necessary. However, I want to ensure we're making full use of the
+information already available through StatPal and TheSportsDB before accepting missing
+information as a provider limitation.
+Please review all the points above and provide an update on:
+● Which issues have been identified and reproduced.
+● Which fixes are currently being implemented.
+● Whether any issues are caused by our backend rather than provider limitations.
+● Which requirements cannot currently be achieved with our existing API subscriptions.
+● The expected timeline for addressing the outstanding issues.
+I'd also appreciate it if the team could test these fixes across multiple supported sports and
+entities before sending the next APK, so we can avoid repeatedly encountering the same issues
+between builds.
+Thank you!
+Marco

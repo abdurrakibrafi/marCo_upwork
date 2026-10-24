@@ -200,7 +200,11 @@ def fast_serialize_feed_items(items, request, selected_entity_types=None) -> lis
             'entities': ents_serialized,
             'title': item.title,
             'summary': item.summary,
-            'thumbnail_url': item.thumbnail_url or ent_logo,
+            'thumbnail_url': (
+                item.thumbnail_url
+                if (item.thumbnail_url and not any(b in item.thumbnail_url for b in ('/badge/', '/cutout/', 'api-sports.io/football/leagues/')))
+                else ''
+            ),
             'url': item.url,
             'published_at': item.published_at.isoformat() if item.published_at else None,
             'is_breaking': item.is_breaking,
@@ -508,6 +512,29 @@ def get_entity_feed(request, entity_id):
                 )
                 feed = feed.filter(Q(title__iregex=basket_regex) | Q(summary__iregex=basket_regex))
 
+        elif sport_clean == 'baseball':
+            other_sports_regex = (
+                r'(cricket|wicket|batsman|bowler|ipl\b|bcci\b|fifa|uefa|soccer|premier league|'
+                r'nba\b|wnba\b|basketball|slam dunk|three-pointer|triple-double|'
+                r'volleyball|vnl\b|tennis|wimbledon|formula 1|\bf1\b)'
+            )
+            feed = feed.exclude(Q(title__iregex=other_sports_regex) | Q(summary__iregex=other_sports_regex))
+
+        elif sport_clean in ('ice_hockey', 'hockey'):
+            other_sports_regex = (
+                r'(cricket|wicket|batsman|bowler|ipl\b|bcci\b|fifa|uefa|soccer|premier league|'
+                r'nba\b|wnba\b|basketball|slam dunk|three-pointer|'
+                r'volleyball|vnl\b|baseball|mlb\b|home run|formula 1|\bf1\b)'
+            )
+            feed = feed.exclude(Q(title__iregex=other_sports_regex) | Q(summary__iregex=other_sports_regex))
+
+        elif sport_clean in ('american_football', 'football'):
+            other_sports_regex = (
+                r'(cricket|wicket|batsman|bowler|ipl\b|bcci\b|fifa|uefa|premier league|la liga|bundesliga|'
+                r'volleyball|vnl\b|formula 1|\bf1\b)'
+            )
+            feed = feed.exclude(Q(title__iregex=other_sports_regex) | Q(summary__iregex=other_sports_regex))
+
     # Content type filters (News/Articles vs Videos)
     raw_filters = request.GET.getlist('type') + request.GET.getlist('filter')
     filters = []
@@ -532,11 +559,17 @@ def get_entity_feed(request, entity_id):
 
     feed = feed.order_by('-published_at')
 
-    # If entity has no feed items yet, auto-trigger targeted RSS source discovery & polling
-    if not feed.exists():
-        lock_key = f"feed_auto_init:{canonical.id}"
+    # Auto-trigger targeted RSS source discovery & polling if entity has no articles or feed is older than 2 hours
+    from datetime import timedelta
+    from django.utils import timezone
+    first_item = feed.first()
+    needs_refresh = (first_item is None) or (
+        first_item.published_at and first_item.published_at < timezone.now() - timedelta(hours=2)
+    )
+    if needs_refresh:
+        lock_key = f"feed_auto_refresh:{canonical.id}"
         try:
-            if cache.add(lock_key, True, timeout=60):
+            if cache.add(lock_key, True, timeout=900):  # Debounce refresh triggers for 15 minutes per entity
                 from .tasks import ensure_entity_has_rss_source, poll_single_source
                 entity_sources = Source.objects.filter(entities__id__in=target_entity_ids, is_active=True)
                 if entity_sources.exists():

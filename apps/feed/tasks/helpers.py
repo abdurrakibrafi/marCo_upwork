@@ -63,26 +63,35 @@ def _extract_domain(url: str) -> str | None:
         return None
 
 
-def _resolve_thumbnail_for_article(title: str, entities: list) -> str:
-    """Find and resolve a relevant image thumbnail for an article via Brave Search API.
+def _resolve_thumbnail_for_article(title: str, entities: list = None, url: str = '') -> str:
+    """Find and resolve a relevant image thumbnail for an article.
+
+    Checks YouTube URLs directly for instant video thumbnails, then Brave Search API.
+    If no article/video thumbnail is found, returns empty string as requested by design.
 
     Args:
         title (str): News article title.
-        entities (list): List of linked Entity instances.
+        entities (list, optional): List of linked Entity instances.
+        url (str, optional): Target article or video URL.
 
     Returns:
         str: Resolved image URL or empty string.
     """
+    if url:
+        yt_match = re.search(r'(?:v=|\/|vi\/|shorts\/)([0-9A-Za-z_-]{11})', url)
+        if yt_match:
+            return f"https://img.youtube.com/vi/{yt_match.group(1)}/hqdefault.jpg"
+
     brave_key = getattr(settings, 'BRAVESEARCH_KEY', '')
     if brave_key:
         try:
             query_clean = re.sub(r'[^\w\s]', ' ', title).strip()
-            url = "https://api.search.brave.com/res/v1/news/search"
+            search_url = "https://api.search.brave.com/res/v1/news/search"
             headers = {
                 "X-Subscription-Token": brave_key,
                 "Accept": "application/json"
             }
-            resp = requests.get(url, headers=headers, params={"q": query_clean, "count": 1}, timeout=5)
+            resp = requests.get(search_url, headers=headers, params={"q": query_clean, "count": 1}, timeout=3)
             if resp.status_code == 200:
                 results = resp.json().get('results', [])
                 if results:
@@ -93,15 +102,6 @@ def _resolve_thumbnail_for_article(title: str, entities: list) -> str:
                         return thumb
         except Exception as e:
             logger.warning(f"Brave Search thumbnail search failed: {e}")
-
-    # Fallback: Use official entity logo so cards always have visual branding
-    if entities:
-        from apps.entity.serializers import find_entity_logo
-        for ent in entities:
-            if ent:
-                logo = find_entity_logo(ent)
-                if logo:
-                    return logo
 
     return ''
 
@@ -137,7 +137,8 @@ def _entity_matches_text(entity: Entity, text: str) -> bool:
             r'volleyball|vnl|'
             r'baseball|mlb|home run|strikeout|'
             r'tennis|wimbledon|us open|french open|australian open|roland garros|atp|wta|'
-            r'formula 1|f1|grand prix)\b', re.I
+            r'formula 1|f1|grand prix|'
+            r'ufc|mma|octagon|dana white|light heavyweight|welterweight|middleweight|heavyweight|bellator)\b', re.I
         )
         soccer_specific_pattern = re.compile(
             r'\b(soccer|football|fifa|uefa|copa|conmebol|concacaf|champions league|world cup|striker|midfield|'
@@ -266,8 +267,22 @@ def _entity_matches_text(entity: Entity, text: str) -> bool:
         'inter', 'sheffield', 'west', 'north', 'south', 'east', 'port', 'rovers', 'wanderers',
         'rangers', 'celtic', 'hearts', 'hibernian', 'albion', 'forest', 'villa', 'palace', 'team',
         'division', 'championship', 'cup', 'state', 'green', 'white', 'red', 'blue', 'black',
-        'super', 'shield', 'league', 'asian', 'nations', 'primera', 'women', 'womens', 'sudamericano'
+        'super', 'shield', 'league', 'asian', 'nations', 'primera', 'women', 'womens', 'sudamericano',
+        'toronto', 'montreal', 'vancouver', 'ottawa', 'calgary', 'edmonton', 'winnipeg',
+        'philadelphia', 'pittsburgh', 'cleveland', 'detroit', 'atlanta', 'denver', 'seattle',
+        'phoenix', 'minnesota', 'carolina', 'tampa', 'washington'
     }
+
+    if entity.type == 'athlete':
+        name_parts = [w for w in name.split() if len(w) >= 3]
+        if len(name_parts) >= 2:
+            # For multi-word athlete names (e.g. Paulo Dybala), ONLY match on the distinct surname.
+            # Never match on common first names like 'paulo', 'max', 'alex', 'david', etc.
+            surname = name_parts[-1]
+            if len(surname) >= 4 and surname not in GENERIC_WORDS:
+                if re.search(r'\b' + re.escape(surname) + r'\b', text_norm):
+                    return True
+            return False
 
     words = [w for w in name.split() if len(w) >= 4]
     for word in words:

@@ -356,6 +356,78 @@ def find_team_logo_by_name(name):
     return logo_val
 
 
+_MAJOR_LEAGUE_BADGES = {
+    "nhl": "https://r2.thesportsdb.com/images/media/league/badge/4cem2k1619616539.png",
+    "national hockey league": "https://r2.thesportsdb.com/images/media/league/badge/4cem2k1619616539.png",
+    "nba": "https://r2.thesportsdb.com/images/media/league/badge/frdjqy1536585083.png",
+    "national basketball association": "https://r2.thesportsdb.com/images/media/league/badge/frdjqy1536585083.png",
+    "nfl": "https://r2.thesportsdb.com/images/media/league/badge/g85fqz1662057187.png",
+    "national football league": "https://r2.thesportsdb.com/images/media/league/badge/g85fqz1662057187.png",
+    "mlb": "https://r2.thesportsdb.com/images/media/league/badge/c5r83j1521893739.png",
+    "major league baseball": "https://r2.thesportsdb.com/images/media/league/badge/c5r83j1521893739.png",
+    "premier league": "https://r2.thesportsdb.com/images/media/league/badge/gasy9d1737743125.png",
+    "english premier league": "https://r2.thesportsdb.com/images/media/league/badge/gasy9d1737743125.png",
+    "epl": "https://r2.thesportsdb.com/images/media/league/badge/gasy9d1737743125.png",
+    "la liga": "https://r2.thesportsdb.com/images/media/league/badge/ja4it51687628717.png",
+    "spanish la liga": "https://r2.thesportsdb.com/images/media/league/badge/ja4it51687628717.png",
+    "bundesliga": "https://r2.thesportsdb.com/images/media/league/badge/teqh1b1679952008.png",
+    "german bundesliga": "https://r2.thesportsdb.com/images/media/league/badge/teqh1b1679952008.png",
+    "serie a": "https://r2.thesportsdb.com/images/media/league/badge/67q3q21679951383.png",
+    "italian serie a": "https://r2.thesportsdb.com/images/media/league/badge/67q3q21679951383.png",
+    "ligue 1": "https://r2.thesportsdb.com/images/media/league/badge/9f7z9d1742983155.png",
+    "french ligue 1": "https://r2.thesportsdb.com/images/media/league/badge/9f7z9d1742983155.png",
+    "mls": "https://r2.thesportsdb.com/images/media/league/badge/dqo6r91549878326.png",
+    "major league soccer": "https://r2.thesportsdb.com/images/media/league/badge/dqo6r91549878326.png",
+    "uefa champions league": "https://r2.thesportsdb.com/images/media/league/badge/facv1u1742998896.png",
+    "champions league": "https://r2.thesportsdb.com/images/media/league/badge/facv1u1742998896.png",
+    "f1": "https://r2.thesportsdb.com/images/media/league/badge/g8cofl1513623681.png",
+    "formula 1": "https://r2.thesportsdb.com/images/media/league/badge/g8cofl1513623681.png",
+}
+
+
+def find_league_logo_by_name(name: str) -> str:
+    """Resolve official badge logo URL for major leagues by normalized league name."""
+    if not name or not str(name).strip():
+        return ""
+    clean = str(name).strip().lower()
+    clean_no_punct = clean.replace('-', ' ').replace('_', ' ').replace(':', ' ')
+    clean_tokens = [w for w in clean_no_punct.split() if w]
+    
+    # 1. Exact match in predefined major league map
+    if clean in _MAJOR_LEAGUE_BADGES:
+        return _MAJOR_LEAGUE_BADGES[clean]
+    
+    for k, badge in _MAJOR_LEAGUE_BADGES.items():
+        if k in clean_tokens or k == " ".join(clean_tokens):
+            return badge
+            
+    # 2. Database lookup for other leagues with existing logo
+    try:
+        db_logo = Entity.objects.filter(
+            name__iexact=name.strip(),
+            type='league'
+        ).exclude(logo_url="").values_list("logo_url", flat=True).first()
+        if db_logo and "statpal.io" not in db_logo:
+            return db_logo
+    except Exception:
+        pass
+
+    # 3. TheSportsDB live league lookup
+    try:
+        from apps.sports_apis.services.thesportsdb import TheSportsDBService
+        tsdb = TheSportsDBService()
+        data = tsdb._get('searchfilename.php', {'e': name.strip()}) or {}
+        events = data.get('event') or []
+        if events and isinstance(events, list):
+            b = events[0].get('strLeagueBadge')
+            if b:
+                return b
+    except Exception:
+        pass
+
+    return ""
+
+
 def resolve_team_venue(team_name: str):
     """
     Resolve stadium name, location city, and country for a team.

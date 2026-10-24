@@ -930,20 +930,50 @@ def get_team_fixtures(request, team_id):
     team_entity = get_object_or_404(Entity, id=team_id, type='team')
     team_entity = team_entity.canonical_entity or team_entity
 
-    events = Event.objects.filter(
-        Q(home_entity=team_entity)
-        | Q(away_entity=team_entity)
+    team_ids = set(
+        Entity.objects.filter(
+            Q(id=team_entity.id)
+            | Q(canonical_entity=team_entity)
+            | Q(name__iexact=team_entity.name)
+        ).values_list('id', flat=True)
+    )
+
+    now = timezone.now()
+    base_qs = Event.objects.filter(
+        Q(home_entity_id__in=team_ids)
+        | Q(away_entity_id__in=team_ids)
         | Q(home_entity__external_id=team_entity.external_id, home_entity__sport=team_entity.sport)
         | Q(away_entity__external_id=team_entity.external_id, away_entity__sport=team_entity.sport)
     ).distinct().select_related(
         'home_entity', 'away_entity', 'league'
-    ).order_by('-start_time')[:50]
+    )
+
+    # 1. Past/completed events (most recent first, up to 30, reversed to chronological)
+    past_events = list(base_qs.filter(start_time__lt=now).order_by('-start_time')[:30])
+    past_events.reverse()
+
+    # 2. Upcoming events (from now onwards, ascending in chronological order, up to 70)
+    upcoming_events = list(base_qs.filter(start_time__gte=now).order_by('start_time')[:70])
+
+    if len(upcoming_events) < 5 and len(past_events) == 30:
+        past_events = list(base_qs.filter(start_time__lt=now).order_by('-start_time')[:70])
+        past_events.reverse()
 
     from apps.event.views import _deduplicate_events
-    events_list = _deduplicate_events(list(events))
+    events_list = _deduplicate_events(past_events + upcoming_events)
+    serialized_fixtures = EvSerializer(events_list, many=True, context={'request': request, 'nest_entity_ids': {team_entity.id}}).data
+
+    current_fixture_index = 0
+    now_iso = now.isoformat()
+    for idx, f in enumerate(serialized_fixtures):
+        st = f.get('start_time')
+        if st and st >= now_iso:
+            current_fixture_index = idx
+            break
 
     return Response({
-        'team': EntitySerializer(team_entity, context={'request': request}).data,
-        'fixtures_count': len(events_list),
-        'fixtures': EvSerializer(events_list, many=True).data,
+        'team':                  EntitySerializer(team_entity, context={'request': request}).data,
+        'fixtures_count':        len(serialized_fixtures),
+        'current_fixture_index': current_fixture_index,
+        'fixtures':              serialized_fixtures,
     })

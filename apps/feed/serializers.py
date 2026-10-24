@@ -91,15 +91,11 @@ class FeedItemSerializer(serializers.ModelSerializer):
         ]
 
     def get_thumbnail_url(self, obj):
-        if obj.thumbnail_url:
-            return obj.thumbnail_url
-        entities = list(obj.entities.all())
-        if entities:
-            from apps.entity.serializers import find_entity_logo, make_logo_url_absolute
-            logo = find_entity_logo(entities[0])
-            if logo:
-                return make_logo_url_absolute(logo, self.context.get('request'))
-        return ''
+        """Return article thumbnail or empty string if not available. Never return team/league badges as article thumbnails."""
+        url = obj.thumbnail_url or ''
+        if url and any(b in url for b in ('/badge/', '/cutout/', 'api-sports.io/football/leagues/')):
+            return ''
+        return url
 
     def get_entity_names(self, obj):
         """Extract a list of entity names associated with the article."""
@@ -109,7 +105,7 @@ class FeedItemSerializer(serializers.ModelSerializer):
         """Resolve raw Google News redirect links to canonical publisher URLs."""
         if obj.url and "news.google.com" in obj.url:
             from apps.feed.utils_url import resolve_real_article_url
-            return resolve_real_article_url(obj.url)
+            return resolve_real_article_url(obj.url, sync_network=False)
         return obj.url
 
 
@@ -149,7 +145,7 @@ class FeedItemCompactSerializer(serializers.ModelSerializer):
         """Resolve canonical publisher URL for redirect items."""
         if obj.url and "news.google.com" in obj.url:
             from apps.feed.utils_url import resolve_real_article_url
-            return resolve_real_article_url(obj.url)
+            return resolve_real_article_url(obj.url, sync_network=False)
         return obj.url
 
     def _get_primary_entity(self, obj):
@@ -244,16 +240,11 @@ class FeedItemCompactSerializer(serializers.ModelSerializer):
         return ''
 
     def get_thumbnail_url(self, obj):
-        """Return article thumbnail or fallback to entity logo."""
-        if obj.thumbnail_url:
-            return obj.thumbnail_url
-        entity = self._get_primary_entity(obj)
-        if entity:
-            from apps.entity.serializers import find_entity_logo, make_logo_url_absolute
-            logo = find_entity_logo(entity)
-            if logo:
-                return make_logo_url_absolute(logo, self.context.get('request'))
-        return ''
+        """Return article thumbnail or empty string if not available. Never return team/league badges as article thumbnails."""
+        url = obj.thumbnail_url or ''
+        if url and any(b in url for b in ('/badge/', '/cutout/', 'api-sports.io/football/leagues/')):
+            return ''
+        return url
 
     def get_is_bookmarked(self, obj):
         """Check if authenticated request user has bookmarked the item."""
