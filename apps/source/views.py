@@ -52,6 +52,15 @@ def search_sources(request):
         Response: List of suggested publisher sources with existing subscription status.
     """
     query = request.GET.get('q', '').strip()
+    entity_id = request.GET.get('entity_id')
+    if not query and entity_id:
+        try:
+            ent = Entity.objects.filter(id=entity_id).first()
+            if ent:
+                query = ent.name
+        except Exception:
+            pass
+
     if not query:
         return Response(
             {'error': 'Query parameter "q" is required'},
@@ -119,6 +128,7 @@ def add_source(request):
     rss_url = request.data.get('rss_url', '').strip()
     favicon_url = request.data.get('favicon_url', '').strip()
     search_query = request.data.get('search_query', '').strip()
+    entity_id = request.data.get('entity_id') or request.query_params.get('entity_id')
 
     if not source_id and not domain:
         return Response(
@@ -134,6 +144,7 @@ def add_source(request):
         rss_url=rss_url,
         favicon_url=favicon_url,
         search_query=search_query,
+        entity_id=entity_id,
     )
 
     serializer = UserCustomSourceSerializer(user_source)

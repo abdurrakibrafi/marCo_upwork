@@ -370,8 +370,8 @@ def get_nest_feed(request):
 
     if selected_entity_types and nest_entity_ids:
         matching_item_ids = list(FeedItem.objects.filter(
-            entities__id__in=nest_entity_ids,
-            entities__type__in=selected_entity_types
+            Q(entities__id__in=nest_entity_ids, entities__type__in=selected_entity_types) |
+            Q(source_id__in=user_custom_source_ids, source__entities__id__in=nest_entity_ids, source__entities__type__in=selected_entity_types)
         ).values_list('id', flat=True).distinct())
         feed = feed.filter(id__in=matching_item_ids)
 
@@ -462,7 +462,8 @@ def get_entity_feed(request, entity_id):
         hidden_publishers = hidden_sources_qs.exclude(publisher_name='').values_list('publisher_name', flat=True)
     
     feed = FeedItem.objects.filter(
-        entities__id__in=target_entity_ids
+        Q(entities__id__in=target_entity_ids) |
+        Q(source__entities__id__in=target_entity_ids)
     ).exclude(
         source_id__in=hidden_source_ids
     ).exclude(

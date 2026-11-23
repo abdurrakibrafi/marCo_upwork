@@ -49,69 +49,30 @@ class SourceAIService:
 
     def suggest_sources(self, query: str) -> list[dict]:
         """Search and suggest candidate sports news sources given a user query keyword.
+        Uses Brave Search API to discover publisher sources, strictly excluding Google News aggregator feeds.
 
         Args:
-            query (str): Keyword or publication name (e.g. 'espn', 'cricket news').
+            query (str): Keyword or publication name (e.g. 'espn', 'Toronto Maple Leafs', 'cricket news').
 
         Returns:
             list[dict]: List of enriched source suggestion dictionaries.
         """
         ai_suggestions = []
-        
-        # 1. Try DB matching FIRST
-        try:
-            from apps.feed.models import Source
-            from apps.entity.models import Entity
-            
-            words = [w.strip() for w in query.split() if len(w.strip()) > 1]
-            db_sources = []
-            
-            if words:
-                # 1a. Try matching ALL words in name/domain (AND search)
-                q_and = Q()
-                for w in words:
-                    q_and &= (Q(name__icontains=w) | Q(domain__icontains=w))
-                db_sources = list(Source.objects.filter(q_and)[:6])
-                
-                # 1b. Try matching ANY words if no results (OR search)
-                if not db_sources:
-                    q_or = Q()
-                    for w in words:
-                        q_or |= (Q(name__icontains=w) | Q(domain__icontains=w))
-                    db_sources = list(Source.objects.filter(q_or)[:6])
-                    
-                # 1c. Try matching entities (teams/leagues/athletes) and get their linked sources
-                if not db_sources:
-                    q_entity = Q()
-                    for w in words:
-                        q_entity |= Q(name__icontains=w)
-                    entities = Entity.objects.filter(q_entity)
-                    if entities.exists():
-                        db_sources = list(Source.objects.filter(entities__in=entities).distinct()[:6])
-            
-            # Direct fallback if still no sources
-            if not db_sources:
-                db_sources = list(Source.objects.filter(
-                    Q(name__icontains=query) | Q(domain__icontains=query)
-                )[:6])
-                
-            for src in db_sources:
-                ai_suggestions.append({
-                    "source_id": src.id,
-                    "name": src.name,
-                    "domain": src.domain,
-                    "description": f"News articles covering sports from {src.name}.",
-                    "tags": [],
-                    "rss_url": src.rss_url,
-                })
-        except Exception as e:
-            logger.warning(f"DB sources search failed: {e}")
+        clean_query = (query or "").strip()
+        if not clean_query:
+            return []
 
-        # 2. Try Popular Sources matching if DB returned no results
-        if not ai_suggestions:
-            query_lower = query.lower()
-            for pop in self.POPULAR_SOURCES:
-                if query_lower in pop["name"].lower() or query_lower in pop["domain"].lower():
+        # 1. Primary: Use Brave Search API to find real publisher sources matching the query
+        if self.brave_key:
+            brave_results = self._brave_search(clean_query)
+            if brave_results:
+                ai_suggestions.extend(brave_results)
+
+        # 2. Match popular sports sources
+        query_lower = clean_query.lower()
+        for pop in self.POPULAR_SOURCES:
+            if query_lower in pop["name"].lower() or query_lower in pop["domain"].lower():
+                if not any(s["domain"] == pop["domain"] for s in ai_suggestions):
                     ai_suggestions.append({
                         "name": pop["name"],
                         "domain": pop["domain"],
@@ -120,16 +81,38 @@ class SourceAIService:
                         "rss_url": pop["rss_url"],
                     })
 
-        # 3. Try Brave Search fallback if still no suggestions
-        if not ai_suggestions and self.brave_key:
-            ai_suggestions = self._brave_fallback(query)
+        # 3. Match existing verified DB sources — STRICTLY EXCLUDING Google News aggregator feeds
+        try:
+            from apps.feed.models import Source
+            words = [w.strip() for w in clean_query.split() if len(w.strip()) > 1]
+            if words:
+                q_words = Q()
+                for w in words:
+                    q_words |= (Q(name__icontains=w) | Q(domain__icontains=w))
+                db_sources = list(
+                    Source.objects.filter(q_words)
+                    .exclude(domain__icontains='google.com')
+                    .exclude(rss_url__icontains='google.com')
+                    .exclude(name__icontains='Google News')[:8]
+                )
+                for src in db_sources:
+                    if not any(s.get("domain") == src.domain for s in ai_suggestions):
+                        ai_suggestions.append({
+                            "source_id": src.id,
+                            "name": src.name,
+                            "domain": src.domain,
+                            "description": f"News articles covering sports from {src.name}.",
+                            "tags": [],
+                            "rss_url": src.rss_url,
+                        })
+        except Exception as e:
+            logger.warning(f"DB sources search failed: {e}")
 
         # Step 2: Enrich each suggestion with favicon
         enriched = []
-        for suggestion in ai_suggestions[:6]:
+        for suggestion in ai_suggestions[:8]:
             enriched_item = self._enrich_lightweight(suggestion)
             if enriched_item:
-                # If suggestion has a custom rss_url, use it
                 if suggestion.get("rss_url"):
                     enriched_item["rss_url"] = suggestion["rss_url"]
                     enriched_item["has_rss"] = True
@@ -141,7 +124,7 @@ class SourceAIService:
     # STEP 1: Brave Search suggestions
     # ─────────────────────────────────────────────────────────────────────
 
-    def _brave_fallback(self, query: str) -> list[dict]:
+    def _brave_search(self, query: str) -> list[dict]:
         """Execute web query via Brave Search to find publisher domains matching sports query.
 
         Args:
@@ -153,7 +136,7 @@ class SourceAIService:
         if not self.brave_key:
             return []
 
-        search_query = f"{query} sports news RSS"
+        search_query = query if ("sports" in query.lower() or "news" in query.lower()) else f"{query} sports news"
         try:
             resp = requests.get(
                 self.BRAVE_URL,
@@ -162,32 +145,77 @@ class SourceAIService:
                     "Accept": "application/json",
                 },
                 params={"q": search_query, "count": 10},
-                timeout=10,
+                timeout=8,
             )
-            resp.raise_for_status()
+            if resp.status_code != 200:
+                logger.warning(f"Brave Search API returned {resp.status_code}: {resp.text[:200]}")
+                return []
+
             data = resp.json()
             results = data.get("web", {}).get("results", [])
+
+            generic_domains = {
+                'google.com', 'news.google.com', 'youtube.com', 'youtu.be', 'twitter.com', 'x.com',
+                'facebook.com', 'instagram.com', 'reddit.com', 'tiktok.com', 'wikipedia.org',
+                'apple.com', 'spotify.com', 'vimeo.com', 'twitch.tv', 'amazon.com'
+            }
 
             seen_domains = set()
             suggestions = []
             for item in results:
                 url = item.get("url", "")
                 domain = self._extract_domain(url)
-                if not domain or domain in seen_domains:
+                if not domain:
                     continue
-                seen_domains.add(domain)
+                clean_domain = domain.replace("https://", "").replace("http://", "").split("/")[0].lower()
+                if any(gd in clean_domain for gd in generic_domains):
+                    continue
+                if clean_domain in seen_domains:
+                    continue
+                seen_domains.add(clean_domain)
+
+                # Clean publisher name from title or domain
+                raw_title = item.get("title", "")
+                name = ""
+                if raw_title:
+                    import re
+                    parts = re.split(r'[:|\-–—]', raw_title)
+                    cand = parts[0].strip()
+                    if 2 < len(cand) < 60:
+                        name = cand
+                if not name:
+                    name = item.get("meta_url", {}).get("hostname", clean_domain).replace("www.", "")
+
+                # Check if this publisher already exists in DB with an active RSS feed
+                rss_url = ""
+                source_id = None
+                try:
+                    from apps.feed.models import Source
+                    existing_src = Source.objects.filter(domain__icontains=clean_domain).exclude(rss_url='').first()
+                    if existing_src:
+                        rss_url = existing_src.rss_url
+                        source_id = existing_src.id
+                except Exception:
+                    pass
+
                 suggestions.append({
-                    "name": item.get("meta_url", {}).get("hostname", domain).replace("www.", ""),
+                    "source_id": source_id,
+                    "name": name,
                     "domain": domain,
                     "description": item.get("description", ""),
                     "tags": [],
+                    "rss_url": rss_url,
                 })
 
-            return suggestions[:8]
+            return suggestions[:6]
 
         except Exception as e:
-            logger.warning(f"Brave fallback failed: {e}")
+            logger.warning(f"Brave search failed: {e}")
             return []
+
+    def _brave_fallback(self, query: str) -> list[dict]:
+        """Backward-compatibility alias for _brave_search."""
+        return self._brave_search(query)
 
     # ─────────────────────────────────────────────────────────────────────
     # STEP 2: Enrich — favicon + RSS discovery

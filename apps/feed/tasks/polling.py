@@ -207,7 +207,10 @@ def poll_single_source(self, source_id: int):
         matched_entities = [e for e in candidate_entities if _entity_matches_text(e, text)]
 
         if not matched_entities:
-            continue
+            if candidate_entities and not is_global_source:
+                matched_entities = candidate_entities
+            else:
+                continue
 
         raw_title = entry.get('title', '').strip()[:500]
         url = resolve_real_article_url(raw_url)
@@ -219,6 +222,12 @@ def poll_single_source(self, source_id: int):
             canonical = me.canonical_entity or me
             all_linked_entities.add(canonical)
             all_linked_entities.update(Entity.objects.filter(canonical_entity=canonical))
+
+        if candidate_entities and not is_global_source:
+            for ce in candidate_entities:
+                canonical = ce.canonical_entity or ce
+                all_linked_entities.add(canonical)
+                all_linked_entities.update(Entity.objects.filter(canonical_entity=canonical))
 
         # Deduplication: check by url_hash OR (same source + exact same title)
         existing_item = FeedItem.objects.filter(url_hash=url_hash).first()

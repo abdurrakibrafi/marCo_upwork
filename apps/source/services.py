@@ -156,7 +156,8 @@ def add_user_custom_source(
     name: str = '',
     rss_url: str = '',
     favicon_url: str = '',
-    search_query: str = ''
+    search_query: str = '',
+    entity_id: int | None = None,
 ) -> tuple[UserCustomSource, bool, str, int]:
     """Add or re-activate a custom publication source for the authenticated user.
 
@@ -171,6 +172,7 @@ def add_user_custom_source(
         rss_url (str): Verified RSS feed endpoint.
         favicon_url (str): Favicon / publication icon URL.
         search_query (str): Optional search phrase used to discover the source.
+        entity_id (int | None): Optional entity ID (team/athlete/league) to link source to.
 
     Returns:
         tuple[UserCustomSource, bool, str, int]: (user_source, was_created, message, http_status_code)
@@ -240,6 +242,23 @@ def add_user_custom_source(
         if not created and name and not source.name:
             source.name = name
             source.save(update_fields=['name'])
+
+    # Associate with entity if provided
+    if entity_id:
+        try:
+            from apps.entity.models import Entity
+            entity = Entity.objects.filter(id=entity_id).first()
+            if entity:
+                source.entities.add(entity)
+                if entity.canonical_entity:
+                    source.entities.add(entity.canonical_entity)
+                # Link existing articles of this source to this entity
+                for item in source.items.all():
+                    item.entities.add(entity)
+                    if entity.canonical_entity:
+                        item.entities.add(entity.canonical_entity)
+        except Exception as e:
+            logger.warning(f"Error associating entity {entity_id} to source {source.id}: {e}")
 
     user_source, was_created = UserCustomSource.objects.get_or_create(
         user=user,
