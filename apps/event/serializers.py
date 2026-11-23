@@ -243,12 +243,6 @@ class EventSerializer(serializers.ModelSerializer):
         from django.utils import timezone
         meta = instance.metadata if isinstance(instance.metadata, dict) else {}
 
-        if instance.status == 'upcoming' and instance.start_time and instance.start_time < timezone.now():
-            data['status'] = 'completed'
-            status_det = str(data.get('status_detail') or '')
-            if status_det in ('Not Started', '') or ':' in status_det:
-                data['status_detail'] = 'FT'
-
         # Fallback to metadata scores if model fields are null
         if data.get('home_score') is None and meta:
             h_score = meta.get('intHomeScore') or meta.get('home_score') or (meta.get('home', {}).get('totalscore') if isinstance(meta.get('home'), dict) else None)
@@ -264,6 +258,14 @@ class EventSerializer(serializers.ModelSerializer):
                     data['away_score'] = int(str(a_score).split('/')[0])
                 except (ValueError, TypeError):
                     pass
+
+        # Only mark as completed if valid match scores exist and match time is past (prevents fake FT on score-less/postponed matches)
+        has_scores = data.get('home_score') is not None and data.get('away_score') is not None
+        if instance.status == 'upcoming' and instance.start_time and instance.start_time < timezone.now() - timezone.timedelta(hours=3) and has_scores:
+            data['status'] = 'completed'
+            status_det = str(data.get('status_detail') or '')
+            if status_det in ('Not Started', '') or ':' in status_det:
+                data['status_detail'] = 'FT'
 
         # Timezone conversion for local_date, local_time, and status_detail
         user_tz = self.context.get('timezone')
@@ -412,7 +414,8 @@ class EventDetailSerializer(serializers.ModelSerializer):
 
         try:
             from django.utils import timezone
-            if instance.status == 'upcoming' and instance.start_time and instance.start_time < timezone.now():
+            has_scores = data.get('home_score') is not None and data.get('away_score') is not None
+            if instance.status == 'upcoming' and instance.start_time and instance.start_time < timezone.now() - timezone.timedelta(hours=3) and has_scores:
                 data['status'] = 'completed'
                 status_det = str(data.get('status_detail') or '')
                 if status_det in ('Not Started', '') or ':' in status_det:

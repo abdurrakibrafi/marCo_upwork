@@ -291,11 +291,15 @@ def get_nest_calendar(request):
             elif ent.type == 'athlete':
                 athlete_ids.add(ent.id)
 
-        # For followed athletes, find their team IDs
+        # For followed athletes, find their team IDs (including canonical duplicates)
         if athlete_ids:
             from apps.entity.models import Athlete
-            athlete_teams = Athlete.objects.filter(entity_id__in=athlete_ids).values_list('current_team_id', flat=True)
+            athlete_teams = Athlete.objects.filter(
+                Q(entity_id__in=athlete_ids) | Q(entity__canonical_entity_id__in=athlete_ids)
+            ).exclude(current_team_id__isnull=True).values_list('current_team_id', flat=True)
             team_ids.update(athlete_teams)
+            # Also include athlete directly for individual sports (F1, tennis, golf, MMA)
+            team_ids.update(athlete_ids)
 
         user_tz = _resolve_timezone(request)
         now_local = timezone.now().astimezone(user_tz)
@@ -316,16 +320,17 @@ def get_nest_calendar(request):
         start_dt = datetime.combine(start_date, datetime.min.time()).replace(tzinfo=user_tz)
         end_dt = datetime.combine(end_date, datetime.max.time()).replace(tzinfo=user_tz)
 
-        # 3. Queryset
+        # 3. Queryset - prioritize followed teams and athletes in Nest Calendar
+        # If user explicitly filtered for a league via ?entity_id= or only follows leagues, include league matches
+        event_entity_filter = Q(home_entity_id__in=team_ids) | Q(away_entity_id__in=team_ids)
+        if not team_ids or (entity_id_param and entity_id_param.isdigit() and int(entity_id_param) in league_ids):
+            event_entity_filter |= Q(league_id__in=league_ids)
+
         qs = (
             Event.objects.filter(
                 start_time__gte=start_dt,
                 start_time__lte=end_dt,
-            ).filter(
-                Q(home_entity_id__in=team_ids)
-                | Q(away_entity_id__in=team_ids)
-                | Q(league_id__in=league_ids)
-            )
+            ).filter(event_entity_filter)
         )
 
         now = timezone.now()

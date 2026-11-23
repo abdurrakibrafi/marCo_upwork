@@ -136,7 +136,7 @@ def _map_status(raw: str, sport: str = None, metadata: dict = None) -> str:
 
 
 def _parse_dt(date_str: str, time_str: str) -> datetime:
-    """Parse date and time strings (DD.MM.YYYY HH:MM) into a timezone-aware datetime.
+    """Parse date and time strings (supporting DD.MM.YYYY, YYYY-MM-DD, DD/MM/YYYY, HH:MM, HH:MM:SS) into a timezone-aware datetime.
 
     Args:
         date_str (str): Date string.
@@ -145,11 +145,33 @@ def _parse_dt(date_str: str, time_str: str) -> datetime:
     Returns:
         datetime: Aware datetime object.
     """
-    try:
-        naive = datetime.strptime(f"{date_str} {time_str}", "%d.%m.%Y %H:%M")
-        return timezone.make_aware(naive, timezone.get_current_timezone())
-    except Exception:
+    if not date_str:
         return timezone.now()
+
+    d_str = str(date_str).strip()
+    t_str = str(time_str or "00:00").strip()
+    if len(t_str) > 5 and ":" in t_str:
+        t_str = t_str[:5]
+    if not re.match(r"^\d{1,2}:\d{2}$", t_str):
+        t_str = "00:00"
+
+    formats = [
+        ("%d.%m.%Y %H:%M", f"{d_str} {t_str}"),
+        ("%Y-%m-%d %H:%M", f"{d_str} {t_str}"),
+        ("%d/%m/%Y %H:%M", f"{d_str} {t_str}"),
+        ("%Y/%m/%d %H:%M", f"{d_str} {t_str}"),
+        ("%d-%m-%Y %H:%M", f"{d_str} {t_str}"),
+        ("%d.%m.%Y", d_str),
+        ("%Y-%m-%d", d_str),
+        ("%d/%m/%Y", d_str),
+    ]
+    for fmt, val in formats:
+        try:
+            naive = datetime.strptime(val, fmt)
+            return timezone.make_aware(naive, timezone.get_current_timezone())
+        except Exception:
+            continue
+    return timezone.now()
 
 
 def _safe_int(val) -> int | None:
