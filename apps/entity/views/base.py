@@ -28,6 +28,38 @@ def _get_user_nest_ids(request):
     return set()
 
 
+def _dedupe_entities(entities_list, limit=10):
+    """Deduplicate entities by canonical record and normalized (name, sport, type) signature."""
+    seen_ids = set()
+    seen_keys = set()
+    deduped = []
+    from apps.entity.utils.normalizers import normalize_entity_name
+
+    for ent in entities_list:
+        canonical = ent.canonical_entity or ent
+        if not canonical.is_active and canonical.canonical_entity:
+            canonical = canonical.canonical_entity
+
+        if canonical.id in seen_ids:
+            continue
+
+        raw_sport = (canonical.sport or '').lower().strip()
+        sport_norm = 'ice_hockey' if raw_sport in ('hockey', 'ice hockey', 'ice_hockey', 'nhl') else raw_sport
+        norm_name = canonical.normalized_name or normalize_entity_name(canonical.name)
+        key = (norm_name, sport_norm, canonical.type)
+
+        if key in seen_keys:
+            continue
+
+        seen_ids.add(canonical.id)
+        seen_keys.add(key)
+        deduped.append(canonical)
+        if len(deduped) >= limit:
+            break
+
+    return deduped
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Search / list / detail
 # ─────────────────────────────────────────────────────────────────────────────
@@ -81,7 +113,7 @@ def get_trending(request):
     sport   = request.GET.get('sport')
     entity_type = request.GET.get('type')  # optional: filter by type
 
-    base_qs = Entity.objects.filter(is_active=True)
+    base_qs = Entity.objects.filter(is_active=True, canonical_entity__isnull=True)
 
     if country:
         base_qs = base_qs.filter(country__icontains=country)
@@ -89,24 +121,36 @@ def get_trending(request):
     if query:
         # Search mode — filter by name, group by type
         filter_kwargs = {}
-        if sport:
-            filter_kwargs['sport'] = sport
         if entity_type:
             filter_kwargs['type'] = entity_type
 
-        teams    = base_qs.filter(type='team', name__icontains=query, **filter_kwargs)[:10]
-        athletes = base_qs.filter(type='athlete', name__icontains=query, **filter_kwargs)[:10]
-        leagues  = base_qs.filter(type='league', name__icontains=query, **filter_kwargs)[:10]
+        sport_q = Q()
+        if sport:
+            if sport.lower().strip() in ('hockey', 'ice_hockey', 'ice hockey', 'nhl'):
+                sport_q = Q(sport__in=['hockey', 'ice_hockey'])
+            else:
+                sport_q = Q(sport=sport)
+
+        teams_raw    = list(base_qs.filter(type='team', name__icontains=query, **filter_kwargs).filter(sport_q)[:30])
+        athletes_raw = list(base_qs.filter(type='athlete', name__icontains=query, **filter_kwargs).filter(sport_q)[:30])
+        leagues_raw  = list(base_qs.filter(type='league', name__icontains=query, **filter_kwargs).filter(sport_q)[:30])
+
+        teams    = _dedupe_entities(teams_raw, limit=10)
+        athletes = _dedupe_entities(athletes_raw, limit=10)
+        leagues  = _dedupe_entities(leagues_raw, limit=10)
 
         # Fallback 1: Typo handling (e.g. Casemero -> Casemiro)
-        if not (teams.exists() or athletes.exists() or leagues.exists()):
+        if not (teams or athletes or leagues):
             alt_query = query.replace('e', 'i') if 'e' in query.lower() else query.replace('i', 'e')
-            teams    = base_qs.filter(type='team', name__icontains=alt_query, **filter_kwargs)[:10]
-            athletes = base_qs.filter(type='athlete', name__icontains=alt_query, **filter_kwargs)[:10]
-            leagues  = base_qs.filter(type='league', name__icontains=alt_query, **filter_kwargs)[:10]
+            teams_raw    = list(base_qs.filter(type='team', name__icontains=alt_query, **filter_kwargs).filter(sport_q)[:30])
+            athletes_raw = list(base_qs.filter(type='athlete', name__icontains=alt_query, **filter_kwargs).filter(sport_q)[:30])
+            leagues_raw  = list(base_qs.filter(type='league', name__icontains=alt_query, **filter_kwargs).filter(sport_q)[:30])
+            teams    = _dedupe_entities(teams_raw, limit=10)
+            athletes = _dedupe_entities(athletes_raw, limit=10)
+            leagues  = _dedupe_entities(leagues_raw, limit=10)
 
         # Fallback 2: Auto-import from TheSportsDB if entity not in local DB
-        if not (teams.exists() or athletes.exists() or leagues.exists()):
+        if not (teams or athletes or leagues):
             try:
                 from apps.sports_apis.services.thesportsdb import thesportsdb_service
                 p_info = thesportsdb_service.get_player_details(query)
@@ -131,14 +175,18 @@ def get_trending(request):
                             'nationality': p_info.get('nationality', ''),
                         }
                     )
-                    athletes = Entity.objects.filter(id=entity.id)
+                    athletes = [entity]
             except Exception:
                 pass
     else:
         # Trending mode — order by follower_count
-        teams    = base_qs.filter(type='team').order_by('-follower_count')[:10]
-        athletes = base_qs.filter(type='athlete').order_by('-follower_count')[:10]
-        leagues  = base_qs.filter(type='league').order_by('-follower_count')[:10]
+        teams_raw    = list(base_qs.filter(type='team').order_by('-follower_count')[:30])
+        athletes_raw = list(base_qs.filter(type='athlete').order_by('-follower_count')[:30])
+        leagues_raw  = list(base_qs.filter(type='league').order_by('-follower_count')[:30])
+
+        teams    = _dedupe_entities(teams_raw, limit=10)
+        athletes = _dedupe_entities(athletes_raw, limit=10)
+        leagues  = _dedupe_entities(leagues_raw, limit=10)
 
     user_nest_ids = _get_user_nest_ids(request)
     return Response({

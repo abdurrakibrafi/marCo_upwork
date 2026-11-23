@@ -102,7 +102,10 @@ def search_entities(request):
     # Build filter — Global search for active non-duplicate canonical entities
     filters = Q(is_active=True) & Q(canonical_entity__isnull=True)
     if sport:
-        filters &= Q(sport=sport)
+        if sport == 'ice_hockey':
+            filters &= Q(sport__in=['ice_hockey', 'hockey'])
+        else:
+            filters &= Q(sport=sport)
     
     # Exact match first (on normalized name, prioritize non-empty logos, then teams, then follower count)
     from django.db.models import Case, When, Value, IntegerField

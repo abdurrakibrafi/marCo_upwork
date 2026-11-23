@@ -17,7 +17,7 @@ class EntitySearchService:
         Returns:
             QuerySet: Filtered Entity queryset.
         """
-        queryset = Entity.objects.filter(is_active=True)
+        queryset = Entity.objects.filter(is_active=True, canonical_entity__isnull=True)
         
         # Text search
         if query:
@@ -33,9 +33,13 @@ class EntitySearchService:
         
         # Sport filter
         if sport:
-            queryset = queryset.filter(sport=sport)
+            if sport.lower().strip() in ('hockey', 'ice_hockey', 'ice hockey', 'nhl'):
+                queryset = queryset.filter(sport__in=['hockey', 'ice_hockey'])
+            else:
+                queryset = queryset.filter(sport=sport)
         
-        return queryset.distinct()[:limit]
+        from apps.entity.views.base import _dedupe_entities
+        return _dedupe_entities(list(queryset.distinct()[:limit * 2]), limit=limit)
     
     @staticmethod
     def get_trending(limit: int = 10):
