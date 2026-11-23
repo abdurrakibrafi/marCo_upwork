@@ -97,6 +97,17 @@ def fast_serialize_feed_items(items, request, selected_entity_types=None) -> lis
     if not items_list:
         return []
 
+    # In-memory deduplication: prevent duplicate stories with identical title from same source
+    seen_sigs = set()
+    deduped_items = []
+    for itm in items_list:
+        sig = (itm.source_id, itm.title.strip().lower() if itm.title else "")
+        if sig[1] and sig in seen_sigs:
+            continue
+        seen_sigs.add(sig)
+        deduped_items.append(itm)
+    items_list = deduped_items
+
     item_ids = [item.id for item in items_list]
 
     # Pre-fetch user interaction state and nest entities
@@ -589,7 +600,16 @@ def get_entity_feed(request, entity_id):
     context = build_feed_serializer_context(request, paginated_feed)
     serializer = FeedItemCompactSerializer(paginated_feed, many=True, context=context)
     
-    return paginator.get_paginated_response(serializer.data)
+    seen_sigs = set()
+    deduped_data = []
+    for itm in serializer.data:
+        sig = (itm.get('source_id') or (itm.get('source', {}).get('id')), (itm.get('title') or '').strip().lower())
+        if sig[1] and sig in seen_sigs:
+            continue
+        seen_sigs.add(sig)
+        deduped_data.append(itm)
+
+    return paginator.get_paginated_response(deduped_data)
 
 
 @api_view(['GET'])

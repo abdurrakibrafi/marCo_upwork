@@ -209,6 +209,7 @@ def poll_single_source(self, source_id: int):
         if not matched_entities:
             continue
 
+        raw_title = entry.get('title', '').strip()[:500]
         url = resolve_real_article_url(raw_url)
         url_hash = hashlib.md5(url.encode()).hexdigest()
 
@@ -219,7 +220,11 @@ def poll_single_source(self, source_id: int):
             all_linked_entities.add(canonical)
             all_linked_entities.update(Entity.objects.filter(canonical_entity=canonical))
 
+        # Deduplication: check by url_hash OR (same source + exact same title)
         existing_item = FeedItem.objects.filter(url_hash=url_hash).first()
+        if not existing_item and raw_title:
+            existing_item = FeedItem.objects.filter(source=source, title__iexact=raw_title).first()
+
         if existing_item:
             if all_linked_entities:
                 existing_item.entities.add(*all_linked_entities)
