@@ -41,11 +41,48 @@ class SourceAIService:
         {"name": "ESPN", "domain": "https://www.espn.com", "rss_url": "https://www.espn.com/espn/rss/news", "description": "Global sports news coverage, stats, and live scores."},
         {"name": "BBC Sport", "domain": "https://www.bbc.com/sport", "rss_url": "https://push.api.bbci.co.uk/feed/news/friendly/sport", "description": "Sports news, scores, results, and analysis from the BBC."},
         {"name": "Sky Sports", "domain": "https://www.skysports.com", "rss_url": "https://www.skysports.com/rss/12040", "description": "Latest sports news, transfers, live scores, and video highlights."},
+        {"name": "Sportsnet", "domain": "https://www.sportsnet.ca", "rss_url": "https://www.sportsnet.ca/feed/", "description": "Leading Canadian sports news network covering NHL, MLB, NBA, and more."},
         {"name": "The Guardian Sport", "domain": "https://www.theguardian.com/sport", "rss_url": "https://www.theguardian.com/sport/rss", "description": "Sports news, match reviews, comments, and podcasts from The Guardian."},
         {"name": "Yahoo Sports", "domain": "https://sports.yahoo.com", "rss_url": "https://sports.yahoo.com/rss/", "description": "Comprehensive sports news, scores, fantasy games, and video."},
         {"name": "Reuters Sports", "domain": "https://www.reuters.com/sports", "rss_url": "https://www.reutersagency.com/feed/", "description": "Global sports reporting, breaking news, and photos."},
         {"name": "The Athletic", "domain": "https://theathletic.com", "rss_url": "", "description": "In-depth sports coverage, analysis, and exclusive reporting."},
     ]
+
+    SPORT_SOURCES = {
+        "hockey": [
+            {"name": "Sportsnet", "domain": "https://www.sportsnet.ca", "rss_url": "https://www.sportsnet.ca/feed/", "description": "Canadian sports leader covering the NHL, Maple Leafs, and hockey news."},
+            {"name": "The Hockey News", "domain": "https://thehockeynews.com", "rss_url": "https://thehockeynews.com/feed", "description": "The definitive voice of hockey news, analysis, and NHL coverage."},
+            {"name": "ESPN NHL", "domain": "https://www.espn.com/nhl", "rss_url": "https://www.espn.com/espn/rss/nhl/news", "description": "NHL scores, news, highlights, and rumors from ESPN."},
+            {"name": "TSN Hockey", "domain": "https://www.tsn.ca", "rss_url": "", "description": "Canada's sports leader featuring NHL trades, scores, and analysis."},
+            {"name": "The Athletic Hockey", "domain": "https://theathletic.com", "rss_url": "", "description": "In-depth hockey coverage, insider stories, and NHL reporting."},
+        ],
+        "soccer": [
+            {"name": "Sky Sports Football", "domain": "https://www.skysports.com/football", "rss_url": "https://www.skysports.com/rss/12040", "description": "Live football news, transfers, Serie A, Champions League, and updates."},
+            {"name": "BBC Sport Football", "domain": "https://www.bbc.com/sport/football", "rss_url": "https://push.api.bbci.co.uk/feed/news/friendly/sport", "description": "Football news, fixtures, results, and gossip from the BBC."},
+            {"name": "ESPN FC", "domain": "https://www.espn.com/soccer", "rss_url": "https://www.espn.com/espn/rss/soccer/news", "description": "Global soccer news, match reports, transfers, and analysis."},
+            {"name": "The Guardian Football", "domain": "https://www.theguardian.com/football", "rss_url": "https://www.theguardian.com/football/rss", "description": "Football analysis, match reviews, and European league coverage."},
+            {"name": "Marca", "domain": "https://www.marca.com/en", "rss_url": "https://e00-marca.uecdn.es/rss/en/index.xml", "description": "Leading international and European soccer reporting."},
+        ],
+        "basketball": [
+            {"name": "ESPN NBA", "domain": "https://www.espn.com/nba", "rss_url": "https://www.espn.com/espn/rss/nba/news", "description": "NBA scores, news, standings, and rumors from ESPN."},
+            {"name": "Sportsnet Basketball", "domain": "https://www.sportsnet.ca", "rss_url": "https://www.sportsnet.ca/feed/", "description": "Comprehensive Raptors and NBA basketball news coverage."},
+            {"name": "Bleacher Report NBA", "domain": "https://bleacherreport.com", "rss_url": "", "description": "Latest NBA news, trade rumors, scores, and highlights."},
+            {"name": "The Athletic NBA", "domain": "https://theathletic.com", "rss_url": "", "description": "Deep-dive NBA basketball reporting and expert analysis."},
+        ],
+        "baseball": [
+            {"name": "Sportsnet Baseball", "domain": "https://www.sportsnet.ca", "rss_url": "https://www.sportsnet.ca/feed/", "description": "Toronto Blue Jays and Major League Baseball news coverage."},
+            {"name": "ESPN MLB", "domain": "https://www.espn.com/mlb", "rss_url": "https://www.espn.com/espn/rss/mlb/news", "description": "MLB news, scores, stats, and standings from ESPN."},
+            {"name": "MLB.com", "domain": "https://www.mlb.com", "rss_url": "", "description": "The official site of Major League Baseball."},
+            {"name": "The Athletic MLB", "domain": "https://theathletic.com", "rss_url": "", "description": "In-depth baseball analysis, scoops, and beat reporting."},
+        ],
+        "american_football": [
+            {"name": "ESPN NFL", "domain": "https://www.espn.com/nfl", "rss_url": "https://www.espn.com/espn/rss/nfl/news", "description": "NFL news, scores, fantasy updates, and highlights from ESPN."},
+            {"name": "Bleacher Report NFL", "domain": "https://bleacherreport.com", "rss_url": "", "description": "Breaking NFL news, rumors, scores, and game reactions."},
+            {"name": "NFL.com", "domain": "https://www.nfl.com", "rss_url": "", "description": "Official news and coverage of the National Football League."},
+        ],
+    }
+    SPORT_SOURCES["ice_hockey"] = SPORT_SOURCES["hockey"]
+    SPORT_SOURCES["football"] = SPORT_SOURCES["soccer"]
 
     def suggest_sources(self, query: str) -> list[dict]:
         """Search and suggest candidate sports news sources given a user query keyword.
@@ -68,20 +105,30 @@ class SourceAIService:
             if brave_results:
                 ai_suggestions.extend(brave_results)
 
-        # 2. Match popular sports sources
+        # 2. Check if query matches an Entity (team/athlete/league) and use relevant sport publishers
+        if not ai_suggestions:
+            try:
+                from apps.entity.models import Entity
+                entity = Entity.objects.filter(
+                    Q(name__iexact=clean_query) | Q(name__icontains=clean_query)
+                ).first()
+                if entity and entity.sport:
+                    sport_key = entity.sport.lower().strip()
+                    matched_sources = self.SPORT_SOURCES.get(sport_key) or []
+                    for src in matched_sources:
+                        if not any(s["domain"] == src["domain"] for s in ai_suggestions):
+                            ai_suggestions.append(dict(src))
+            except Exception as e:
+                logger.warning(f"Entity sport source lookup failed: {e}")
+
+        # 3. Match keyword against popular sources
         query_lower = clean_query.lower()
         for pop in self.POPULAR_SOURCES:
             if query_lower in pop["name"].lower() or query_lower in pop["domain"].lower():
                 if not any(s["domain"] == pop["domain"] for s in ai_suggestions):
-                    ai_suggestions.append({
-                        "name": pop["name"],
-                        "domain": pop["domain"],
-                        "description": pop["description"],
-                        "tags": [],
-                        "rss_url": pop["rss_url"],
-                    })
+                    ai_suggestions.append(dict(pop))
 
-        # 3. Match existing verified DB sources — STRICTLY EXCLUDING Google News aggregator feeds
+        # 4. Match existing verified DB sources — STRICTLY EXCLUDING Google News aggregator feeds
         try:
             from apps.feed.models import Source
             words = [w.strip() for w in clean_query.split() if len(w.strip()) > 1]
@@ -107,6 +154,11 @@ class SourceAIService:
                         })
         except Exception as e:
             logger.warning(f"DB sources search failed: {e}")
+
+        # 5. Ultimate fallback if still no suggestions (e.g. Brave 402 and unlisted query):
+        if not ai_suggestions:
+            for pop in self.POPULAR_SOURCES[:5]:
+                ai_suggestions.append(dict(pop))
 
         # Step 2: Enrich each suggestion with favicon
         enriched = []
