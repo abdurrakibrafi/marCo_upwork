@@ -36,7 +36,7 @@ def get_user_live_scores_queryset(user, sport: str | None = None):
     dup_filters = Q()
     for ent in nest_entities:
         team_names.add(ent.name.lower().strip())
-        dup_filters |= Q(name__iexact=ent.name, sport=ent.sport, type=ent.type)
+        dup_filters |= Q(name__iexact=ent.name, type=ent.type)
         if ent.canonical_entity_id:
             all_entity_ids.add(ent.canonical_entity_id)
             if ent.canonical_entity:
@@ -51,6 +51,10 @@ def get_user_live_scores_queryset(user, sport: str | None = None):
     if dup_filters:
         duplicates = Entity.objects.filter(dup_filters).values_list("id", flat=True)
         all_entity_ids.update(duplicates)
+
+    if all_entity_ids:
+        child_canonical = Entity.objects.filter(canonical_entity_id__in=all_entity_ids).values_list("id", flat=True)
+        all_entity_ids.update(child_canonical)
 
     all_entity_ids = list(all_entity_ids)
 

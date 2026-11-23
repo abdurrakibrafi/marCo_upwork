@@ -5,24 +5,30 @@ from django.utils import timezone
 # Status Constants
 _FINISHED = {
     "ft", "aet", "pen", "finished", "after over time",
-    "full-time", "retired", "walk over", "walkover", "awarded",
+    "full-time", "retired", "walk over", "walkover", "awarded", "ended",
 }
 
 _CANCELLED = {
-    "cancelled", "cancl", "abandoned", "abd", "canc",
+    "cancelled", "cancl", "abandoned", "abd", "canc", "postponed", "postp.",
 }
 
 _LIVE = {
     # General
     "1h", "2h", "ht", "et", "bt", "p", "susp", "int", "live",
-    "in progress", "in play",
-    # Basketball
-    "q1", "q2", "q3", "q4", "ot", "halftime",
+    "in progress", "in play", "ongoing",
+    # Basketball / American Football
+    "q1", "q2", "q3", "q4", "ot", "halftime", "half time",
+    "1st quarter", "2nd quarter", "3rd quarter", "4th quarter",
+    "quarter 1", "quarter 2", "quarter 3", "quarter 4",
+    # Hockey / Ice Hockey Periods
+    "1st period", "2nd period", "3rd period",
+    "period 1", "period 2", "period 3",
+    "p1", "p2", "p3", "so", "shootout", "penalties", "overtime",
     # Tennis
     "1st set", "2nd set", "3rd set", "4th set", "5th set", "break",
     "set 1", "set 2", "set 3", "set 4", "set 5",
     # Cricket
-    "stumps", "innings break", "lunch", "tea", "rain delay",
+    "stumps", "innings break", "lunch", "tea", "rain delay", "drinks", "dinner",
 }
 
 
@@ -66,9 +72,32 @@ def _map_status(raw: str, sport: str = None, metadata: dict = None) -> str:
 
     raw_normalized = raw.lower().strip().rstrip('.')
 
-    # soccer-only numeric minute check
-    if sport == "soccer" and re.match(r"^\d+(\+\d+)?$", raw_normalized):
+    # General in-progress indicators
+    if any(sig in raw_normalized for sig in ["in progress", "in play", "ongoing"]):
         return "live"
+
+    # Soccer live minute representations (e.g. "45", "45'", "45+2", "1H 23'", "2H 70'", "HT", "ET")
+    if sport in ("soccer", "football"):
+        if re.search(r"^\d+(\+\d+)?['′]?$", raw_normalized):
+            return "live"
+        if re.search(r"\b(1h|2h)\s*\d+['′]?\b", raw_normalized):
+            return "live"
+        if re.search(r"\b\d+['′]\b", raw_normalized):
+            return "live"
+
+    # Ice Hockey / Field Hockey period indicators (e.g. "1st Period", "2nd Period", "3rd Period", "P1", "OT", "SO")
+    if sport in ("ice_hockey", "hockey"):
+        if any(p in raw_normalized for p in ["period", "1st per", "2nd per", "3rd per"]) or re.search(r"\bp[1-3]\b", raw_normalized):
+            return "live"
+        if raw_normalized in ("ot", "so", "shootout", "overtime", "penalties"):
+            return "live"
+
+    # Basketball / American Football quarter indicators (e.g. "Q1", "1st Quarter", "Halftime", "OT")
+    if sport in ("basketball", "nba", "american_football", "nfl"):
+        if any(q in raw_normalized for q in ["quarter", "1st qtr", "2nd qtr", "3rd qtr", "4th qtr"]) or re.search(r"\bq[1-4]\b", raw_normalized):
+            return "live"
+        if raw_normalized in ("halftime", "half time", "ot", "overtime"):
+            return "live"
 
     if raw_normalized in _CANCELLED:
         return "cancelled"
@@ -96,9 +125,9 @@ def _map_status(raw: str, sport: str = None, metadata: dict = None) -> str:
             if score_populated:
                 return "live"
         
-    # Check for Baseball live inning indicators (e.g., "Top 5th", "Bottom 8th", "End 6th", "Middle 2nd")
-    if any(ind in raw_normalized for ind in ["top ", "bottom ", "middle ", "end "]):
-        if any(ind in raw_normalized for ind in ["1st", "2nd", "3rd", "4th", "5th", "6th", "7th", "8th", "9th", "10th", "st", "nd", "rd", "th"]):
+    # Check for Baseball live inning indicators (e.g., "Top 5th", "Bottom 8th", "Bot 9th", "Mid 2nd", "End 6th")
+    if any(ind in raw_normalized for ind in ["top ", "bottom ", "bot ", "middle ", "mid ", "end "]):
+        if any(ind in raw_normalized for ind in ["1st", "2nd", "3rd", "4th", "5th", "6th", "7th", "8th", "9th", "10th", "st", "nd", "rd", "th"]) or re.search(r"\b\d+\b", raw_normalized):
             return "live"
     if "inning" in raw_normalized:
         return "live"
