@@ -292,7 +292,11 @@ class EventSerializer(serializers.ModelSerializer):
             game=instance
         )
 
-        if data.get('status') == 'completed' and (not data.get('status_detail') or data.get('status_detail') in ('NS', 'Not Started', '')):
+        # Guard against erroneously marked 'completed' events that have 'NS' / 'Not Started' and no scores
+        if data.get('status') == 'completed' and not has_scores and (not data.get('status_detail') or data.get('status_detail') in ('NS', 'Not Started', '')):
+            data['status'] = 'upcoming'
+            data['status_detail'] = 'NS'
+        elif data.get('status') == 'completed' and (not data.get('status_detail') or data.get('status_detail') in ('NS', 'Not Started', '')):
             data['status_detail'] = 'FT'
 
         # Highlight followed Nest entity logo and ID for calendar entries (agent_task.md Section 14)
@@ -445,6 +449,13 @@ class EventDetailSerializer(serializers.ModelSerializer):
                 raw_data=meta,
                 game=instance
             )
+
+            # Guard against erroneously marked 'completed' events that have 'NS' / 'Not Started' and no scores
+            if data.get('status') == 'completed' and not has_scores and (not data.get('status_detail') or data.get('status_detail') in ('NS', 'Not Started', '')):
+                data['status'] = 'upcoming'
+                data['status_detail'] = 'NS'
+            elif data.get('status') == 'completed' and (not data.get('status_detail') or data.get('status_detail') in ('NS', 'Not Started', '')):
+                data['status_detail'] = 'FT'
 
             # Prevent displaying cross-sport mismatched league (e.g., horse_racing event with baseball league)
             if instance.league and instance.league.sport and instance.sport:
