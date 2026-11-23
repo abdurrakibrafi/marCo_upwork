@@ -213,7 +213,11 @@ def fast_serialize_feed_items(items, request, selected_entity_types=None) -> lis
             'summary': item.summary,
             'thumbnail_url': (
                 item.thumbnail_url
-                if (item.thumbnail_url and not any(b in item.thumbnail_url for b in ('/badge/', '/cutout/', 'api-sports.io/football/leagues/')))
+                if (
+                    item.thumbnail_url
+                    and not any(b in item.thumbnail_url for b in ('/badge/', '/cutout/', 'api-sports.io/football/leagues/'))
+                    and not ('img.youtube.com' in item.thumbnail_url and not any(y in (item.url or '').lower() for y in ('youtube.com', 'youtu.be')))
+                )
                 else ''
             ),
             'url': item.url,

@@ -95,6 +95,8 @@ class FeedItemSerializer(serializers.ModelSerializer):
         url = obj.thumbnail_url or ''
         if url and any(b in url for b in ('/badge/', '/cutout/', 'api-sports.io/football/leagues/')):
             return ''
+        if 'img.youtube.com' in url and not any(y in (obj.url or '').lower() for y in ('youtube.com', 'youtu.be')):
+            return ''
         return url
 
     def get_entity_names(self, obj):
@@ -243,6 +245,8 @@ class FeedItemCompactSerializer(serializers.ModelSerializer):
         """Return article thumbnail or empty string if not available. Never return team/league badges as article thumbnails."""
         url = obj.thumbnail_url or ''
         if url and any(b in url for b in ('/badge/', '/cutout/', 'api-sports.io/football/leagues/')):
+            return ''
+        if 'img.youtube.com' in url and not any(y in (obj.url or '').lower() for y in ('youtube.com', 'youtu.be')):
             return ''
         return url
 

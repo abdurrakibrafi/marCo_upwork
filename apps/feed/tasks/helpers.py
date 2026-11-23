@@ -63,11 +63,40 @@ def _extract_domain(url: str) -> str | None:
         return None
 
 
+def _fetch_og_image_from_url(url: str) -> str:
+    """Extract genuine og:image or twitter:image from article webpage."""
+    if not url or not url.startswith('http') or any(y in url.lower() for y in ('news.google.com', 'google.com', 'youtube.com', 'youtu.be')):
+        return ''
+    try:
+        resp = requests.get(
+            url,
+            headers={
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8'
+            },
+            timeout=3,
+            stream=True
+        )
+        if resp.status_code == 200:
+            chunk = next(resp.iter_content(chunk_size=65536), b'')
+            if chunk:
+                from bs4 import BeautifulSoup
+                soup = BeautifulSoup(chunk, 'html.parser')
+                meta = soup.find('meta', property='og:image') or soup.find('meta', attrs={'name': 'twitter:image'})
+                if meta and meta.get('content'):
+                    cand = meta['content'].strip()
+                    if cand.startswith('http') and not any(b in cand.lower() for b in ('spacer', '1x1', 'pixel', 'beacon', 'badge', 'cutout')):
+                        return cand
+    except Exception:
+        pass
+    return ''
+
+
 def _resolve_thumbnail_for_article(title: str, entities: list = None, url: str = '') -> str:
     """Find and resolve a relevant image thumbnail for an article.
 
-    Checks YouTube URLs directly for instant video thumbnails, then Brave Search API.
-    If no article/video thumbnail is found, returns empty string as requested by design.
+    Checks YouTube URLs directly for instant video thumbnails, then Brave Search API,
+    and falls back to fast OpenGraph (og:image) metadata from the article webpage.
 
     Args:
         title (str): News article title.
@@ -77,8 +106,8 @@ def _resolve_thumbnail_for_article(title: str, entities: list = None, url: str =
     Returns:
         str: Resolved image URL or empty string.
     """
-    if url:
-        yt_match = re.search(r'(?:v=|\/|vi\/|shorts\/)([0-9A-Za-z_-]{11})', url)
+    if url and any(y in url.lower() for y in ('youtube.com', 'youtu.be')):
+        yt_match = re.search(r'(?:v=|embed\/|v\/|shorts\/|youtu\.be\/)([0-9A-Za-z_-]{11})', url)
         if yt_match:
             return f"https://img.youtube.com/vi/{yt_match.group(1)}/hqdefault.jpg"
 
@@ -102,6 +131,12 @@ def _resolve_thumbnail_for_article(title: str, entities: list = None, url: str =
                         return thumb
         except Exception as e:
             logger.warning(f"Brave Search thumbnail search failed: {e}")
+
+    # Fallback: Extract genuine og:image from the article page
+    if url:
+        og_thumb = _fetch_og_image_from_url(url)
+        if og_thumb:
+            return og_thumb
 
     return ''
 

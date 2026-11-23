@@ -323,7 +323,8 @@ def fetch_article_content(feed_item_id: int):
 
     # Try to extract genuine article featured image if item has none or has a badge
     update_fields = ["content", "ai_summary", "content_fetched"]
-    if fetched_html and (not item.thumbnail_url or any(b in item.thumbnail_url for b in ('/badge/', '/cutout/', 'api-sports.io'))):
+    is_fake_yt = bool(item.thumbnail_url and 'img.youtube.com' in item.thumbnail_url and not any(y in (item.url or '').lower() for y in ('youtube.com', 'youtu.be')))
+    if fetched_html and (not item.thumbnail_url or is_fake_yt or any(b in item.thumbnail_url for b in ('/badge/', '/cutout/', 'api-sports.io'))):
         try:
             from bs4 import BeautifulSoup
             soup = BeautifulSoup(fetched_html, 'html.parser')
