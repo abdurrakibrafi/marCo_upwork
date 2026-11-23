@@ -155,10 +155,22 @@ class SourceAIService:
         except Exception as e:
             logger.warning(f"DB sources search failed: {e}")
 
-        # 5. Ultimate fallback if still no suggestions (e.g. Brave 402 and unlisted query):
+        # 5. Fallback if still no suggestions
         if not ai_suggestions:
-            for pop in self.POPULAR_SOURCES[:5]:
+            for pop in self.POPULAR_SOURCES[:4]:
                 ai_suggestions.append(dict(pop))
+
+        # 6. Include 1 clean, deduplicated Google News topic source as an additional aggregator option
+        if clean_query and not any('google.com' in s.get('domain', '').lower() for s in ai_suggestions):
+            import urllib.parse
+            clean_encoded = urllib.parse.quote(f'"{clean_query}"')
+            ai_suggestions.append({
+                "name": f"Google News - {clean_query}",
+                "domain": "https://news.google.com",
+                "description": f"Curated news coverage for {clean_query} from Google News.",
+                "tags": [],
+                "rss_url": f"https://news.google.com/rss/search?q={clean_encoded}&hl=en&gl=US&ceid=US:en",
+            })
 
         # Step 2: Enrich each suggestion with favicon
         enriched = []
